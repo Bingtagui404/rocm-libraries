@@ -14,7 +14,7 @@ include(CMakePackageConfigHelpers)
 option(TENSILE_BUILD_SHARED_LIBS "Build shared library" ON)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
 option(TENSILE_ENABLE_HOST "Build  host library" ON)
-option(TENSILE_ENABLE_DEVICE "Build device libraries" OFF)
+option(TENSILE_ENABLE_DEVICE "Build device libraries" ON)
 option(TENSILE_ENABLE_CLIENT "Build client app" OFF)
 option(TENSILE_ENABLE_MSGPACK "Enable MessagePack support" ON)
 option(TENSILE_ENABLE_LLVM "Use llvm yaml library" OFF)
@@ -43,7 +43,7 @@ if(TENSILE_ENABLE_HOST)
   if(TENSILE_BUILD_SHARED_LIBS)
     add_library(tensile-host SHARED)
   else()
-    add_library(tensile-host STATIC)
+    add_library(tensile-host STATIC) # OBJECT?
   endif()
   add_library(roc::tensile-host ALIAS tensile-host)
   target_compile_features(tensile-host PUBLIC cxx_std_${TENSILE_CXX_STANDARD})
@@ -67,7 +67,6 @@ if(TENSILE_ENABLE_HOST)
     target_compile_definitions(tensile-host PRIVATE TENSILE_MSGPACK)
     target_link_libraries(tensile-host PRIVATE msgpack::msgpack-cxx)
   endif()
-
   target_include_directories(
     tensile-host
     PUBLIC $<BUILD_INTERFACE:${TENSILE_SOURCE_DIR}/lib/include>
@@ -89,14 +88,14 @@ if(TENSILE_ENABLE_HOST)
   endif()
 
   if(TENSILE_ENABLE_LLVM OR TENSILE_ENABLE_MSGPACK)
-    target_compile_definitions(tensile-host PRIVATE TENSILE_DEFAULT_SERIALIZATION)
+    target_compile_definitions(tensile-host PUBLIC TENSILE_DEFAULT_SERIALIZATION)
   endif()
 
   if(NOT TENSILE_BUILD_SHARED_LIBS)
     target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
   endif()
 
-  target_compile_definitions(tensile-host PRIVATE TENSILE_USE_HIP)
+  target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP)
 
   add_subdirectory("${TENSILE_SOURCE_DIR}/lib")
 endif()
@@ -114,7 +113,7 @@ if(TENSILE_ENABLE_CLIENT)
   add_library(tensile-client-lib OBJECT)
   add_library(tensile::tensile-client-lib ALIAS tensile-client-lib)
   target_link_libraries(
-    tensile-client-lib PRIVATE Boost::boost Boost::program_options tensile-host OpenMP::OpenMP_CXX)
+    tensile-client-lib PRIVATE Boost::boost Boost::program_options roc::tensile-host OpenMP::OpenMP_CXX)
     target_compile_features(tensile-client-lib PUBLIC cxx_std_${TENSILE_CXX_STANDARD})
 
   if(rocm_smi_FOUND)
@@ -173,3 +172,17 @@ if(TENSILE_BUILD_TESTING)
   file(MAKE_DIRECTORY "${TEST_DATA_DIR}")
   add_subdirectory(tests)
 endif()
+
+rocm_install(
+  TARGETS tensile-host
+  EXPORT tensile-targets
+  ARCHIVE COMPONENT devel
+  LIBRARY COMPONENT runtime
+  RUNTIME COMPONENT runtime)
+
+rocm_export_targets(
+  NAMESPACE roc::
+  TARGETS tensile
+  EXPORT tensile-targets
+  DEPENDS
+    PACKAGE hip)
