@@ -176,7 +176,7 @@ install_packages( )
   local library_dependencies_sles=( "make" "gcc-c++" "libcxxtools9" "rpm-build" )
   local library_dependencies_mariner=( "make" "rpm-build" )
 
-  local client_dependencies_ubuntu=( "python3" "python3-yaml" "libopenblas-dev")
+  local client_dependencies_ubuntu=( "python3" "python3-yaml")
   local client_dependencies_centos=( "python36" "python3-pip")
   local client_dependencies_centos8=( "python39" "python3-virtualenv")
   local client_dependencies_fedora=( "python36" "PyYAML" "python3-pip")
