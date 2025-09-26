@@ -250,49 +250,49 @@ namespace TensileLite
 
         virtual std::string description() const;
 
-        const int getSKDynamicGrid() const
+        static const int getSKDynamicGrid()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_DYNAMIC_GRID");
             static const int   value  = (envStr == NULL ? 6 : std::atoi(envStr));
             return value;
         }
 
-        const int getSKDynamicWGM() const
+        static const int getSKDynamicWGM()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_DYNAMIC_WGM");
             static const int   value  = (envStr == NULL ? 0 : std::atoi(envStr));
             return value;
         }
 
-        const int getFixedWGM() const
+        static const int getFixedWGM()
         {
             static const char* envStr = std::getenv("TENSILE_FIXED_WGM");
             static const int   value  = (envStr == NULL ? std::numeric_limits<int>::max() : std::atoi(envStr));
             return value;
         }
 
-        const int getSKMaxCUs() const
+        static const int getSKMaxCUs()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_MAX_CUS");
             static const int   value  = (envStr == NULL ? 0 : std::atoi(envStr));
             return value;
         }
 
-        const int getSKGridMultiplier() const
+        static const int getSKGridMultiplier()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_GRID_MULTIPLIER");
             static const int   value  = (envStr == NULL ? 1 : std::atoi(envStr));
             return value;
         }
 
-        const int getSKFixedGrid() const
+        static const int getSKFixedGrid()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_FIXED_GRID");
             static const int   value  = (envStr == NULL ? 0 : std::atoi(envStr));
             return value;
         }
 
-        const int getSKFullTiles() const
+        static const int getSKFullTiles()
         {
             static const char* envStr = std::getenv("TENSILE_STREAMK_FULL_TILES");
             static const int   value  = (envStr == NULL ? 1 : std::atoi(envStr));
