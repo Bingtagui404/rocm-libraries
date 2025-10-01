@@ -199,9 +199,9 @@ hipError_t radix_sort_onesweep_global_offsets(KeysInputIterator keys_input,
     return hipSuccess;
 }
 
-template<class T>
+template<class BlockIdWrapper>
 ROCPRIM_KERNEL
-void init_onesweep_iteration_kernel(ordered_block_id<T> ordered_bid)
+void init_onesweep_iteration_kernel(BlockIdWrapper ordered_bid)
 {
     ordered_bid.reset();
 }
@@ -213,7 +213,8 @@ template<class Config,
          class ValuesInputIterator,
          class ValuesOutputIterator,
          class Offset,
-         class Decomposer>
+         class Decomposer,
+         class BlockIdWrapper>
 ROCPRIM_KERNEL ROCPRIM_LAUNCH_BOUNDS(device_params<Config>().sort.block_size) void
     onesweep_iteration_kernel(KeysInputIterator              keys_input,
                               KeysOutputIterator             keys_output,
@@ -227,7 +228,7 @@ ROCPRIM_KERNEL ROCPRIM_LAUNCH_BOUNDS(device_params<Config>().sort.block_size) vo
                               const unsigned int             bit,
                               const unsigned int             current_radix_bits,
                               const unsigned int             full_blocks,
-                              ordered_block_id<unsigned int> ordered_bid)
+                              BlockIdWrapper                 ordered_bid)
 {
     static constexpr radix_sort_onesweep_config_params params = device_params<Config>();
     onesweep_iteration<params.sort.block_size,
@@ -256,7 +257,8 @@ template<class Config,
          class ValuesInputIterator,
          class ValuesOutputIterator,
          class Offset,
-         class Decomposer>
+         class Decomposer,
+         class BlockIdWrapper>
 hipError_t radix_sort_onesweep_iteration(
     KeysInputIterator                                               keys_input,
     typename std::iterator_traits<KeysInputIterator>::value_type*   keys_tmp,
@@ -273,7 +275,7 @@ hipError_t radix_sort_onesweep_iteration(
     Decomposer                                                      decomposer,
     const unsigned int                                              bit,
     const unsigned int                                              end_bit,
-    ordered_block_id<unsigned int>                                  ordered_bid,
+    BlockIdWrapper                                                  ordered_bid,
     const hipStream_t                                               stream,
     const bool                                                      debug_synchronous)
 {
@@ -469,7 +471,7 @@ hipError_t radix_sort_onesweep_impl(
     using key_type    = typename std::iterator_traits<KeysInputIterator>::value_type;
     using value_type  = typename std::iterator_traits<ValuesInputIterator>::value_type;
     using offset_type = offset_type_t<Size>;
-    using ordered_bid_type = ordered_block_id<unsigned int>;
+    using ordered_bid_type = block_id_wrapper<uint32_t, true>;
     using config = wrapped_radix_sort_onesweep_config<Config, key_type, value_type>;
 
     detail::target_arch target_arch;

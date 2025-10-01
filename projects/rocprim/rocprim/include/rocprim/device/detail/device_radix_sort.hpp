@@ -1054,7 +1054,8 @@ template<class Key,
          unsigned int               RadixBits,
          bool                       Descending,
          block_radix_rank_algorithm RadixRankAlgorithm,
-         class Decomposer>
+         class Decomposer,
+         class BlockIdWrapper>
 struct onesweep_iteration_helper
 {
     static constexpr unsigned int radix_size      = 1u << RadixBits;
@@ -1064,6 +1065,7 @@ struct onesweep_iteration_helper
     using key_codec
         = decltype(::rocprim::traits::get<Key>().template radix_key_codec<Descending>());
     using radix_rank_type = ::rocprim::block_radix_rank<BlockSize, RadixBits, RadixRankAlgorithm>;
+    using ordered_block_id = BlockIdWrapper;
 
     static constexpr bool load_warp_striped
         = RadixRankAlgorithm == block_radix_rank_algorithm::match;
@@ -1081,13 +1083,13 @@ struct onesweep_iteration_helper
                 Key   ordered_block_keys[items_per_block];
                 Value ordered_block_values[items_per_block];
             };
+            typename ordered_block_id::storage_type ordered_bid;
         };
     };
 
     struct storage_type_
     {
-        data_storage                                          data;
-        typename ordered_block_id<unsigned int>::storage_type ordered_bid;
+        data_storage data;
     };
 
     ROCPRIM_DETAIL_SUPPRESS_DEPRECATION_WITH_PUSH
@@ -1357,7 +1359,8 @@ template<unsigned int               BlockSize,
          class ValuesInputIterator,
          class ValuesOutputIterator,
          class Offset,
-         class Decomposer>
+         class Decomposer,
+         class BlockIdWrapper>
 ROCPRIM_DEVICE ROCPRIM_FORCE_INLINE void
     onesweep_iteration(KeysInputIterator        keys_input,
                        KeysOutputIterator       keys_output,
@@ -1371,7 +1374,7 @@ ROCPRIM_DEVICE ROCPRIM_FORCE_INLINE void
                        const unsigned int       bit,
                        const unsigned int       current_radix_bits,
                        const unsigned int       full_blocks,
-                    ordered_block_id<unsigned int> ordered_bid)
+                       BlockIdWrapper           ordered_bid)
 {
     using key_type   = typename std::iterator_traits<KeysInputIterator>::value_type;
     using value_type = typename std::iterator_traits<ValuesInputIterator>::value_type;
@@ -1384,13 +1387,14 @@ ROCPRIM_DEVICE ROCPRIM_FORCE_INLINE void
                                                                      RadixBits,
                                                                      Descending,
                                                                      RadixRankAlgorithm,
-                                                                     Decomposer>;
+                                                                     Decomposer,
+                                                                     BlockIdWrapper>;
 
     ROCPRIM_SHARED_MEMORY typename onesweep_iteration_helper_type::storage_type storage;
 
     constexpr unsigned int items_per_block = BlockSize * ItemsPerThread;
     const unsigned int     thread_id       = ::rocprim::detail::block_thread_id<0>();
-    const unsigned int     block_id        = ordered_bid.get(thread_id, storage.get().ordered_bid);
+    const unsigned int     block_id        = ordered_bid.get(thread_id, storage.get().data.ordered_bid);
 
     if(block_id < full_blocks)
     {
