@@ -2,18 +2,23 @@
 # SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.25.2)
-project(
-  rocblas
-  VERSION 5.1.0
-  LANGUAGES CXX)
 
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Load backward compatibility shims BEFORE processing options
+include(rocblas_shim)
+
 # Set cpack license file here to avoid rocm-cmake warning
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
+
+project(
+  rocblas
+  VERSION 5.1.0
+  LANGUAGES CXX)
 
 include(rocblas_target_configure_sanitizers)
 include(query_git_hash)
@@ -25,7 +30,7 @@ include(GNUInstallDirs)
 
 rocm_setup_version(VERSION ${PROJECT_VERSION})
 set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
-query_git_hash(rocblas ${CMAKE_CURRENT_SOURCE_DIR})
+query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(HIP_RUNTIME_MINIMUM "4.5.0" CACHE STRING "Minimum HIP runtime version required")
 
@@ -82,9 +87,9 @@ endif()
 if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
   if(ROCBLAS_ENABLE_FORTRAN)
     message(FATAL_ERROR "Cannot enable fortran clients and code coverage.")
-  elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(FATAL_ERROR "Code coverage is only supported for CMAKE_BUILD_TYPE=Debug.")
   endif()
+  # Note: Coverage flags are applied via target_compile_options which work with all build types.
+  # The previous CMAKE_BUILD_TYPE check was removed as it's not portable for multi-config generators.
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
@@ -110,8 +115,15 @@ endif()
 
 if(ROCBLAS_ENABLE_TENSILE)
   if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+    if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
+      message(FATAL_ERROR 
+        "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
+        "Please ensure the Tensile repository is cloned at this location, or\n"
+        "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"
+        "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
+    endif()
     message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-    add_subdirectory(${ROCBLAS_TENSILE_SUBDIR_PATH} "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+    add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
   endif()
 endif()
 
@@ -226,7 +238,7 @@ rocm_install(
 
 if(ROCBLAS_ENABLE_FORTRAN)
   rocm_install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../library/include/"
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
     COMPONENT devel
     FILES_MATCHING
@@ -234,7 +246,7 @@ if(ROCBLAS_ENABLE_FORTRAN)
       PATTERN "*.f90")
 else()
   rocm_install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../library/include/"
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
     COMPONENT devel
     FILES_MATCHING
@@ -251,7 +263,7 @@ rocm_install(
 
 # Hack for one off inclusion of files required in the install tree
 rocm_install(
-  FILES "${PROJECT_SOURCE_DIR}/../library/src/include/rocblas_device_malloc.hpp"
+  FILES "${PROJECT_SOURCE_DIR}/library/src/include/rocblas_device_malloc.hpp"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
   COMPONENT devel)
 

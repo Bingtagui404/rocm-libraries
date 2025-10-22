@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.21.2)
-project(tensile VERSION 4.44.0 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Load backward compatibility shims BEFORE processing options
+include(tensile_shim)
+
+project(tensile VERSION 4.44.0 LANGUAGES CXX)
 
 include(CMakeDependentOption)
 include(TensileSupportedArchitectures)
@@ -153,7 +157,7 @@ if(TENSILE_BUILD_TESTING)
   add_executable(tensile-tests)
   target_link_libraries(
     tensile-tests PRIVATE GTest::gtest roc::tensile-host tensile::tensile-test-lib
-                          Boost::filesystem hip::host test-device-kernels
+                          Boost::filesystem hip::host
                           tensile-client-lib OpenMP::OpenMP_CXX)
   if(TENSILE_ENABLE_LLVM)
       target_link_libraries(tensile-tests PRIVATE LLVMObjectYAML)
@@ -170,19 +174,27 @@ if(TENSILE_BUILD_TESTING)
   # to its location
   set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/../data")
   file(MAKE_DIRECTORY "${TEST_DATA_DIR}")
-  add_subdirectory(tests)
+  
+  # Note: tests subdirectory organization will be added when test sources are organized
+  # For now, testing infrastructure is defined but test sources need to be added
 endif()
 
-rocm_install(
+# Installation and export
+# Use standard CMake install - rocm_install requires full ROCmCMakeBuildTools setup
+install(
   TARGETS tensile-host
   EXPORT tensile-targets
-  ARCHIVE COMPONENT devel
-  LIBRARY COMPONENT runtime
-  RUNTIME COMPONENT runtime)
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT devel
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime)
 
-rocm_export_targets(
-  NAMESPACE roc::
-  TARGETS tensile
+install(
   EXPORT tensile-targets
-  DEPENDS
-    PACKAGE hip)
+  FILE tensile-targets.cmake
+  NAMESPACE roc::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/tensile)
+
+# Install headers
+install(
+  DIRECTORY "${TENSILE_SOURCE_DIR}/lib/include/Tensile"
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

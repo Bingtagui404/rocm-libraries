@@ -75,7 +75,6 @@ if(ROCBLAS_ENABLE_ASAN)
   rocblas_target_configure_sanitizers(rocblas64 PRIVATE)
 endif()
 
-
 target_include_directories(
   rocblas
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -86,10 +85,6 @@ target_include_directories(
          $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
          $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
          $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas>)
-
-if(ROCBLAS_ENABLE_ASAN)
-  rocblas_target_configure_sanitizers(rocblas PRIVATE)
-endif()
 
 set_target_properties(rocblas PROPERTIES RUNTIME_OUTPUT_DIRECTORY
                                          ${PROJECT_BINARY_DIR}/staging)
@@ -119,16 +114,15 @@ if(ROCBLAS_ENABLE_FORTRAN)
       $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas>)
 endif()
 
+# Organize library components
 add_subdirectory(include)
 add_subdirectory(src)
 
 # TODO: Fix the source code that uses inconsistent include paths and then remove
 # the `configure_file` calls below. This is improper practice and allows clients
 # to use wrong (or at least inconsistent) include paths. Refer to file:
-# testing_gemm_batched_ex.hpp, which uses the following include
-# ~~~
-# #include <rocblas/internal/rocblas-beta.h>`
-# ~~~
+# testing_gemm_batched_ex.hpp, which uses the following include:
+# #include <rocblas/internal/rocblas-beta.h>
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/internal/rocblas-beta.h"
                "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal" COPYONLY)
 

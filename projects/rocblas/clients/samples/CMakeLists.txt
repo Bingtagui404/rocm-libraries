@@ -1,137 +1,119 @@
-# ########################################################################
-# Copyright (C) 2016-2025 Advanced Micro Devices, Inc. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell cop-
-# ies of the Software, and to permit persons to whom the Software is furnished
-# to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IM-
-# PLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNE-
-# CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-#
-# ########################################################################
+# Copyright Advanced Micro Devices, Inc., or its affiliates.
+# SPDX-License-Identifier: MIT
 
-set( rocblas_samples_common
-      ../common/singletons.cpp
-      ../common/client_utility.cpp
-      ../common/rocblas_random.cpp
-      ../common/host_alloc.cpp
-    )
-
-# C example
-add_executable( rocblas-example-c-dgeam example_c_dgeam.c )
-target_compile_definitions( rocblas-example-c-dgeam PRIVATE __HIP_PLATFORM_HCC__ )
-target_compile_options( rocblas-example-c-dgeam PRIVATE -std=c11 )
-
-set( sample_list_c rocblas-example-c-dgeam )
-
-# C++ examples
-add_executable( rocblas-example-sscal example_sscal.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-scal-template example_scal_template.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-scal-multiple-strided-batch example_scal_multiple_strided_batch.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-solver example_solver_rocblas.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-hip-complex-her2 example_hip_complex_her2.cpp )
-add_executable( rocblas-example-gemv-graph-capture example_gemv_graph_capture.cpp )
-add_executable( rocblas-example-header-check example_header_check.cpp)
-
-set( sample_list_base rocblas-example-sscal rocblas-example-scal-template rocblas-example-scal-multiple-strided-batch rocblas-example-solver rocblas-example-hip-complex-her2 rocblas-example-gemv-graph-capture rocblas-example-header-check)
-
-
-if ( BUILD_FORTRAN_CLIENTS )
-  # Fortran examples
-  add_executable( rocblas-example-fortran-axpy example_fortran_axpy.f90 $<TARGET_OBJECTS:rocblas_fortran>)
-  add_executable( rocblas-example-fortran-scal example_fortran_scal.f90 $<TARGET_OBJECTS:rocblas_fortran>)
-  add_executable( rocblas-example-fortran-gemv example_fortran_gemv.f90 $<TARGET_OBJECTS:rocblas_fortran>)
-
-  set( sample_list_fortran rocblas-example-fortran-axpy rocblas-example-fortran-scal rocblas-example-fortran-gemv )
-endif()
-
-if( BUILD_WITH_TENSILE )
-  add_executable( rocblas-example-user-driven-tuning example_user_driven_tuning.cpp ${rocblas_samples_common} )
-
-  set( sample_list_tensile rocblas-example-user-driven-tuning )
-endif()
-
-# L3 examples with or with tensile or source gemm builds
-add_executable( rocblas-example-sgemm example_sgemm.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-sgemm-strided-batched example_sgemm_strided_batched.cpp ${rocblas_samples_common} )
-add_executable( rocblas-example-sgemm-multiple-strided-batch example_sgemm_multiple_strided_batch.cpp  ${rocblas_samples_common} )
-
-set( sample_list_L3 rocblas-example-sgemm rocblas-example-sgemm-strided-batched rocblas-example-sgemm-multiple-strided-batch )
-
-# device includes
-set( sample_list_hip_device ${sample_list_base} ${sample_list_tensile} ${sample_list_L3} )
-
-if ( (TARGET OpenMP::OpenMP_CXX) OR (TARGET OpenMP::omp) )
-  add_executable( rocblas-example-openmp example_openmp.cpp )
-  target_link_libraries( rocblas-example-openmp PRIVATE ${COMMON_LINK_LIBS} )
-  apply_omp_settings( rocblas-example-openmp )
-  list(APPEND sample_list_base rocblas-example-openmp) # OpenMP not supported with hip device compilation
-endif()
-
-# combined list
-set( sample_list_all ${sample_list_c} ${sample_list_base} ${sample_list_fortran} ${sample_list_tensile} ${sample_list_L3} )
-
-#
-# apply settings
-
-foreach( exe ${sample_list_fortran} )
-  target_link_libraries( ${exe} PRIVATE rocblas_fortran_client )
-endforeach( )
-
-foreach( exe ${sample_list_all} )
-  target_link_libraries( ${exe} PRIVATE roc::rocblas Threads::Threads )
-
-  if( NOT ${exe} STREQUAL "rocblas-example-header-check" )
-    set_target_properties( ${exe} PROPERTIES
-    CXX_STANDARD 14
-    )
-    # We widely use extensions and AMD Clang warnings are too noisy
-    target_compile_options( ${exe} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++17-extensions> )
-
-    rocm_install(TARGETS ${exe} COMPONENT samples)
-  else()
-    set_target_properties( ${exe} PROPERTIES
-    CXX_STANDARD 11
-    )
-  endif()
-
-  set_target_properties( ${exe} PROPERTIES
-  CXX_STANDARD_REQUIRED ON
-  CXX_EXTENSIONS OFF
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
+# Helper function to configure a C++ sample with common settings
+# NOTE: All include paths, compile definitions, and most compile options are
+# provided by rocblas-clients-helper via rocblas-samples-common
+function(configure_rocblas_sample target)
+  target_compile_features(${target} PRIVATE cxx_std_14)
+  
+  set_target_properties(${target} PROPERTIES
+    CXX_EXTENSIONS OFF
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
   )
 
-  if (NOT ${exe} STREQUAL "rocblas-example-c-dgeam")
-    target_compile_definitions( ${exe} PRIVATE ROCM_USE_FLOAT16 )
-  endif()
+  # Link to helper and sample common library
+  target_link_libraries(${target} PRIVATE rocblas-clients-helper rocblas-samples-common)
+endfunction()
 
-  target_include_directories( ${exe}
-    PRIVATE
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/include>
-      )
+# === C Example ===
 
-  target_include_directories( ${exe}
-    SYSTEM PRIVATE
-      $<BUILD_INTERFACE:${HIP_INCLUDE_DIRS}>
-      )
+add_executable(rocblas-example-c-dgeam)
+target_sources(rocblas-example-c-dgeam PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_c_dgeam.c")
+target_compile_definitions(rocblas-example-c-dgeam PRIVATE __HIP_PLATFORM_HCC__)
+# FLAG: -std=c11 - C example requires C11 standard
+target_compile_options(rocblas-example-c-dgeam PRIVATE -std=c11)
+# TODO EVALUATE: library/include may be redundant with roc::rocblas link propagation
+target_include_directories(rocblas-example-c-dgeam
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../library/include"
+)
+target_link_libraries(rocblas-example-c-dgeam PRIVATE roc::rocblas Threads::Threads)
+set_target_properties(rocblas-example-c-dgeam PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
-  if( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_definitions( ${exe} PRIVATE ROCBLAS_INTERNAL_API )
-  endif( )
+# === C++ BLAS1 Examples ===
 
-endforeach( )
+add_executable(rocblas-example-sscal)
+target_sources(rocblas-example-sscal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sscal.cpp")
+configure_rocblas_sample(rocblas-example-sscal)
 
-foreach( exe ${sample_list_hip_device} )
-  target_link_libraries( ${exe} PRIVATE hip::device )
-endforeach( )
+add_executable(rocblas-example-scal-template)
+target_sources(rocblas-example-scal-template PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_scal_template.cpp")
+configure_rocblas_sample(rocblas-example-scal-template)
+
+add_executable(rocblas-example-scal-multiple-strided-batch)
+target_sources(rocblas-example-scal-multiple-strided-batch PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_scal_multiple_strided_batch.cpp")
+configure_rocblas_sample(rocblas-example-scal-multiple-strided-batch)
+
+# === Other C++ Examples ===
+
+add_executable(rocblas-example-solver)
+target_sources(rocblas-example-solver PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_solver_rocblas.cpp")
+configure_rocblas_sample(rocblas-example-solver)
+
+add_executable(rocblas-example-hip-complex-her2)
+target_sources(rocblas-example-hip-complex-her2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_hip_complex_her2.cpp")
+configure_rocblas_sample(rocblas-example-hip-complex-her2)
+
+add_executable(rocblas-example-gemv-graph-capture)
+target_sources(rocblas-example-gemv-graph-capture PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_gemv_graph_capture.cpp")
+configure_rocblas_sample(rocblas-example-gemv-graph-capture)
+
+# === Header Check Example (compile-time test, not installed) ===
+
+add_executable(rocblas-example-header-check)
+target_sources(rocblas-example-header-check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_header_check.cpp")
+# PRIVATE includes don't need BUILD_INTERFACE wrapper
+target_include_directories(rocblas-example-header-check
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../library/include"
+)
+target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
+set_target_properties(rocblas-example-header-check PROPERTIES
+  CXX_EXTENSIONS OFF
+  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
+)
+target_link_libraries(rocblas-example-header-check PRIVATE roc::rocblas Threads::Threads)
+
+# === BLAS3 Examples (work with or without Tensile) ===
+
+add_executable(rocblas-example-sgemm)
+target_sources(rocblas-example-sgemm PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm.cpp")
+configure_rocblas_sample(rocblas-example-sgemm)
+
+add_executable(rocblas-example-sgemm-strided-batched)
+target_sources(rocblas-example-sgemm-strided-batched PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm_strided_batched.cpp")
+configure_rocblas_sample(rocblas-example-sgemm-strided-batched)
+
+add_executable(rocblas-example-sgemm-multiple-strided-batch)
+target_sources(rocblas-example-sgemm-multiple-strided-batch PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm_multiple_strided_batch.cpp")
+configure_rocblas_sample(rocblas-example-sgemm-multiple-strided-batch)
+
+# === Tensile-specific Example ===
+
+if(ROCBLAS_ENABLE_TENSILE)
+  add_executable(rocblas-example-user-driven-tuning)
+  target_sources(rocblas-example-user-driven-tuning PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_user_driven_tuning.cpp")
+  configure_rocblas_sample(rocblas-example-user-driven-tuning)
+endif()
+
+# === Fortran Examples ===
+
+if(ROCBLAS_ENABLE_FORTRAN)
+  add_executable(rocblas-example-fortran-axpy)
+  target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90" $<TARGET_OBJECTS:rocblas_fortran>)
+  target_link_libraries(rocblas-example-fortran-axpy PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  set_target_properties(rocblas-example-fortran-axpy PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+
+  add_executable(rocblas-example-fortran-scal)
+  target_sources(rocblas-example-fortran-scal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_scal.f90" $<TARGET_OBJECTS:rocblas_fortran>)
+  target_link_libraries(rocblas-example-fortran-scal PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  set_target_properties(rocblas-example-fortran-scal PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+
+  add_executable(rocblas-example-fortran-gemv)
+  target_sources(rocblas-example-fortran-gemv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_gemv.f90" $<TARGET_OBJECTS:rocblas_fortran>)
+  target_link_libraries(rocblas-example-fortran-gemv PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  set_target_properties(rocblas-example-fortran-gemv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+endif()

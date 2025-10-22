@@ -1,170 +1,163 @@
-# ########################################################################
-# Copyright (C) 2018-2025 Advanced Micro Devices, Inc. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell cop-
-# ies of the Software, and to permit persons to whom the Software is furnished
-# to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IM-
-# PLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNE-
-# CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-#
-# ########################################################################
+# Copyright Advanced Micro Devices, Inc., or its affiliates.
+# SPDX-License-Identifier: MIT
 
+# Helper interface target to hold common build/usage requirements for all client targets
+# This avoids repeating the same properties across multiple targets
+add_library(rocblas-clients-helper INTERFACE)
 
-# ########################################################################
-# standardized common object library settings
-# ########################################################################
-function( rocblas_client_library_settings lib_target_ )
-
-  message(STATUS "** rocblas_client_library_settings: ${lib_target_}")
-
-  target_include_directories( ${lib_target_}
-    PRIVATE
+target_include_directories(rocblas-clients-helper
+  INTERFACE
+    # Client-local header directories - REQUIRED
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/blas1>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/blas2>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/blas3>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/blas_ex>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/blas_ex>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/src/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/src>
-  )
-
-  # External header includes included as system files
-  target_include_directories( ${lib_target_}
-    SYSTEM PRIVATE
-    $<BUILD_INTERFACE:${HIP_INCLUDE_DIRS}>
-    $<BUILD_INTERFACE:${BLAS_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${BLIS_INCLUDE_DIR}> # may be blank if not used
-  )
-
-  target_include_directories( ${lib_target_}
-    PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/common>
+    # TODO EVALUATE: May be redundant with roc::rocblas link propagation
+    #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/include>
+    # TODO EVALUATE: Internal rocBLAS headers - needed for some tests accessing internals
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/src/include>
+    # TODO EVALUATE: May not be needed
+    #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/src>
+)
+
+target_compile_definitions(rocblas-clients-helper
+  INTERFACE
+    ROCM_USE_FLOAT16
+    ROCBLAS_INTERNAL_API
+    ROCBLAS_NO_DEPRECATED_WARNINGS
+    GOOGLE_TEST
+)
+
+if(ROCBLAS_ENABLE_TENSILE)
+  target_compile_definitions(rocblas-clients-helper INTERFACE BUILD_WITH_TENSILE)
+endif()
+
+if(ROCBLAS_ENABLE_HIPBLASLT)
+  target_compile_definitions(rocblas-clients-helper INTERFACE BUILD_WITH_HIPBLASLT)
+endif()
+
+if(NOT ROCBLAS_ENABLE_FORTRAN)
+  target_compile_definitions(rocblas-clients-helper INTERFACE CLIENTS_NO_FORTRAN)
+endif()
+
+if(ROCBLAS_ENABLE_ASAN)
+  target_compile_definitions(rocblas-clients-helper INTERFACE ASAN_BUILD)
+endif()
+
+# FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
+target_compile_options(rocblas-clients-helper INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++17-extensions>)
+
+target_link_libraries(rocblas-clients-helper
+  INTERFACE
+    roc::rocblas
+    hip::host
+    hip::device
+    $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+    $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
+)
+
+# Common library for all rocBLAS clients
+add_library(rocblas-clients-common OBJECT)
+
+target_link_libraries(rocblas-clients-common PUBLIC rocblas-clients-helper)
+
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(rocblas-clients-common PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+if(Threads_FOUND)
+  target_link_libraries(rocblas-clients-common PUBLIC Threads::Threads)
+endif()
+
+target_sources(rocblas-clients-common
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/singletons.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/client_omp.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/client_utility.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/frequency_monitor.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_arguments.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/argument_model.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_random.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_parse_data.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/host_alloc.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gtest_helpers.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_matrix.cpp"
+)
+
+# Library target for sample common sources - compiled once, linked by all samples
+add_library(rocblas-samples-common OBJECT)
+
+target_link_libraries(rocblas-samples-common PUBLIC rocblas-clients-helper)
+
+if(Threads_FOUND)
+  target_link_libraries(rocblas-samples-common PUBLIC Threads::Threads)
+endif()
+
+target_sources(rocblas-samples-common
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/singletons.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/client_utility.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_random.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/host_alloc.cpp"
+)
+
+# Testing common library with BLAS reference implementations
+add_library(rocblas-clients-testing-common OBJECT)
+
+target_link_libraries(rocblas-clients-testing-common PUBLIC rocblas-clients-helper)
+
+# Link to BLAS library (either BLIS or generic BLAS)
+if(ROCBLAS_ENABLE_BLIS)
+  target_link_libraries(rocblas-clients-testing-common PUBLIC BLIS::BLIS)
+else()
+  target_link_libraries(rocblas-clients-testing-common PUBLIC ${BLAS_LIBRARIES})
+  # BLAS doesn't provide a target with usage requirements, manually add include if available
+  if(BLAS_INCLUDE_DIRS)
+    target_include_directories(rocblas-clients-testing-common SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS})
+  endif()
+endif()
+
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(rocblas-clients-testing-common PUBLIC OpenMP::OpenMP_CXX)
+  
+  # Set RPATH for OpenMP library on Linux with Clang
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT WIN32)
+    if(TARGET OpenMP::OpenMP_CXX)
+      set_target_properties(rocblas-clients-testing-common PROPERTIES
+        BUILD_RPATH "${HIP_CLANG_ROOT}/lib"
+        INSTALL_RPATH "$ORIGIN/../llvm/lib"
+      )
+    elseif(TARGET OpenMP::omp AND DEFINED openmp_LIB_DIR)
+      set_target_properties(rocblas-clients-testing-common PROPERTIES
+        BUILD_RPATH "${HIP_CLANG_ROOT}/${openmp_LIB_DIR}"
+        INSTALL_RPATH "$ORIGIN/../llvm/${openmp_LIB_DIR}"
+      )
+    endif()
+  endif()
+endif()
+
+if(Threads_FOUND)
+  target_link_libraries(rocblas-clients-testing-common PUBLIC Threads::Threads)
+endif()
+
+target_sources(rocblas-clients-testing-common
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/cblas_interface.cpp"
+)
+
+# Add BLIS interface if using BLIS
+if(ROCBLAS_ENABLE_BLIS)
+  target_sources(rocblas-clients-testing-common
+    PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/blis_interface.cpp"
   )
-
-  target_compile_definitions( ${lib_target_} PRIVATE ROCM_USE_FLOAT16 ROCBLAS_INTERNAL_API ROCBLAS_NO_DEPRECATED_WARNINGS )
-  target_compile_definitions( ${lib_target_} PRIVATE ${TENSILE_DEFINES} ${HIPBLASLT_DEFINES} GOOGLE_TEST )
-  # GOOGLE_TEST left off for reuse of this function by by gemm tuner
-  if ( NOT BUILD_FORTRAN_CLIENTS )
-    target_compile_definitions( ${lib_target_} PRIVATE CLIENTS_NO_FORTRAN )
-  endif()
-
-  # We widely use extensions and AMD Clang warnings are too noisy
-  target_compile_options( ${lib_target_} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++17-extensions> )
-  target_compile_options( ${lib_target_} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${COMMON_CXX_OPTIONS}> )
-
-  if(BUILD_ADDRESS_SANITIZER)
-    target_compile_definitions( ${lib_target_} PRIVATE ASAN_BUILD )
-  endif()
-endfunction()
-
-set(rocblas_common_source
-    # general
-    singletons.cpp
-    client_omp.cpp
-    client_utility.cpp
-    frequency_monitor.cpp
-    rocblas_arguments.cpp
-    argument_model.cpp
-    rocblas_random.cpp
-    rocblas_parse_data.cpp
-    host_alloc.cpp
-    gtest_helpers.cpp
-    rocblas_matrix.cpp
-)
-
-set(rocblas_testing_common_source
-    # general
-    cblas_interface.cpp
-    ${BLIS_CPP}
-    # blas1
-    blas1/common_asum.cpp
-    blas1/common_axpy.cpp
-    blas1/common_copy.cpp
-    blas1/common_dot.cpp
-    blas1/common_iamax_iamin.cpp
-    blas1/common_nrm2.cpp
-    blas1/common_rot.cpp
-    blas1/common_scal.cpp
-    blas1/common_swap.cpp
-    # blas1_ex
-    blas_ex/common_axpy_ex.cpp
-    blas_ex/common_dot_ex.cpp
-    blas_ex/common_nrm2_ex.cpp
-    blas_ex/common_rot_ex.cpp
-    blas_ex/common_scal_ex.cpp
-    # blas2
-    blas2/common_trsv.cpp
-    blas2/common_gbmv.cpp
-    blas2/common_gemv.cpp
-    blas2/common_hbmv.cpp
-    blas2/common_hemv.cpp
-    blas2/common_her.cpp
-    blas2/common_her2.cpp
-    blas2/common_hpmv.cpp
-    blas2/common_hpr.cpp
-    blas2/common_hpr2.cpp
-    blas2/common_trmv.cpp
-    blas2/common_tpmv.cpp
-    blas2/common_tbmv.cpp
-    blas2/common_tbsv.cpp
-    blas2/common_tpsv.cpp
-    blas2/common_ger.cpp
-    blas2/common_spr.cpp
-    blas2/common_spr2.cpp
-    blas2/common_syr.cpp
-    blas2/common_syr2.cpp
-    blas2/common_sbmv.cpp
-    blas2/common_spmv.cpp
-    blas2/common_symv.cpp
-    # blas3 may use tensile or source gemm
-    blas3/common_gemm.cpp
-    blas_ex/common_gemm_ex.cpp
-    blas_ex/common_trsm_ex.cpp
-    blas3/common_symm_hemm.cpp
-    blas3/common_trsm.cpp
-    blas3/common_trtri.cpp
-    blas3/common_trmm.cpp
-    blas3/common_syrk.cpp
-    blas3/common_syr2k.cpp # syrkx
-    blas3/common_herk.cpp
-    blas3/common_her2k.cpp # herkx
-    blas3/common_dgmm.cpp
-    blas3/common_geam.cpp
-    blas_ex/common_gemmt.cpp
-    blas_ex/common_geam_ex.cpp
-    blas_ex/common_syrk_ex.cpp
-)
-
-add_library(rocblas_clients_common OBJECT ${rocblas_testing_common_tensile_source} ${rocblas_common_source})
-
-rocblas_client_library_settings( rocblas_clients_common )
-
-add_library(rocblas_clients_testing_common OBJECT ${rocblas_testing_common_source})
-
-rocblas_client_library_settings( rocblas_clients_testing_common )
-
-if ( WARN_NOT_ILP64_PREFERRED )
-  target_compile_definitions( rocblas_clients_common PRIVATE ROCBLAS_REFERENCE_LIB_WARN )
 endif()
-target_compile_definitions( rocblas_clients_common PRIVATE ROCBLAS_REFERENCE_LIB=${BLAS_LIBRARY} )
 
-
-# target is not linked as OBJECT library but we want any interface flags from dependencies, e.g. COMMON_LINK_LIBS may bring OpenMP
-target_link_libraries( rocblas_clients_common PUBLIC roc::rocblas hip::host hip::device $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest> $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main> ${COMMON_LINK_LIBS} )
-if(BUILD_WITH_HIPBLASLT)
-    target_link_libraries( rocblas_clients_common PRIVATE roc::hipblaslt )
-endif()
-target_link_libraries( rocblas_clients_testing_common roc::rocblas hip::host hip::device ${BLAS_LIBRARY} $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest> $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main> ${COMMON_LINK_LIBS} )
+# Add subdirectories to populate testing common target with sources
+add_subdirectory(blas1)
+add_subdirectory(blas2)
+add_subdirectory(blas3)
+add_subdirectory(blas_ex)
