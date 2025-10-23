@@ -29,8 +29,10 @@ target_include_directories(rocblas-example-c-dgeam
     "${CMAKE_CURRENT_SOURCE_DIR}/../include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../library/include"
 )
-target_link_libraries(rocblas-example-c-dgeam PRIVATE roc::rocblas Threads::Threads)
-set_target_properties(rocblas-example-c-dgeam PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+target_link_libraries(rocblas-example-c-dgeam PRIVATE roc::rocblas Threads::Threads hip::host)
+set_target_properties(rocblas-example-c-dgeam PROPERTIES 
+  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
+  LINKER_LANGUAGE C)
 
 # === C++ BLAS1 Examples ===
 
@@ -75,7 +77,7 @@ set_target_properties(rocblas-example-header-check PROPERTIES
   CXX_EXTENSIONS OFF
   RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
 )
-target_link_libraries(rocblas-example-header-check PRIVATE roc::rocblas Threads::Threads)
+target_link_libraries(rocblas-example-header-check PRIVATE roc::rocblas hip::host hip::device Threads::Threads)
 
 # === BLAS3 Examples (work with or without Tensile) ===
 
@@ -103,17 +105,20 @@ endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
   add_executable(rocblas-example-fortran-axpy)
-  target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90" $<TARGET_OBJECTS:rocblas_fortran>)
-  target_link_libraries(rocblas-example-fortran-axpy PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90")
+  target_link_libraries(rocblas-example-fortran-axpy PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
+  add_dependencies(rocblas-example-fortran-axpy rocblas-fortran-module)
   set_target_properties(rocblas-example-fortran-axpy PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
   add_executable(rocblas-example-fortran-scal)
-  target_sources(rocblas-example-fortran-scal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_scal.f90" $<TARGET_OBJECTS:rocblas_fortran>)
-  target_link_libraries(rocblas-example-fortran-scal PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  target_sources(rocblas-example-fortran-scal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_scal.f90")
+  target_link_libraries(rocblas-example-fortran-scal PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
+  add_dependencies(rocblas-example-fortran-scal rocblas-fortran-module)
   set_target_properties(rocblas-example-fortran-scal PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
   add_executable(rocblas-example-fortran-gemv)
-  target_sources(rocblas-example-fortran-gemv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_gemv.f90" $<TARGET_OBJECTS:rocblas_fortran>)
-  target_link_libraries(rocblas-example-fortran-gemv PRIVATE rocblas-fortran-client roc::rocblas Threads::Threads)
+  target_sources(rocblas-example-fortran-gemv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_gemv.f90")
+  target_link_libraries(rocblas-example-fortran-gemv PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
+  add_dependencies(rocblas-example-fortran-gemv rocblas-fortran-module)
   set_target_properties(rocblas-example-fortran-gemv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 endif()

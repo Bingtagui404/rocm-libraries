@@ -21,6 +21,9 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
+        "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
+        "CMAKE_PREFIX_PATH": "/opt/rocm",
         "ROCBLAS_ENABLE_HIPBLASLT": "ON",
         "ROCBLAS_ENABLE_TENSILE": "ON",
         "ROCBLAS_ENABLE_CLIENT": "ON",

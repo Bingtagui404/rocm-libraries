@@ -38,5 +38,11 @@ if(ROCBLAS_ENABLE_HIPBLASLT)
     )
 endif()
 
+# BLAS implementation sources organized by level
+add_subdirectory(blas1)
+add_subdirectory(blas2)
+add_subdirectory(blas3)
+add_subdirectory(blas_ex)
+
 # ILP64 variant sources
 add_subdirectory(src64)

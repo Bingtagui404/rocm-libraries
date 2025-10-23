@@ -1,14 +1,8 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 3.25.2)
-
-# This project builds client applications for rocBLAS
-if(ROCBLAS_ENABLE_FORTRAN)
-  project(rocblas-clients LANGUAGES CXX C Fortran)
-else()
-  project(rocblas-clients LANGUAGES CXX C)
-endif()
+# This file builds the rocBLAS clients (benchmarks, tests, samples).
+# It is always included as a subdirectory from the parent build - standalone builds are not supported.
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -20,12 +14,6 @@ find_package(OpenMP)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(client-build-options)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Find required dependencies
-find_package(rocblas REQUIRED CONFIG)
-find_package(hip REQUIRED CONFIG)
 
 if(ROCBLAS_ENABLE_SAMPLES)
   add_subdirectory(samples)
@@ -57,30 +45,25 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
   endif()
 endif()
 
-# Custom targets for copying client support files
-set(ROCBLAS_COMMON "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml")
-add_custom_command(OUTPUT "${ROCBLAS_COMMON}"
-                    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_common.yaml" "${ROCBLAS_COMMON}"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_common.yaml")
+# Custom targets for copying client support files to staging directory
+set(ROCBLAS_CLIENT_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_common.yaml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_template.yaml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_general.yaml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/rocblas_gentest.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_clients_readme.txt"
+)
 
-set(ROCBLAS_TEMPLATE "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml")
-add_custom_command(OUTPUT "${ROCBLAS_TEMPLATE}"
-                    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_template.yaml" "${ROCBLAS_TEMPLATE}"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_template.yaml")
+set(ROCBLAS_CLIENT_FILES_STAGED "")
+foreach(file ${ROCBLAS_CLIENT_FILES})
+    get_filename_component(filename ${file} NAME)
+    set(staged_file "${PROJECT_BINARY_DIR}/staging/${filename}")
+    add_custom_command(
+        OUTPUT "${staged_file}"
+        COMMAND "${CMAKE_COMMAND}" -E copy "${file}" "${staged_file}"
+        DEPENDS "${file}"
+    )
+    list(APPEND ROCBLAS_CLIENT_FILES_STAGED "${staged_file}")
+endforeach()
 
-set(ROCBLAS_GENERAL_YAML "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml")
-add_custom_command(OUTPUT "${ROCBLAS_GENERAL_YAML}"
-                    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_general.yaml" "${ROCBLAS_GENERAL_YAML}"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_general.yaml")
-
-set(ROCBLAS_GENTEST "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py")
-add_custom_command(OUTPUT "${ROCBLAS_GENTEST}"
-                    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/common/rocblas_gentest.py" "${ROCBLAS_GENTEST}"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/common/rocblas_gentest.py")
-
-set(ROCBLAS_CLIENTS_README "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt")
-add_custom_command(OUTPUT "${ROCBLAS_CLIENTS_README}"
-                    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_clients_readme.txt" "${ROCBLAS_CLIENTS_README}"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_clients_readme.txt")
-
-add_custom_target(rocblas-common DEPENDS "${ROCBLAS_COMMON}" "${ROCBLAS_TEMPLATE}" "${ROCBLAS_GENERAL_YAML}" "${ROCBLAS_GENTEST}" "${ROCBLAS_CLIENTS_README}")
+add_custom_target(rocblas-common DEPENDS ${ROCBLAS_CLIENT_FILES_STAGED})

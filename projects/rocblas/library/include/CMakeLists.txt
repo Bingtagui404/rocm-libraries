@@ -42,11 +42,6 @@ target_sources(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas-macros.h"
 )
 
-# Add Fortran module if enabled
-if(ROCBLAS_ENABLE_FORTRAN)
-    target_sources(rocblas
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rocblas_module.f90>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas/rocblas_module.f90>
-    )
-endif()
+# NOTE: Fortran module is handled separately via rocblas-fortran-module target
+# in library/CMakeLists.txt. It should NOT be added as a source to the main
+# rocblas library as that would propagate Fortran sources to all linking targets.

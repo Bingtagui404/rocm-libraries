@@ -35,6 +35,13 @@ endmacro()
 
 # Helper macro for conflict detection
 macro(_rocblas_check_conflict old_var new_var)
+    # If new variable is defined, unset any cached legacy variable to avoid conflicts
+    # This allows smooth migration from legacy to modern options without requiring build dir removal
+    if(DEFINED ${new_var})
+        unset(${old_var} CACHE)
+    endif()
+    
+    # Only check for actual conflicts if both are actively being set
     if(DEFINED ${old_var} AND DEFINED ${new_var})
         if(NOT "${${old_var}}" STREQUAL "${${new_var}}")
             message(FATAL_ERROR 
@@ -152,15 +159,21 @@ if(DEFINED BUILD_CODE_COVERAGE)
     endif()
 endif()
 
-# Deprecated options with no replacement
+# Map BUILD_VERBOSE → CMAKE_VERBOSE_MAKEFILE
 if(DEFINED BUILD_VERBOSE)
-    message(DEPRECATION 
-        "The option 'BUILD_VERBOSE' is deprecated and has no replacement.\n"
-        "Verbose build information should be controlled via CMAKE_VERBOSE_MAKEFILE.\n"
-        "To suppress: cmake -DCMAKE_WARN_DEPRECATED=OFF ...")
-    list(APPEND _ROCBLAS_LEGACY_OPTIONS_USED "BUILD_VERBOSE=${BUILD_VERBOSE}")
+    _rocblas_check_conflict(BUILD_VERBOSE CMAKE_VERBOSE_MAKEFILE)
+    if(NOT DEFINED CMAKE_VERBOSE_MAKEFILE)
+        set(CMAKE_VERBOSE_MAKEFILE ${BUILD_VERBOSE} CACHE BOOL 
+            "Enable verbose output from Makefile builds." FORCE)
+        _rocblas_deprecation_warning(BUILD_VERBOSE CMAKE_VERBOSE_MAKEFILE)
+        list(APPEND _ROCBLAS_LEGACY_OPTIONS_USED "BUILD_VERBOSE=${BUILD_VERBOSE}")
+        list(APPEND _ROCBLAS_CURRENT_OPTIONS "CMAKE_VERBOSE_MAKEFILE=${CMAKE_VERBOSE_MAKEFILE}")
+    endif()
 endif()
 
+# SKIP_LIBRARY is deprecated with no direct replacement
+# This option was used to skip building the library, which is an anti-pattern.
+# Users should use standard CMake options instead.
 if(DEFINED SKIP_LIBRARY)
     message(DEPRECATION 
         "The option 'SKIP_LIBRARY' is deprecated and has no replacement.\n"

@@ -98,220 +98,61 @@ target_sources(rocblas-test
 
 # Link to helper interface to get common client properties
 target_link_libraries(rocblas-test
-  PRIVATE
-    rocblas-clients-helper
-    rocblas-clients-testing-common
-    rocblas-clients-common
+    PRIVATE
+        rocblas-clients-helper
+        rocblas-clients-testing-common
+        rocblas-clients-common
 )
 
 if(WIN32)
-  # FLAG: Suppress experimental filesystem deprecation warning on Windows
-  target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
-  if(ROCBLAS_ENABLE_BLIS)
-    target_compile_definitions(rocblas-test PRIVATE BLIS_ENABLE_NO_UNDERSCORE_API BLIS_ENABLE_CBLAS)
-  endif()
+    # FLAG: Suppress experimental filesystem deprecation warning on Windows
+    target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
+    if(ROCBLAS_ENABLE_BLIS)
+        target_compile_definitions(rocblas-test PRIVATE BLIS_ENABLE_NO_UNDERSCORE_API BLIS_ENABLE_CBLAS)
+    endif()
 endif()
 
 if(OpenMP_CXX_FOUND)
-  target_link_libraries(rocblas-test PRIVATE OpenMP::OpenMP_CXX)
-  
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT WIN32)
-    if(TARGET OpenMP::OpenMP_CXX)
-      set_target_properties(rocblas-test PROPERTIES
-        BUILD_RPATH "${HIP_CLANG_ROOT}/lib"
-        INSTALL_RPATH "$ORIGIN/../llvm/lib"
-      )
-    elseif(TARGET OpenMP::omp AND DEFINED openmp_LIB_DIR)
-      set_target_properties(rocblas-test PROPERTIES
-        BUILD_RPATH "${HIP_CLANG_ROOT}/${openmp_LIB_DIR}"
-        INSTALL_RPATH "$ORIGIN/../llvm/${openmp_LIB_DIR}"
-      )
-    endif()
-  endif()
+    target_link_libraries(rocblas-test PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
 if(Threads_FOUND)
-  target_link_libraries(rocblas-test PRIVATE Threads::Threads)
+    target_link_libraries(rocblas-test PRIVATE Threads::Threads)
 endif()
 
 # FLAG: -lm links math library, -lstdc++fs links C++17 filesystem library
 if(NOT WIN32)
-  target_link_libraries(rocblas-test PRIVATE m stdc++fs)
+    target_link_libraries(rocblas-test PRIVATE m stdc++fs)
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
-  target_link_libraries(rocblas-test PRIVATE rocblas-fortran-client)
+    target_link_libraries(rocblas-test PRIVATE rocblas-fortran-client)
 endif()
 
 if(WIN32)
-  # Copy required DLLs to staging directory for Windows execution
-  # FLAG: file(GLOB) used here for DLL discovery - acceptable for runtime dependencies
-  file(GLOB third_party_dlls
-    LIST_DIRECTORIES OFF
-    CONFIGURE_DEPENDS
-    "${OPENBLAS_DIR}/bin/*.dll"
-    "${HIP_DIR}/bin/amd*.dll"
-    "${HIP_DIR}/bin/hiprt*.dll"
-    "${HIP_DIR}/bin/hipinfo.exe"
-    "${CMAKE_SOURCE_DIR}/rtest.*"
-    "C:/Windows/System32/libomp140*.dll"
-  )
-  foreach(file_i ${third_party_dlls})
-    add_custom_command(TARGET rocblas-test POST_BUILD 
-      COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
-  endforeach()
+    # Copy required DLLs to staging directory for Windows execution
+    # FLAG: file(GLOB) used here for DLL discovery - acceptable for runtime dependencies
+    file(GLOB third_party_dlls
+        LIST_DIRECTORIES OFF
+        CONFIGURE_DEPENDS
+        "${OPENBLAS_DIR}/bin/*.dll"
+        "${HIP_DIR}/bin/amd*.dll"
+        "${HIP_DIR}/bin/hiprt*.dll"
+        "${HIP_DIR}/bin/hipinfo.exe"
+        "${CMAKE_SOURCE_DIR}/rtest.*"
+        "C:/Windows/System32/libomp140*.dll"
+    )
+    foreach(file_i ${third_party_dlls})
+        add_custom_command(TARGET rocblas-test POST_BUILD 
+            COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
+    endforeach()
 endif()
 
 set_target_properties(rocblas-test PROPERTIES
-  IMPORT_PREFIX ""
-  IMPORT_SUFFIX ".lib"
-  LINKER_LANGUAGE CXX
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
-)
-
-# Generate test data from YAML configuration files
-# Explicitly list all YAML files - DO NOT use file(GLOB) for build dependencies
-set(yaml_files
-    "${CMAKE_CURRENT_SOURCE_DIR}/asum_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/atomics_mode_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/aux_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/axpy_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/blas1_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/blas2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/blas3_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/copy_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dgmm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dot_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gbmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/geam_ex_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/geam_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gemm_batched_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gemm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gemm_strided_batched_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gemmt_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gemv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/general_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ger_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/geruc_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/get_solutions_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hbmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hemm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hemv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/her_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/her2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/her2k_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/herk_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/herkx_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hpmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hpr_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/hpr2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/iamax_iamin_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/known_bugs.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/logging_mode_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/multiheaded_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/nrm2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ostream_threadsafety_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rot_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/sbmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/scal_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/set_get_atomics_mode_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/set_get_matrix_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/set_get_pointer_mode_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/set_get_vector_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/spmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/spr_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/spr2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/swap_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/symm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/symv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/syr_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/syr2_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/syr2k_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/syrk_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/syrkx_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tbmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tbsv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tpmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tpsv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/trmm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/trmv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/trsm_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/trsv_gtest.yaml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/trtri_gtest.yaml"
-)
-
-# Link to helper interface to get common client properties
-target_link_libraries(rocblas-test
-  PRIVATE
-    rocblas-clients-helper
-    rocblas-clients-testing-common
-    rocblas-clients-common
-)
-
-if(WIN32)
-  # FLAG: Suppress experimental filesystem deprecation warning on Windows
-  target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
-  if(ROCBLAS_ENABLE_BLIS)
-    target_compile_definitions(rocblas-test PRIVATE BLIS_ENABLE_NO_UNDERSCORE_API BLIS_ENABLE_CBLAS)
-  endif()
-endif()
-
-if(OpenMP_CXX_FOUND)
-  target_link_libraries(rocblas-test PRIVATE OpenMP::OpenMP_CXX)
-  
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT WIN32)
-    if(TARGET OpenMP::OpenMP_CXX)
-      set_target_properties(rocblas-test PROPERTIES
-        BUILD_RPATH "${HIP_CLANG_ROOT}/lib"
-        INSTALL_RPATH "$ORIGIN/../llvm/lib"
-      )
-    elseif(TARGET OpenMP::omp AND DEFINED openmp_LIB_DIR)
-      set_target_properties(rocblas-test PROPERTIES
-        BUILD_RPATH "${HIP_CLANG_ROOT}/${openmp_LIB_DIR}"
-        INSTALL_RPATH "$ORIGIN/../llvm/${openmp_LIB_DIR}"
-      )
-    endif()
-  endif()
-endif()
-
-if(Threads_FOUND)
-  target_link_libraries(rocblas-test PRIVATE Threads::Threads)
-endif()
-
-# FLAG: -lm links math library, -lstdc++fs links C++17 filesystem library
-if(NOT WIN32)
-  target_link_libraries(rocblas-test PRIVATE m stdc++fs)
-endif()
-
-if(ROCBLAS_ENABLE_FORTRAN)
-  target_link_libraries(rocblas-test PRIVATE rocblas-fortran-client)
-endif()
-
-if(WIN32)
-  # Copy required DLLs to staging directory for Windows execution
-  # FLAG: file(GLOB) used here for DLL discovery - acceptable for runtime dependencies
-  file(GLOB third_party_dlls
-    LIST_DIRECTORIES OFF
-    CONFIGURE_DEPENDS
-    "${OPENBLAS_DIR}/bin/*.dll"
-    "${HIP_DIR}/bin/amd*.dll"
-    "${HIP_DIR}/bin/hiprt*.dll"
-    "${HIP_DIR}/bin/hipinfo.exe"
-    "${CMAKE_SOURCE_DIR}/rtest.*"
-    "C:/Windows/System32/libomp140*.dll"
-  )
-  foreach(file_i ${third_party_dlls})
-    add_custom_command(TARGET rocblas-test POST_BUILD 
-      COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
-  endforeach()
-endif()
-
-set_target_properties(rocblas-test PROPERTIES
-  IMPORT_PREFIX ""
-  IMPORT_SUFFIX ".lib"
-  LINKER_LANGUAGE CXX
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
+    IMPORT_PREFIX ""
+    IMPORT_SUFFIX ".lib"
+    LINKER_LANGUAGE CXX
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
 )
 
 # Generate test data from YAML configuration files
@@ -393,6 +234,11 @@ add_custom_command(OUTPUT "${ROCBLAS_TEST_DATA}"
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 add_custom_target(rocblas-test-data DEPENDS "${ROCBLAS_TEST_DATA}")
 
+# Store test data files in target property for installation
+set_target_properties(rocblas-test-data PROPERTIES
+    ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
+)
+
 # Copy additional test configuration files
 set(ROCBLAS_SMOKE "${PROJECT_BINARY_DIR}/staging/rocblas_smoke.yaml")
 add_custom_command(OUTPUT "${ROCBLAS_SMOKE}"
@@ -415,6 +261,12 @@ add_custom_command(OUTPUT "${ROCBLAS_CLIENTS_RTEST_XML}"
                     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../../rtest.xml")
 
 add_custom_target(rocblas-test-files DEPENDS "${ROCBLAS_SMOKE}" "${ROCBLAS_EXTRAS}" "${ROCBLAS_CLIENTS_RTEST}" "${ROCBLAS_CLIENTS_RTEST_XML}")
+
+# Store test files and programs in target properties for installation
+set_target_properties(rocblas-test-files PROPERTIES
+    ROCBLAS_INSTALL_FILES "${ROCBLAS_SMOKE};${ROCBLAS_EXTRAS}"
+    ROCBLAS_INSTALL_PROGRAMS "${ROCBLAS_CLIENTS_RTEST};${ROCBLAS_CLIENTS_RTEST_XML}"
+)
 
 # Custom file dependencies need explicit add_dependencies
 add_dependencies(rocblas-test rocblas-test-data rocblas-test-files rocblas-common)

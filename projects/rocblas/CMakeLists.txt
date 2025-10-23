@@ -3,8 +3,13 @@
 
 cmake_minimum_required(VERSION 3.25.2)
 
+# CMP0135: Set the timestamps of extracted contents to the time of extraction.
+# This policy ensures that extracted archive contents have consistent timestamps,
+# which is important for reproducible builds and proper dependency tracking.
+# Without this, timestamps might reflect the original archive creation time,
+# potentially causing issues with build systems that rely on file modification times.
 if(POLICY CMP0135)
-  cmake_policy(SET CMP0135 NEW)
+    cmake_policy(SET CMP0135 NEW)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -15,18 +20,26 @@ include(rocblas_shim)
 # Set cpack license file here to avoid rocm-cmake warning
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
 
+# Version is maintained in this CMakeLists.txt and should be updated for each release.
+# The version follows semantic versioning: MAJOR.MINOR.PATCH
+# - MAJOR: Incremented for incompatible API changes
+# - MINOR: Incremented for backwards-compatible functionality additions
+# - PATCH: Incremented for backwards-compatible bug fixes
 project(
-  rocblas
-  VERSION 5.1.0
-  LANGUAGES CXX)
+    rocblas
+    VERSION 5.1.0
+    LANGUAGES C CXX)
 
-include(rocblas_target_configure_sanitizers)
-include(query_git_hash)
-include(FetchROCmCMake)
+# Include required CMake modules
 include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
 include(GNUInstallDirs)
+
+# Include project-specific modules
+include(rocblas_target_configure_sanitizers)
+include(query_git_hash)
+include(FetchROCmCMake)
 
 rocm_setup_version(VERSION ${PROJECT_VERSION})
 set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
@@ -77,7 +90,7 @@ set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CA
 
 # I don't know that we can build with BLIS OFF
 option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." OFF)
-option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." OFF)
+option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
 option(ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled." OFF)
 
 if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)
@@ -93,8 +106,21 @@ if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
-  enable_language(Fortran)
+    enable_language(Fortran)
 endif()
+
+# Configure RPATH settings for installed binaries and libraries
+# These settings ensure that installed binaries can find their dependent libraries
+# at runtime without requiring LD_LIBRARY_PATH modifications
+set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
+
+mark_as_advanced(CMAKE_SKIP_BUILD_RPATH)
+mark_as_advanced(CMAKE_BUILD_WITH_INSTALL_RPATH)
+mark_as_advanced(CMAKE_INSTALL_RPATH)
+mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 
 find_package(hip REQUIRED)
 
@@ -103,10 +129,14 @@ if(ROCBLAS_ENABLE_BLIS)
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
-  if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-    find_package(hipblaslt 1.0.0 REQUIRED)
-  endif()
-  rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
+    if(ROCBLAS_ENABLE_SUPERBUILD)
+        # In superbuild mode, add hipblaslt as a subdirectory
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hipblaslt" "${CMAKE_CURRENT_BINARY_DIR}/hipblaslt")
+    else()
+        # In standalone mode, find the installed hipblaslt package
+        find_package(hipblaslt 1.0.0 REQUIRED)
+    endif()
+    rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
 endif()
 
 if(ROCBLAS_ENABLE_ROCM_SMI)
@@ -123,6 +153,8 @@ if(ROCBLAS_ENABLE_TENSILE)
         "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
     endif()
     message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
+    # Force Tensile to build as static library for embedding in rocBLAS
+    set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
     add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
   endif()
 endif()
