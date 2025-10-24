@@ -3,6 +3,9 @@
 
 find_package(GTest REQUIRED)
 
+# Set output directory for all tests at directory level
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+
 # rocBLAS test client
 add_executable(rocblas-test)
 
@@ -96,40 +99,21 @@ target_sources(rocblas-test
     "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/geam_ex_gtest.cpp"
 )
 
-# Link to helper interface to get common client properties
+# NOTE: All common properties (includes, defs, options, OpenMP, Threads, BLAS, m, stdc++fs)
+# are provided by the common targets. Only target-specific settings below.
+
 target_link_libraries(rocblas-test
     PRIVATE
         rocblas-clients-helper
         rocblas-clients-testing-common
         rocblas-clients-common
+        rocblas-benchmark-common
 )
 
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows
     target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
-    if(ROCBLAS_ENABLE_BLIS)
-        target_compile_definitions(rocblas-test PRIVATE BLIS_ENABLE_NO_UNDERSCORE_API BLIS_ENABLE_CBLAS)
-    endif()
-endif()
-
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(rocblas-test PRIVATE OpenMP::OpenMP_CXX)
-endif()
-
-if(Threads_FOUND)
-    target_link_libraries(rocblas-test PRIVATE Threads::Threads)
-endif()
-
-# FLAG: -lm links math library, -lstdc++fs links C++17 filesystem library
-if(NOT WIN32)
-    target_link_libraries(rocblas-test PRIVATE m stdc++fs)
-endif()
-
-if(ROCBLAS_ENABLE_FORTRAN)
-    target_link_libraries(rocblas-test PRIVATE rocblas-fortran-client)
-endif()
-
-if(WIN32)
+    
     # Copy required DLLs to staging directory for Windows execution
     # FLAG: file(GLOB) used here for DLL discovery - acceptable for runtime dependencies
     file(GLOB third_party_dlls
@@ -143,7 +127,7 @@ if(WIN32)
         "C:/Windows/System32/libomp140*.dll"
     )
     foreach(file_i ${third_party_dlls})
-        add_custom_command(TARGET rocblas-test POST_BUILD 
+        add_custom_command(TARGET rocblas-test POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
     endforeach()
 endif()
@@ -152,7 +136,6 @@ set_target_properties(rocblas-test PROPERTIES
     IMPORT_PREFIX ""
     IMPORT_SUFFIX ".lib"
     LINKER_LANGUAGE CXX
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
 )
 
 # Generate test data from YAML configuration files

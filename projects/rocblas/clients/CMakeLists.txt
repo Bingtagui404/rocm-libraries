@@ -18,7 +18,7 @@ endif()
 # Add client-specific CMake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-include(client-build-options)
+# Note: client-build-options.cmake removed - options now managed in root CMakeLists.txt
 
 if(ROCBLAS_ENABLE_SAMPLES)
     add_subdirectory(samples)

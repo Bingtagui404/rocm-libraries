@@ -1,19 +1,17 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
+# Set output directory for all samples at directory level
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+
 # Helper function to configure a C++ sample with common settings
 # NOTE: All include paths, compile definitions, and most compile options are
 # provided by rocblas-clients-helper via rocblas-samples-common
 function(configure_rocblas_sample target)
   target_compile_features(${target} PRIVATE cxx_std_14)
   
-  set_target_properties(${target} PROPERTIES
-    CXX_EXTENSIONS OFF
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
-  )
-
-  # Link to helper and sample common library
-  target_link_libraries(${target} PRIVATE rocblas-clients-helper rocblas-samples-common)
+    set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
+    target_link_libraries(${target} PRIVATE rocblas-clients-helper rocblas-samples-common)
 endfunction()
 
 # === C Example ===
@@ -30,9 +28,7 @@ target_include_directories(rocblas-example-c-dgeam
     "${CMAKE_CURRENT_SOURCE_DIR}/../../library/include"
 )
 target_link_libraries(rocblas-example-c-dgeam PRIVATE roc::rocblas Threads::Threads hip::host)
-set_target_properties(rocblas-example-c-dgeam PROPERTIES 
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
-  LINKER_LANGUAGE C)
+set_target_properties(rocblas-example-c-dgeam PROPERTIES LINKER_LANGUAGE C)
 
 # === C++ BLAS1 Examples ===
 
@@ -73,10 +69,7 @@ target_include_directories(rocblas-example-header-check
     "${CMAKE_CURRENT_SOURCE_DIR}/../../library/include"
 )
 target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
-set_target_properties(rocblas-example-header-check PROPERTIES
-  CXX_EXTENSIONS OFF
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
-)
+set_target_properties(rocblas-example-header-check PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(rocblas-example-header-check PRIVATE roc::rocblas hip::host hip::device Threads::Threads)
 
 # === BLAS3 Examples (work with or without Tensile) ===
@@ -108,17 +101,14 @@ if(ROCBLAS_ENABLE_FORTRAN)
   target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90")
   target_link_libraries(rocblas-example-fortran-axpy PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
   add_dependencies(rocblas-example-fortran-axpy rocblas-fortran-module)
-  set_target_properties(rocblas-example-fortran-axpy PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
   add_executable(rocblas-example-fortran-scal)
   target_sources(rocblas-example-fortran-scal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_scal.f90")
   target_link_libraries(rocblas-example-fortran-scal PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
   add_dependencies(rocblas-example-fortran-scal rocblas-fortran-module)
-  set_target_properties(rocblas-example-fortran-scal PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
   add_executable(rocblas-example-fortran-gemv)
   target_sources(rocblas-example-fortran-gemv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_gemv.f90")
   target_link_libraries(rocblas-example-fortran-gemv PRIVATE rocblas-fortran-client roc::rocblas hip::amdhip64 Threads::Threads)
   add_dependencies(rocblas-example-fortran-gemv rocblas-fortran-module)
-  set_target_properties(rocblas-example-fortran-gemv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 endif()
