@@ -95,6 +95,7 @@ if(ROCBLAS_ENABLE_TENSILE)
 endif()
 set(ROCBLAS_CONFIG_DIR "\${CPACK_PACKAGING_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}" CACHE PATH "Path placed into ldconfig file")
 
+option(ROCBLAS_ENABLE_HOST "Build rocBLAS host library." ON)
 option(ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library." ON)
 option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
 option(ROCBLAS_BUILD_COVERAGE "Build tests with coverage enabled." OFF)
@@ -106,6 +107,9 @@ option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
 option(ROCBLAS_ENABLE_OPENMP "Enable OpenMP for parallel reference implementations in clients." ON)
 option(ROCBLAS_ENABLE_THREADS "Enable threading support in clients." ON)
 option(ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled." OFF)
+
+# Enable verbose Makefile output by default for better build diagnostics
+option(CMAKE_VERBOSE_MAKEFILE "Enable verbose output from Makefile builds." ON)
 
 if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)
   message(FATAL_ERROR "Cannot enable fortran clients and address sanitizers.")
@@ -157,23 +161,25 @@ if(ROCBLAS_ENABLE_ROCM_SMI)
   find_package(rocm_smi REQUIRED)
 endif()
 
-if(ROCBLAS_ENABLE_TENSILE)
-  if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-    if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
-      message(FATAL_ERROR
-        "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
-        "Please ensure the Tensile repository is cloned at this location, or\n"
-        "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"
-        "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
+if(ROCBLAS_ENABLE_HOST)
+    if(ROCBLAS_ENABLE_TENSILE)
+        if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+            if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
+                message(FATAL_ERROR
+                    "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
+                    "Please ensure the Tensile repository is cloned at this location, or\n"
+                    "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"
+                    "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
+            endif()
+            message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
+            # Force Tensile to build as static library for embedding in rocBLAS
+            set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
+            add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+        endif()
     endif()
-    message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-    # Force Tensile to build as static library for embedding in rocBLAS
-    set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
-    add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
-  endif()
-endif()
 
-add_subdirectory(library)
+    add_subdirectory(library)
+endif()
 
 if(ROCBLAS_ENABLE_MARKER)
   find_library(ROCTX64_LIBRARY REQUIRED NAMES roctx64 libroctx64)

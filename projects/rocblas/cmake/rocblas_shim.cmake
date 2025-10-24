@@ -17,12 +17,25 @@
 # BUILD_CLIENTS_SAMPLES     → ROCBLAS_ENABLE_SAMPLES
 # BUILD_CLIENTS             → ROCBLAS_ENABLE_CLIENT
 # BUILD_WITH_TENSILE        → ROCBLAS_ENABLE_TENSILE
+# BUILD_WITH_HIPBLASLT      → ROCBLAS_ENABLE_HIPBLASLT
 # AMDGPU_TARGETS            → GPU_TARGETS
 # BUILD_SHARED_LIBS         → ROCBLAS_BUILD_SHARED_LIBS
 # BUILD_ADDRESS_SANITIZER   → ROCBLAS_ENABLE_ASAN
 # BUILD_CODE_COVERAGE       → ROCBLAS_BUILD_COVERAGE
-# BUILD_VERBOSE             → (deprecated, no replacement)
-# SKIP_LIBRARY              → (deprecated, no replacement)
+# BUILD_VERBOSE             → CMAKE_VERBOSE_MAKEFILE
+# SKIP_LIBRARY              → ROCBLAS_ENABLE_HOST (inverted: SKIP_LIBRARY=ON → ROCBLAS_ENABLE_HOST=OFF)
+#
+# Modern Options (no legacy equivalent):
+# --------------------------------------
+# ROCBLAS_ENABLE_HOST       - Build rocBLAS host library
+# ROCBLAS_ENABLE_OPENMP     - Enable OpenMP for parallel reference implementations
+# ROCBLAS_ENABLE_THREADS    - Enable threading support in clients
+# ROCBLAS_ENABLE_MARKER     - Enable rocTracer marker support
+# ROCBLAS_ENABLE_BLIS       - Enable BLIS support
+# ROCBLAS_ENABLE_FORTRAN    - Build Fortran clients
+# ROCBLAS_ENABLE_ROCM_SMI   - Require rocm_smi
+# ROCBLAS_ENABLE_SUPERBUILD - Build as ROCm BLAS subproject
+# CMAKE_VERBOSE_MAKEFILE    - Enable verbose Makefile output
 # ==============================================================================
 
 # Helper macro for deprecation warnings using native CMake mechanism
@@ -106,15 +119,19 @@ endif()
 shim_mapping(BUILD_VERBOSE CMAKE_VERBOSE_MAKEFILE "Enable verbose output from Makefile builds.")
 shim_mapping(BUILD_SHARED_LIBS ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library.")
 
-# SKIP_LIBRARY is deprecated with no direct replacement
-# This option was used to skip building the library, which is an anti-pattern.
-# Users should use standard CMake options instead.
+# Map SKIP_LIBRARY → ROCBLAS_ENABLE_HOST (inverted logic)
 if(DEFINED SKIP_LIBRARY)
-    message(DEPRECATION
-        "The option 'SKIP_LIBRARY' is deprecated and has no replacement.\n"
-        "This was an anti-pattern. Use proper CMake configuration options instead.\n"
-        "To suppress: cmake -DCMAKE_WARN_DEPRECATED=OFF ...")
-    list(APPEND _ROCBLAS_LEGACY_OPTIONS_USED "SKIP_LIBRARY=${SKIP_LIBRARY}")
+    _rocblas_check_conflict(SKIP_LIBRARY ROCBLAS_ENABLE_HOST)
+    if(NOT DEFINED ROCBLAS_ENABLE_HOST)
+        if(SKIP_LIBRARY)
+            set(ROCBLAS_ENABLE_HOST OFF CACHE BOOL "Build rocBLAS host library." FORCE)
+        else()
+            set(ROCBLAS_ENABLE_HOST ON CACHE BOOL "Build rocBLAS host library." FORCE)
+        endif()
+        _rocblas_deprecation_warning(SKIP_LIBRARY ROCBLAS_ENABLE_HOST)
+        list(APPEND _ROCBLAS_LEGACY_OPTIONS_USED "SKIP_LIBRARY=${SKIP_LIBRARY}")
+        list(APPEND _ROCBLAS_CURRENT_OPTIONS "ROCBLAS_ENABLE_HOST=${ROCBLAS_ENABLE_HOST}")
+    endif()
 endif()
 
 # ==============================================================================
