@@ -38,6 +38,7 @@ include(GNUInstallDirs)
 
 # Include project-specific modules
 include(rocblas_target_configure_sanitizers)
+include(rocblas_supported_architectures)
 include(query_git_hash)
 include(FetchROCmCMake)
 
@@ -46,6 +47,17 @@ set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(HIP_RUNTIME_MINIMUM "4.5.0" CACHE STRING "Minimum HIP runtime version required")
+
+# GPU architecture configuration
+set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
+
+if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")
+    rocblas_get_base_architectures(GPU_TARGETS)
+else()
+    rocblas_validate_gpu_targets("${GPU_TARGETS}")
+endif()
+
+message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   if(WIN32)
@@ -148,7 +160,7 @@ endif()
 if(ROCBLAS_ENABLE_TENSILE)
   if(NOT ROCBLAS_ENABLE_SUPERBUILD)
     if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
-      message(FATAL_ERROR 
+      message(FATAL_ERROR
         "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
         "Please ensure the Tensile repository is cloned at this location, or\n"
         "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"

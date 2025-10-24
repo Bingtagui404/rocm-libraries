@@ -50,7 +50,7 @@ if(CMAKE_CXX_COMPILER MATCHES ".*/hipcc$" OR CMAKE_CXX_COMPILER MATCHES ".*clang
     endif()
 endif()
 
-include(TensileSupportedArchitectures)
+include(tensile_supported_architectures)
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
 if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")

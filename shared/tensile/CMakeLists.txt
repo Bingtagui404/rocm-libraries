@@ -11,7 +11,7 @@ include(tensile_shim)
 project(tensile VERSION 4.44.0 LANGUAGES CXX)
 
 include(CMakeDependentOption)
-include(TensileSupportedArchitectures)
+include(tensile_supported_architectures)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -174,7 +174,7 @@ if(TENSILE_BUILD_TESTING)
   # to its location
   set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/../data")
   file(MAKE_DIRECTORY "${TEST_DATA_DIR}")
-  
+
   # Note: tests subdirectory organization will be added when test sources are organized
   # For now, testing infrastructure is defined but test sources need to be added
 endif()
