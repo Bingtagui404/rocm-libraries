@@ -91,6 +91,8 @@ set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CA
 # I don't know that we can build with BLIS OFF
 option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." OFF)
 option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
+option(ROCBLAS_ENABLE_OPENMP "Enable OpenMP for parallel reference implementations in clients." ON)
+option(ROCBLAS_ENABLE_THREADS "Enable threading support in clients." ON)
 option(ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled." OFF)
 
 if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)

@@ -4,11 +4,16 @@
 # This file builds the rocBLAS clients (benchmarks, tests, samples).
 # It is always included as a subdirectory from the parent build - standalone builds are not supported.
 
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
+# Threading support for clients
+if(ROCBLAS_ENABLE_THREADS)
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+endif()
 
 # OpenMP is used for parallel reference implementations
-find_package(OpenMP)
+if(ROCBLAS_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED)
+endif()
 
 # Add client-specific CMake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
