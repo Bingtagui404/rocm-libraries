@@ -1,7 +1,7 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-target_sources(rocblas-clients-testing-common
+target_sources(rocblas-testing-common
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/common_gemm.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/common_symm_hemm.cpp"

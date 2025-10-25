@@ -5,7 +5,6 @@ cmake_minimum_required(VERSION 3.21.2)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Load backward compatibility shims BEFORE processing options
 include(tensile_shim)
 
 project(tensile VERSION 4.44.0 LANGUAGES CXX)
@@ -25,7 +24,6 @@ option(TENSILE_ENABLE_LLVM "Use llvm yaml library" OFF)
 cmake_dependent_option(TENSILE_ENABLE_ROCM_SMI "Use rocm_smi." ON "NOT WIN32" OFF)
 
 set(TENSILE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source")
-set(TENSILE_CONFIG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/HostLibraryTests/configs")
 
 set(TENSILE_CXX_STANDARD
     "17"
@@ -179,8 +177,6 @@ if(TENSILE_BUILD_TESTING)
   # For now, testing infrastructure is defined but test sources need to be added
 endif()
 
-# Installation and export
-# Use standard CMake install - rocm_install requires full ROCmCMakeBuildTools setup
 install(
   TARGETS tensile-host
   EXPORT tensile-targets
@@ -194,7 +190,6 @@ install(
   NAMESPACE roc::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/tensile)
 
-# Install headers
 install(
   DIRECTORY "${TENSILE_SOURCE_DIR}/lib/include/Tensile"
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

@@ -107,8 +107,8 @@ option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
 option(ROCBLAS_ENABLE_OPENMP "Enable OpenMP for parallel reference implementations in clients." ON)
 option(ROCBLAS_ENABLE_THREADS "Enable threading support in clients." ON)
 option(ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled." OFF)
+option(ROCBLAS_ENABLE_THEROCK "Use find_package to pull in 1st party deps." OFF)
 
-# Enable verbose Makefile output by default for better build diagnostics
 option(CMAKE_VERBOSE_MAKEFILE "Enable verbose output from Makefile builds." ON)
 
 if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)
@@ -127,9 +127,6 @@ if(ROCBLAS_ENABLE_FORTRAN)
     enable_language(Fortran)
 endif()
 
-# Configure RPATH settings for installed binaries and libraries
-# These settings ensure that installed binaries can find their dependent libraries
-# at runtime without requiring LD_LIBRARY_PATH modifications
 set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
 set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
@@ -147,11 +144,9 @@ if(ROCBLAS_ENABLE_BLIS)
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
-    if(ROCBLAS_ENABLE_SUPERBUILD)
-        # In superbuild mode, add hipblaslt as a subdirectory
+    if(NOT ROCBLAS_ENABLE_SUPERBUILD)
         add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hipblaslt" "${CMAKE_CURRENT_BINARY_DIR}/hipblaslt")
-    else()
-        # In standalone mode, find the installed hipblaslt package
+    elseif(ROCBLAS_ENABLE_THEROCK)
         find_package(hipblaslt 1.0.0 REQUIRED)
     endif()
     rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
@@ -172,8 +167,6 @@ if(ROCBLAS_ENABLE_HOST)
                     "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
             endif()
             message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-            # Force Tensile to build as static library for embedding in rocBLAS
-            set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
             add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
         endif()
     endif()
@@ -313,7 +306,7 @@ rocm_install(
   "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
   COMPONENT devel)
 
-# Hack for one off inclusion of files required in the install tree
+# For one off inclusion of files required in the install tree
 rocm_install(
   FILES "${PROJECT_SOURCE_DIR}/library/src/include/rocblas_device_malloc.hpp"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
