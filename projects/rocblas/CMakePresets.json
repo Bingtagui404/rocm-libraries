@@ -9,7 +9,7 @@
     {
       "name": "base",
       "hidden": true,
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "binaryDir": "${sourceDir}/build-${presetName}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
@@ -142,6 +142,25 @@
       "cacheVariables": {
         "ROCBLAS_ENABLE_TENSILE": "ON"
       }
+    },
+    {
+      "name": "quick",
+      "displayName": "Quick Build - gfx1101",
+      "description": "Fast iteration build with Tensile, clients, and gfx1101 target (no hipBLASLt)",
+      "inherits": "release",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
+        "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
+        "CMAKE_PREFIX_PATH": "/opt/rocm",
+        "ROCBLAS_ENABLE_HIPBLASLT": "OFF",
+        "ROCBLAS_ENABLE_TENSILE": "ON",
+        "ROCBLAS_ENABLE_CLIENT": "ON",
+        "ROCBLAS_BUILD_TESTING": "ON",
+        "ROCBLAS_ENABLE_MARKER": "ON",
+        "ROCBLAS_ENABLE_BENCHMARKS": "ON",
+        "ROCBLAS_ENABLE_SAMPLES": "ON",
+        "GPU_TARGETS": "gfx1101"
+      }
     }
   ],
   "buildPresets": [
@@ -192,6 +211,11 @@
     {
       "name": "ci-full",
       "configurePreset": "ci-full"
+    },
+    {
+      "name": "quick",
+      "configurePreset": "quick",
+      "jobs": 16
     }
   ],
   "testPresets": [
@@ -319,6 +343,21 @@
         {
           "type": "build",
           "name": "ci-full"
+        }
+      ]
+    },
+    {
+      "name": "quick",
+      "displayName": "Quick Build Workflow",
+      "description": "Fast build workflow for iteration (configure and build only)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "quick"
+        },
+        {
+          "type": "build",
+          "name": "quick"
         }
       ]
     }
