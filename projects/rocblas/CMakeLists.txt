@@ -172,12 +172,20 @@ if(ROCBLAS_ENABLE_HOST)
     endif()
 
     add_subdirectory(library)
-endif()
-
-if(ROCBLAS_ENABLE_MARKER)
-  find_library(ROCTX64_LIBRARY REQUIRED NAMES roctx64 libroctx64)
-else()
-    target_compile_definitions(rocblas-helper PRIVATE DISABLE_ROCTX)
+    if(ROCBLAS_ENABLE_MARKER)
+        include(FindPackageHandleStandardArgs)
+    
+        find_path(ROCTRACER_INCLUDE_DIR "roctracer/roctx.h")
+        find_library(ROCTX_LIBRARIES roctx64)
+    
+        find_package_handle_standard_args(ROCTRACER
+            REQUIRED_VARS ROCTRACER_INCLUDE_DIR rocTracer
+            FAIL_MESSAGE "Could not find ROCTracer library or headers"
+        )
+        target_link_libraries(rocblas PRIVATE ${ROCTX_LIBRARIES})
+    else()
+        target_compile_definitions(rocblas PRIVATE DISABLE_ROCTX)
+    endif()
 endif()
 
 if(ROCBLAS_ENABLE_CLIENT)
