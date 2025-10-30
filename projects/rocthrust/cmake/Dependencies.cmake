@@ -285,7 +285,7 @@ if(BUILD_TEST OR BUILD_HIPSTDPAR_TEST)
       FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        release-1.11.0
+        GIT_TAG        v1.17.0
       )
     endif()
     FetchContent_MakeAvailable(googletest)
@@ -300,7 +300,7 @@ if(BUILD_TEST OR BUILD_HIPSTDPAR_TEST)
     FetchContent_Declare(
       TBB
       GIT_REPOSITORY      https://github.com/oneapi-src/oneTBB.git
-      GIT_TAG             1c4c93fc5398c4a1acb3492c02db4699f3048dea # v2021.13.0
+      GIT_TAG             v2022.3.0
       INSTALL_DIR         ${CMAKE_CURRENT_BINARY_DIR}/deps/tbb
       CMAKE_ARGS          -DCMAKE_CXX_COMPILER=g++ -DTBB_TEST=OFF -DTBB_BUILD=ON -DTBB_INSTALL=ON -DTBBMALLOC_PROXY_BUILD=OFF -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
       LOG_CONFIGURE       TRUE
@@ -323,13 +323,13 @@ if(BUILD_TEST OR BUILD_HIPSTDPAR_TEST)
     list(APPEND static_depends PACKAGE SQLite3)
     set(ROCTHRUST_SQLITE_LIB SQLite::SQLite3)
   else()
-    if(DEFINED ENV{SQLITE_3_50_2_SRC_URL})
-      set(SQLITE_3_50_2_SRC_URL_INIT $ENV{SQLITE_3_50_2_SRC_URL})
+    if(DEFINED ENV{SQLITE_3_51_2_SRC_URL})
+      set(SQLITE_3_51_2_SRC_URL_INIT $ENV{SQLITE_3_51_2_SRC_URL})
     else()
-      set(SQLITE_3_50_2_SRC_URL_INIT https://sqlite.org/2025/sqlite-amalgamation-3500200.zip)
+      set(SQLITE_3_51_2_SRC_URL_INIT https://sqlite.org/2026/sqlite-amalgamation-3510200.zip)
     endif()
-    set(SQLITE_3_50_2_SRC_URL ${SQLITE_3_50_2_SRC_URL_INIT} CACHE STRING "Location of SQLite source code")
-    set(SQLITE_SRC_3_50_2_SHA3_256 75c118e727ee6a9a3d2c0e7c577500b0c16a848d109027f087b915b671f61f8a CACHE STRING "SHA3-256 hash of SQLite source code")
+    set(SQLITE_3_51_2_SRC_URL ${SQLITE_3_51_2_SRC_URL_INIT} CACHE STRING "Location of SQLite source code")
+    set(SQLITE_SRC_3_51_2_SHA3_256 9a9dd4eef7a97809bfacd84a7db5080a5c0eff7aaf1fc1aca20a6dc9a0c26f96 CACHE STRING "SHA3-256 hash of SQLite source code")
 
     # embed SQLite
     if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
@@ -339,8 +339,8 @@ if(BUILD_TEST OR BUILD_HIPSTDPAR_TEST)
 
     message("Downloading SQLite.")
     FetchContent_Declare(sqlite_local
-      URL ${SQLITE_3_50_2_SRC_URL}
-      URL_HASH SHA3_256=${SQLITE_SRC_3_50_2_SHA3_256}
+      URL ${SQLITE_3_51_2_SRC_URL}
+      URL_HASH SHA3_256=${SQLITE_SRC_3_51_2_SHA3_256}
     )
     FetchContent_MakeAvailable(sqlite_local)
 
