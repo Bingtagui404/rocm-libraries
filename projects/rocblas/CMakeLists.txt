@@ -127,8 +127,13 @@ if(ROCBLAS_ENABLE_FORTRAN)
     enable_language(Fortran)
 endif()
 
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard version")
+option(CMAKE_CXX_STANDARD_REQUIRED "" ON)
+
 set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
+# need to account for openmp_LIB_DIR - not sure what cases that would be different from lib
 set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
 
@@ -137,15 +142,16 @@ mark_as_advanced(CMAKE_BUILD_WITH_INSTALL_RPATH)
 mark_as_advanced(CMAKE_INSTALL_RPATH)
 mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 
-find_package(hip REQUIRED)
+# Interface library for common warning suppression flags
+add_library(rocblas-warnings INTERFACE)
+add_library(rocblas::warnings ALIAS rocblas-warnings)
+target_compile_options(rocblas-warnings INTERFACE -Wno-unused-result -Wno-c++17-extensions)
 
-if(ROCBLAS_ENABLE_BLIS)
-  find_package(BLIS REQUIRED)
-endif()
+find_package(hip REQUIRED)
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
     if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hipblaslt" "${CMAKE_CURRENT_BINARY_DIR}/hipblaslt")
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hipblaslt" "${CMAKE_CURRENT_BINARY_DIR}/hipblaslt" EXCLUDE_FROM_ALL)
     elseif(ROCBLAS_ENABLE_THEROCK)
         find_package(hipblaslt 1.0.0 REQUIRED)
     endif()
@@ -167,7 +173,12 @@ if(ROCBLAS_ENABLE_HOST)
                     "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
             endif()
             message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
+            # Force Tensile to build as static library to match legacy build
+            # Not 
+            set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
             add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+        elseif(ROCBLAS_ENABLE_THEROCK)
+            find_package(tensile REQUIRED)
         endif()
     endif()
 
@@ -403,6 +414,11 @@ if(ROCBLAS_ENABLE_CLIENT)
 
     if(ROCBLAS_ENABLE_TENSILE)
       rocm_install(TARGETS rocblas-example-user-driven-tuning COMPONENT samples
+                   DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+
+    if(OpenMP_CXX_FOUND)
+      rocm_install(TARGETS rocblas-example-openmp COMPONENT samples
                    DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
 

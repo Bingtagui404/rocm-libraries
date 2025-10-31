@@ -10,8 +10,11 @@ target_sources(rocblas-bench
         "${CMAKE_CURRENT_SOURCE_DIR}/client.cpp"
 )
 
-
-target_link_libraries(rocblas-bench PRIVATE rocblas::testing-common)
+target_link_libraries(rocblas-bench 
+    PRIVATE 
+        rocblas::testing-common
+        hip::device
+)
 
 target_compile_definitions(rocblas-bench PRIVATE ROCBLAS_BENCH)
 
@@ -24,7 +27,7 @@ if(ROCBLAS_ENABLE_TENSILE)
             "${CMAKE_CURRENT_SOURCE_DIR}/gemm_tune/gemm_tuners.cpp"
     )
 
-    target_link_libraries(rocblas-gemm-tune PRIVATE rocblas::clients-common)
+    target_link_libraries(rocblas-gemm-tune PRIVATE rocblas::clients-common hip::device)
 
     target_include_directories(rocblas-gemm-tune
         PRIVATE

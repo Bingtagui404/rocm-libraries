@@ -3,38 +3,24 @@
 
 find_package(GTest REQUIRED)
 
-add_library(rocblas-testing-common OBJECT)
-add_library(rocblas::testing-common ALIAS rocblas-testing-common)
+target_link_libraries(rocblas-testing-common
+    PUBLIC
+        rocblas::clients-common
+        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
+        hip::device
+)
 
-target_link_libraries(rocblas-testing-common PUBLIC rocblas::clients-common)
-
-target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST)
+target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST rocblas_EXPORTS)
 
 if(ROCBLAS_ENABLE_BLIS)
     target_link_libraries(rocblas-testing-common PUBLIC BLIS::BLIS)
 else()
     target_link_libraries(rocblas-testing-common PUBLIC ${BLAS_LIBRARIES})
     if(BLAS_INCLUDE_DIRS)
-        target_include_directories(rocblas-testing-common SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS})
+        target_include_directories(rocblas-testing-common SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}) # should we be doing this?
     endif()
 endif()
-
-target_sources(rocblas-testing-common
-    PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../common/cblas_interface.cpp"
-)
-
-if(ROCBLAS_ENABLE_BLIS)
-    target_sources(rocblas-testing-common
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/../common/blis_interface.cpp"
-    )
-endif()
-
-add_subdirectory(../common/blas1 blas1)
-add_subdirectory(../common/blas2 blas2)
-add_subdirectory(../common/blas3 blas3)
-add_subdirectory(../common/blas_ex blas_ex)
 
 if(ROCBLAS_ENABLE_FORTRAN)
     target_link_libraries(rocblas-testing-common PUBLIC rocblas-fortran-client)
@@ -123,10 +109,12 @@ target_sources(rocblas-test
     "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/geam_ex_gtest.cpp"
 )
 
-# NOTE: All common properties (includes, defs, options, OpenMP, Threads, Fortran, m, stdc++fs)
-# are provided by testing-common (which includes clients-common and clients-helper).
 
 target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
+target_sources(rocblas-test PRIVATE 
+    $<TARGET_OBJECTS:rocblas-testing-common>
+    $<TARGET_OBJECTS:rocblas-clients-common>
+)
 
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows
@@ -226,18 +214,21 @@ set(yaml_files
 )
 
 set(ROCBLAS_TEST_DATA "${PROJECT_BINARY_DIR}/staging/rocblas_gtest.data")
-add_custom_command(OUTPUT "${ROCBLAS_TEST_DATA}"
-                    COMMAND "${Python3_EXECUTABLE}" "../common/rocblas_gentest.py" -I "../include" "rocblas_gtest.yaml" -o "${ROCBLAS_TEST_DATA}"
-                    DEPENDS "../common/rocblas_gentest.py" "../include/rocblas_common.yaml" ${yaml_files}
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+# ../common/rocblas_gentest.py really belongs in this directory.
+# were these files copied into the binary tree previously and if so do we need to continue doing that?
+add_custom_command(
+    OUTPUT "${ROCBLAS_TEST_DATA}"
+    COMMAND "${Python3_EXECUTABLE}" "../common/rocblas_gentest.py" -I "../include" "rocblas_gtest.yaml" -o "${ROCBLAS_TEST_DATA}"
+    #DEPENDS "../common/rocblas_gentest.py" "../include/rocblas_common.yaml" # ${yaml_files} if files alrady exist then adding them here is not very helpful this is typically for generated files or targets to ensure the command doesn't run until depedencies are satisfied
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 add_custom_target(rocblas-test-data DEPENDS "${ROCBLAS_TEST_DATA}")
+add_dependencies(rocblas-test rocblas-test-data)
 
-set_target_properties(rocblas-test-data PROPERTIES
-    ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
+# do we actually use this custom propert? review build system and docs to see if it is used.
+set_target_properties(rocblas-test-data 
+    PROPERTIES
+      ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
 )
-
-# NOTE: All common properties (includes, defs, options, OpenMP, Threads, BLAS, Fortran, m, stdc++fs)
-# are provided by testing-common (which includes clients-common and clients-helper).
 
 target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
 
@@ -261,19 +252,9 @@ if(WIN32)
     endforeach()
 endif()
 
+# why are we doing this? Is it intended for windows?
 set_target_properties(rocblas-test PROPERTIES
     IMPORT_PREFIX ""
     IMPORT_SUFFIX ".lib"
     LINKER_LANGUAGE CXX
 )
-
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../include/rocblas_smoke.yaml"
-               "${PROJECT_BINARY_DIR}/staging/rocblas_smoke.yaml" COPYONLY)
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../include/rocblas_extras.yaml"
-               "${PROJECT_BINARY_DIR}/staging/rocblas_extras.yaml" COPYONLY)
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../../rtest.py"
-               "${PROJECT_BINARY_DIR}/staging/rocblas_rtest.py" COPYONLY)
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../../rtest.xml"
-               "${PROJECT_BINARY_DIR}/staging/rocblas_rtest.xml" COPYONLY)
-
-add_dependencies(rocblas-test rocblas-test-data)

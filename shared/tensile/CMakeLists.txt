@@ -97,7 +97,7 @@ if(TENSILE_ENABLE_HOST)
     target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
   endif()
 
-  target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP)
+  target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP __HIP_HCC_COMPAT_MODE__=1)
 
   add_subdirectory("${TENSILE_SOURCE_DIR}/lib")
 endif()
@@ -131,7 +131,8 @@ if(TENSILE_ENABLE_CLIENT)
   target_compile_features(tensile-client PUBLIC cxx_std_${TENSILE_CXX_STANDARD})
   target_compile_definitions(
     tensile-client
-    PRIVATE BOOST_ALL_NO_LIB BOOST_PROGRAM_OPTIONS_DYN_LINK)
+    PRIVATE BOOST_ALL_NO_LIB BOOST_PROGRAM_OPTIONS_DYN_LINK
+    PUBLIC __HIP_HCC_COMPAT_MODE__=1)
     add_subdirectory("${TENSILE_SOURCE_DIR}/client")
 endif()
 

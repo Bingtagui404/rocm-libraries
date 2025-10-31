@@ -15,12 +15,11 @@ if(NOT ROCmCMakeBuildTools_FOUND)
     GIT_TAG develop
     GIT_SHALLOW TRUE)
 
-  FetchContent_GetProperties(rocm-cmake)
-  if(NOT rocm-cmake_POPULATED)
-    FetchContent_Populate(rocm-cmake)
-    list(APPEND CMAKE_MODULE_PATH ${rocm-cmake_SOURCE_DIR}/share/rocm/cmake)
-    add_subdirectory(${rocm-cmake_SOURCE_DIR} ${rocm-cmake_BINARY_DIR} EXCLUDE_FROM_ALL)
-  endif()
+  # Use FetchContent_MakeAvailable to properly populate and make modules available
+  FetchContent_MakeAvailable(rocm-cmake)
+  
+  # Add the module path after content is available
+  list(APPEND CMAKE_MODULE_PATH ${rocm-cmake_SOURCE_DIR}/share/rocm/cmake)
 else()
   # ROCmCMakeBuildTools found - ensure its module path is available
   if(ROCmCMakeBuildTools_DIR)

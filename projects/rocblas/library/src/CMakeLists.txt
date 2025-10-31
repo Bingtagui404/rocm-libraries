@@ -1,10 +1,6 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-# Organize rocBLAS library sources
-# Note: Full BLAS level subdirectory organization (blas1/, blas2/, blas3/, blas_ex/)
-# will be added in future iterations. For now, we add core sources to get builds working.
-
 # Core rocBLAS helper library sources
 target_sources(rocblas-helper
     PRIVATE
@@ -18,24 +14,50 @@ target_sources(rocblas-helper
         "${CMAKE_CURRENT_SOURCE_DIR}/utility.cpp"
 )
 
-# Main rocBLAS library backend integration sources
-# TODO: BLAS level sources (blas1/, blas2/, blas3/, blas_ex/) will be organized
-# into subdirectories following the same pattern
-
-# For now, we need at least one source file for the rocblas target
-# The actual BLAS functions are in subdirectories which we'll organize later
-if(ROCBLAS_ENABLE_TENSILE)
-    target_sources(rocblas
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/tensile_host.cpp"
+if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
+    # Create internal object library for tensile/hipblaslt_host.cpp with legacy compatibility flag
+    # 
+    # RATIONALE: __HIP_HCC_COMPAT_MODE__=1 was transitively provided in the legacy build system
+    # (not explicitly defined in any rocBLAS CMakeLists.txt files). Investigation of the develop
+    # branch confirmed this flag was pulled in through dependencies or legacy toolchain files.
+    # 
+    # DECISION: We scope this flag to tensile host code only via an internal object library to:
+    #   1. Avoid unnecessary global propagation of a legacy compatibility flag
+    #   2. Maintain compatibility with Tensile integration that may depend on this flag
+    #   3. Provide clear separation of concerns and easier future removal if needed
+    #   4. Use proper CMake target-based properties instead of source file properties
+    #
+    add_library(rocblas-gemm-host OBJECT)
+    add_library(rocblas::tensile-host ALIAS rocblas-gemm-host)
+        
+    target_link_libraries(rocblas-gemm-host
+        PRIVATE rocblas-interface hip::device hip::host
     )
-endif()
-
-if(ROCBLAS_ENABLE_HIPBLASLT)
-    target_sources(rocblas
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/hipblaslt_host.cpp"
+    
+    # Apply HIP/HCC compatibility mode only to Tensile host code
+    target_compile_definitions(rocblas-gemm-host
+        PRIVATE __HIP_HCC_COMPAT_MODE__=1
     )
+    
+    # Static library must be position-independent for linking into shared library
+    set_target_properties(rocblas-gemm-host PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        # CXX_VISIBILITY_PRESET hidden
+        # VISIBILITY_INLINES_HIDDEN ON
+    )
+    
+    # Link the object library into rocblas
+    target_link_libraries(rocblas PRIVATE rocblas-gemm-host)
+
+   if(ROCBLAS_ENABLE_HIPBLASLT)
+        target_sources(rocblas
+            PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/hipblaslt_host.cpp"
+        )
+    elseif(ROCBLAS_ENABLE_TENSILE)
+        target_sources(rocblas-gemm-host
+            PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tensile_host.cpp"
+        )
+    endif()
 endif()
 
 # BLAS implementation sources organized by level

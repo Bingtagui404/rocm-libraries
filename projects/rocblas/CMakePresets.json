@@ -11,7 +11,8 @@
       "hidden": true,
       "binaryDir": "${sourceDir}/build-${presetName}",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_STANDARD": "17"
       }
     },
     {
@@ -151,14 +152,14 @@
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
         "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
-        "CMAKE_PREFIX_PATH": "/opt/rocm",
+        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm/lib/cmake/openmp",
         "ROCBLAS_ENABLE_HIPBLASLT": "OFF",
         "ROCBLAS_ENABLE_TENSILE": "ON",
         "ROCBLAS_ENABLE_CLIENT": "ON",
         "ROCBLAS_BUILD_TESTING": "ON",
         "ROCBLAS_ENABLE_MARKER": "ON",
-        "ROCBLAS_ENABLE_BENCHMARKS": "ON",
-        "ROCBLAS_ENABLE_SAMPLES": "ON",
+        "ROCBLAS_ENABLE_BENCHMARKS": "OFF",
+        "ROCBLAS_ENABLE_SAMPLES": "OFF",
         "GPU_TARGETS": "gfx1101"
       }
     }
@@ -215,7 +216,7 @@
     {
       "name": "quick",
       "configurePreset": "quick",
-      "jobs": 16
+      "jobs": 0
     }
   ],
   "testPresets": [
