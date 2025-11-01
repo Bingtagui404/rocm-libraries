@@ -68,6 +68,7 @@ target_compile_definitions(rocblas-clients-helper
     ROCBLAS_INTERNAL_API
     ROCBLAS_NO_DEPRECATED_WARNINGS
     rocblas_EXPORTS
+    __HIP_HCC_COMPAT_MODE__=1
 )
 
 if(ROCBLAS_ENABLE_TENSILE)

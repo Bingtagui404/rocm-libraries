@@ -35,7 +35,7 @@ set_target_properties(rocblas-example-c-dgeam PROPERTIES LINKER_LANGUAGE C)
 
 add_executable(rocblas-example-sscal)
 target_sources(rocblas-example-sscal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sscal.cpp")
-target_link_libraries(rocblas-example-sscal PRIVATE rocblas::samples-common)
+target_link_libraries(rocblas-example-sscal PRIVATE rocblas::device-samples-common)
 
 add_executable(rocblas-example-scal-template)
 target_sources(rocblas-example-scal-template PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_scal_template.cpp")

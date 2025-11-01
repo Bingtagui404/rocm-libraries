@@ -33,12 +33,7 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
     target_link_libraries(rocblas-gemm-host
         PRIVATE rocblas-interface hip::device hip::host
     )
-    
-    # Apply HIP/HCC compatibility mode only to Tensile host code
-    target_compile_definitions(rocblas-gemm-host
-        PRIVATE __HIP_HCC_COMPAT_MODE__=1
-    )
-    
+
     # Static library must be position-independent for linking into shared library
     set_target_properties(rocblas-gemm-host PROPERTIES
         POSITION_INDEPENDENT_CODE ON
