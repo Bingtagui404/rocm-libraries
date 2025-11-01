@@ -1,9 +1,9 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-add_library(rocblas-clients-common OBJECT)
+add_library(rocblas-clients-common STATIC)
 add_library(rocblas::clients-common ALIAS rocblas-clients-common)
-set_target_properties(rocblas-clients-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
+#set_target_properties(rocblas-clients-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(rocblas-clients-common
     PUBLIC 
@@ -11,7 +11,7 @@ target_link_libraries(rocblas-clients-common
     PRIVATE
         hip::device
 )
-target_compile_definitions(rocblas-clients-common PRIVATE GOOGLE_TEST rocblas_EXPORTS) # Is this the right place for GOOGLE_TEST
+target_compile_definitions(rocblas-clients-common PRIVATE GOOGLE_TEST) # Is this the right place for GOOGLE_TEST
 
 if(ROCBLAS_ENABLE_ROCM_SMI)
     target_link_libraries(rocblas-clients-common PUBLIC rocm_smi64) # linking to un-namespaced target

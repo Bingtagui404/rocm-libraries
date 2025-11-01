@@ -4,14 +4,15 @@
 find_package(GTest REQUIRED)
 
 target_link_libraries(rocblas-testing-common
-    PUBLIC
-        rocblas::clients-common
+    PRIVATE
         $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
         $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
+    PUBLIC
+        rocblas::clients-common
         hip::device
 )
 
-target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST rocblas_EXPORTS)
+target_compile_definitions(rocblas-testing-common PRIVATE GOOGLE_TEST rocblas_EXPORTS)
 
 if(ROCBLAS_ENABLE_BLIS)
     target_link_libraries(rocblas-testing-common PUBLIC BLIS::BLIS)
@@ -110,15 +111,20 @@ target_sources(rocblas-test
 )
 
 
-target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
-target_sources(rocblas-test PRIVATE 
-    $<TARGET_OBJECTS:rocblas-testing-common>
-    $<TARGET_OBJECTS:rocblas-clients-common>
+target_link_libraries(rocblas-test
+    PRIVATE
+        rocblas::testing-common
+        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
 )
+target_compile_definitions(rocblas-test PRIVATE GOOGLE_TEST)
 
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows
-    target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
+    target_compile_definitions(rocblas-test
+        PRIVATE
+            _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+    )
 
     # Copy required DLLs to staging directory for Windows execution
     file(GLOB third_party_dlls

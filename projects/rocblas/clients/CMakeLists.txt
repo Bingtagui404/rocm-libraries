@@ -115,9 +115,9 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
 
     find_package(GTest REQUIRED)
 
-    add_library(rocblas-testing-common OBJECT)
+    add_library(rocblas-testing-common STATIC)
     add_library(rocblas::testing-common ALIAS rocblas-testing-common)
-    set_target_properties(rocblas-testing-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    #set_target_properties(rocblas-testing-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     add_subdirectory(common)
 

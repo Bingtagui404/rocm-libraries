@@ -47,8 +47,8 @@ add_library(rocblas64 OBJECT)
 target_compile_definitions(rocblas64 PRIVATE ROCBLAS_INTERNAL_ILP64 rocblas_EXPORTS)
 set_target_properties(rocblas64 PROPERTIES 
     POSITION_INDEPENDENT_CODE ON
-    # CXX_VISIBILITY_PRESET hidden
-    # VISIBILITY_INLINES_HIDDEN ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
 )
 
 add_library(rocblas-helper OBJECT)
@@ -73,8 +73,8 @@ else()
     add_library(rocblas STATIC)
 endif()
 
-rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 add_library(roc::rocblas ALIAS rocblas)
+rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 
 if(ROCBLAS_ENABLE_ASAN)
     rocblas_target_configure_sanitizers(rocblas PRIVATE)
@@ -103,11 +103,10 @@ target_link_libraries(
     rocblas PRIVATE rocblas-helper rocblas-interface rocblas64 hip::device hip::host
 )
 
-# Set visibility for rocblas library
-# set_target_properties(rocblas PROPERTIES
-#     CXX_VISIBILITY_PRESET hidden
-#     VISIBILITY_INLINES_HIDDEN ON
-# )
+set_target_properties(rocblas PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
 
 # Enable variable-length array (VLA) errors to catch potential stack issues
 # need to make sure we have this flag everywhere it was previously
