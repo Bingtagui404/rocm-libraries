@@ -19,14 +19,6 @@ if(ROCBLAS_ENABLE_ROCM_SMI)
     target_link_libraries(rocblas-clients-common PUBLIC rocm_smi64) # linking to un-namespaced target
 endif()
 
-#if(OpenMP_CXX_FOUND)
-#  target_link_libraries(rocblas-clients-common PUBLIC OpenMP::OpenMP_CXX)
-#endif()
-#
-#if(Threads_FOUND)
-#    target_link_libraries(rocblas-clients-common PUBLIC Threads::Threads)
-#endif()
-
 if(NOT WIN32)
     # Need to investigate stdc++fs:
     # Not clear if we need this flag. When/why did the compiler add the flag?
@@ -37,7 +29,6 @@ endif()
 target_sources(rocblas-clients-common
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/singletons.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/client_omp.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/client_utility.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/frequency_monitor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_arguments.cpp"

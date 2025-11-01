@@ -11,7 +11,7 @@ target_link_libraries(rocblas-testing-common
         hip::device
 )
 
-target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST PRIVATE rocblas_EXPORTS)
+target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST)
 
 if(ROCBLAS_ENABLE_BLIS)
     target_link_libraries(rocblas-testing-common PUBLIC BLIS::BLIS)
@@ -235,7 +235,11 @@ set_target_properties(rocblas-test-data
       ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
 )
 
-target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
+target_link_libraries(rocblas-test PRIVATE rocblas::testing-common rocblas::clients-openmp)
+
+if(ROCBLAS_ENABLE_OPENMP)
+    target_link_libraries(rocblas-test PRIVATE rocblas::testing-common rocblas::clients-openmp)
+endif()
 
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows

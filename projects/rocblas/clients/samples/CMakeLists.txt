@@ -81,12 +81,6 @@ if(ROCBLAS_ENABLE_TENSILE)
     target_link_libraries(rocblas-example-user-driven-tuning PRIVATE rocblas::device-samples-common)
 endif()
 
-if(ROCBLAS_ENABLE_OPENMP) # might be a good idea to collect all openmp related code to the same directory 
-    add_executable(rocblas-example-openmp)
-    target_sources(rocblas-example-openmp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_openmp.cpp")
-    target_link_libraries(rocblas-example-openmp PRIVATE rocblas::samples-common OpenMP::OpenMP_CXX) 
-endif()
-
 if(ROCBLAS_ENABLE_FORTRAN)
   add_executable(rocblas-example-fortran-axpy)
   target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90")

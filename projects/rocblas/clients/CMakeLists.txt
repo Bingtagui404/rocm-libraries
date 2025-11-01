@@ -1,41 +1,9 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-# samples only requires four source files from clients common so we may want to
-# create another object library for those four files.
-#target_sources(rocblas-samples-common
-#    PRIVATE
-#        "${CMAKE_CURRENT_SOURCE_DIR}/../common/singletons.cpp"
-#        "${CMAKE_CURRENT_SOURCE_DIR}/../common/client_utility.cpp"
-#        "${CMAKE_CURRENT_SOURCE_DIR}/../common/rocblas_random.cpp"
-#        "${CMAKE_CURRENT_SOURCE_DIR}/../common/host_alloc.cpp"
-#)
-
 if(ROCBLAS_ENABLE_THREADS)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
-endif()
-
-if(ROCBLAS_ENABLE_OPENMP)
-    # We prefer to find the rocm llvm openmp which is config based
-    # and located in <rocm install>/llvm/lib/cmake/openmp
-    # which requires adding this path to the prefix path.
-    find_package(OpenMP CONFIG)
-
-    # If we find the rocm llvm omp then look for the gnu
-    # omp and create an alias so we have uniform treatment.
-    if(OpenMP_FOUND)
-        add_library(rocm-omp-shim INTERFACE)
-        set_target_properties(rocm-omp-shim
-            PROPERTIES
-                INTERFACE_LINK_LIBRARIES OpenMP::omp
-                INTERFACE_COMPILE_OPTIONS -fopenmp
-        )
-        add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim) # will this be an issue in the super build?
-    else()
-        message(STATUS "Did not find rocm-omp - falling back to gomp")
-        find_package(OpenMP REQUIRED)
-    endif()
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -67,7 +35,6 @@ target_compile_definitions(rocblas-clients-helper
     ROCM_USE_FLOAT16
     ROCBLAS_INTERNAL_API
     ROCBLAS_NO_DEPRECATED_WARNINGS
-    rocblas_EXPORTS
     __HIP_HCC_COMPAT_MODE__=1
 )
 
@@ -103,6 +70,14 @@ target_link_libraries(rocblas-clients-helper
         rocblas::warnings
 )
 
+if(ROCBLAS_ENABLE_SAMPLES)
+    add_subdirectory(samples)
+endif()
+
+if(ROCBLAS_ENABLE_OPENMP)
+  add_subdirectory(openmp-support)
+endif()
+
 if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
     if(ROCBLAS_ENABLE_BLIS)
         find_package(BLIS REQUIRED) # are we doing this in multiple places?
@@ -118,7 +93,6 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
 
     add_library(rocblas-testing-common STATIC)
     add_library(rocblas::testing-common ALIAS rocblas-testing-common)
-    #set_target_properties(rocblas-testing-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     add_subdirectory(common)
 
@@ -145,8 +119,4 @@ endif()
 
 if(ROCBLAS_ENABLE_BENCHMARKS)
     add_subdirectory(benchmarks)
-endif()
-
-if(ROCBLAS_ENABLE_SAMPLES)
-    add_subdirectory(samples)
 endif()
