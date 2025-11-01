@@ -4,15 +4,14 @@
 find_package(GTest REQUIRED)
 
 target_link_libraries(rocblas-testing-common
-    PRIVATE
+    PUBLIC
         $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
         $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
-    PUBLIC
         rocblas::clients-common
         hip::device
 )
 
-target_compile_definitions(rocblas-testing-common PRIVATE GOOGLE_TEST rocblas_EXPORTS)
+target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST PRIVATE rocblas_EXPORTS)
 
 if(ROCBLAS_ENABLE_BLIS)
     target_link_libraries(rocblas-testing-common PUBLIC BLIS::BLIS)
@@ -30,7 +29,7 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
 add_executable(rocblas-test)
-
+ 
 if(ROCBLAS_ENABLE_TENSILE)
   target_sources(rocblas-test
     PRIVATE

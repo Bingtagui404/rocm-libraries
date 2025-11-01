@@ -8,6 +8,8 @@ add_library(rocblas::clients-common ALIAS rocblas-clients-common)
 target_link_libraries(rocblas-clients-common
     PUBLIC 
         rocblas::clients-helper
+        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
     PRIVATE
         hip::device
 )

@@ -14,11 +14,9 @@ target_link_libraries(rocblas-bench
     PRIVATE 
         rocblas::testing-common
         hip::device
-        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
-        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
 )
 
-target_compile_definitions(rocblas-bench PRIVATE ROCBLAS_BENCH GOOGLE_TEST)
+target_compile_definitions(rocblas-bench PRIVATE ROCBLAS_BENCH)
 
 if(ROCBLAS_ENABLE_TENSILE)
     add_executable(rocblas-gemm-tune)
@@ -33,9 +31,7 @@ if(ROCBLAS_ENABLE_TENSILE)
         PRIVATE
             rocblas::clients-common
             hip::device
-            $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
-            $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
-    )
+    )#
 
     target_include_directories(rocblas-gemm-tune
         PRIVATE
