@@ -20,9 +20,6 @@ target_include_directories(rocblas-clients-helper
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/blas_ex>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/blas_ex>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
-    # TODO EVALUATE: May be redundant with roc::rocblas link propagation
-    #$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../library/include>
-    # TODO EVALUATE: Internal rocBLAS headers - needed for some tests accessing internals
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/src/include>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/src>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/src/blas1>
@@ -61,7 +58,7 @@ if(ROCBLAS_ENABLE_BLIS)
 endif()
 
 # FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
-target_compile_options(rocblas-clients-helper INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++17-extensions>)
+target_compile_options(rocblas-clients-helper INTERFACE -Wno-c++17-extensions)
 
 target_link_libraries(rocblas-clients-helper
     INTERFACE
@@ -72,10 +69,6 @@ target_link_libraries(rocblas-clients-helper
 
 if(ROCBLAS_ENABLE_SAMPLES)
     add_subdirectory(samples)
-endif()
-
-if(ROCBLAS_ENABLE_OPENMP)
-  add_subdirectory(openmp-support)
 endif()
 
 if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
@@ -119,4 +112,15 @@ endif()
 
 if(ROCBLAS_ENABLE_BENCHMARKS)
     add_subdirectory(benchmarks)
+endif()
+
+if(ROCBLAS_ENABLE_OPENMP)
+    add_subdirectory(openmp-support)
+    if(ROCBLAS_BUILD_TESTING)
+        target_link_libraries(rocblas-test PRIVATE rocblas::clients-openmp)
+    endif()
+
+    if(ROCBLAS_ENABLE_BENCHMARKS)
+        target_link_libraries(rocblas-bench PRIVATE rocblas::clients-openmp)
+    endif()
 endif()

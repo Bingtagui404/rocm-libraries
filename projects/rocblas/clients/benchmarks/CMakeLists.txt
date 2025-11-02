@@ -16,10 +16,6 @@ target_link_libraries(rocblas-bench
         hip::device
 )
 
-if(ROCBLAS_ENABLE_OPENMP)
-    target_link_libraries(rocblas-bench PRIVATE rocblas::clients-openmp)
-endif()
-
 target_compile_definitions(rocblas-bench PRIVATE ROCBLAS_BENCH)
 
 if(ROCBLAS_ENABLE_TENSILE)

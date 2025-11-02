@@ -6,16 +6,12 @@ add_library(rocblas-interface INTERFACE)
 target_include_directories(
     rocblas-interface
     INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-              # This is marked 'internal', but needs to be public for the clients
               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/internal>
               $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
-              # TODO: Below include may not be required?
               $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
               $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/include>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/include/internal>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/src64>
               $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 

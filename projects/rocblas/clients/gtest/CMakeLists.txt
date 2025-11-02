@@ -235,11 +235,7 @@ set_target_properties(rocblas-test-data
       ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
 )
 
-target_link_libraries(rocblas-test PRIVATE rocblas::testing-common rocblas::clients-openmp)
-
-if(ROCBLAS_ENABLE_OPENMP)
-    target_link_libraries(rocblas-test PRIVATE rocblas::testing-common rocblas::clients-openmp)
-endif()
+target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
 
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows
