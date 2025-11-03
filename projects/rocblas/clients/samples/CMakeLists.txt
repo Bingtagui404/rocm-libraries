@@ -9,9 +9,8 @@ add_library(rocblas::samples-common ALIAS rocblas-samples-common)
 target_link_libraries(rocblas-samples-common INTERFACE hip::device roc::rocblas rocblas::testing-common rocblas::warnings)
 target_include_directories(rocblas-samples-common INTERFACE "${PROJECT_SOURCE_DIR}/clients/include")
 target_compile_definitions(rocblas-samples-common INTERFACE ROCBLAS_INTERNAL_API ROCM_USE_FLOAT16 __HIP_HCC_COMPAT_MODE__=1)
-
 # need to investigate why we use 14
-target_compile_features(rocblas-samples-common INTERFACE cxx_std_14)
+set_target_properties(rocblas-samples-common PROPERTIES INTERFACE_CXX_STANDARD 14)
 
 add_executable(rocblas-example-c-dgeam)
 target_sources(rocblas-example-c-dgeam PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_c_dgeam.c")
@@ -46,7 +45,7 @@ target_sources(rocblas-example-gemv-graph-capture PRIVATE "${CMAKE_CURRENT_SOURC
 add_executable(rocblas-example-header-check)
 target_sources(rocblas-example-header-check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_header_check.cpp")
 target_link_libraries(rocblas-example-header-check PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
+set_target_properties(rocblas-example-header-check PROPERTIES CXX_STANDARD 11)
 
 add_executable(rocblas-example-sgemm)
 target_sources(rocblas-example-sgemm PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm.cpp")

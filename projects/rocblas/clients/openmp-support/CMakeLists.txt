@@ -37,6 +37,9 @@ add_executable(rocblas-example-openmp)
 target_sources(rocblas-example-openmp PRIVATE "${PROJECT_SOURCE_DIR}/clients/samples/example_openmp.cpp")
 target_link_libraries(rocblas-example-openmp PRIVATE hip::host roc::rocblas rocblas::clients-openmp rocblas::warnings)
 target_include_directories(rocblas-example-openmp PRIVATE "${PROJECT_BINARY_DIR}/library/include")
-# Uses C++14 to demonstrate OpenMP with C++14 standard
-target_compile_features(rocblas-example-openmp PRIVATE cxx_std_14)
-# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
+target_compile_definitions(rocblas-example-openmp
+    PRIVATE
+        ROCBLAS_INTERNAL_API
+        ROCM_USE_FLOAT16
+)
+set_target_properties(rocblas-example-openmp PROPERTIES CXX_STANDARD 14)
