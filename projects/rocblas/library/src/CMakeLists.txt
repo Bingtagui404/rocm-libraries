@@ -46,7 +46,7 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
             ROCBLAS_TENSILE_SEPARATE_ARCH=1
             ROCBLAS_TENSILE_LAZY_LOAD=1
         )
-        target_link_libraries(rocblas-gemm-host PRIVATE roc::tensile-host)
+        target_link_libraries(rocblas-gemm-host PUBLIC roc::tensile-host)
     elseif(ROCBLAS_ENABLE_HIPBLASLT)
         target_compile_definitions(rocblas-gemm-host PRIVATE BUILD_WITH_HIPBLASLT)
         target_link_libraries(rocblas-gemm-host PRIVATE roc::hipblaslt)
@@ -59,8 +59,11 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
             hip::host
     )
 
-    # Object library must be position-independent for linking into shared library
+    # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
+    # NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
+    
     set_target_properties(rocblas-gemm-host PROPERTIES
+        # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
         POSITION_INDEPENDENT_CODE ON
         # CXX_VISIBILITY_PRESET hidden
         # VISIBILITY_INLINES_HIDDEN ON

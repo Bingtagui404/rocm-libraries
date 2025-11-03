@@ -14,8 +14,9 @@ target_link_libraries(rocblas-samples-common
         hip::device
 )
 
+# Uses C++14 to demonstrate backwards compatibility with older standard
 target_compile_features(rocblas-samples-common INTERFACE cxx_std_14)
-set_target_properties(rocblas-samples-common PROPERTIES CXX_EXTENSIONS OFF)
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting (redundant to set here)
 
 target_include_directories(rocblas-samples-common
     INTERFACE
@@ -63,8 +64,9 @@ target_link_libraries(rocblas-example-gemv-graph-capture PRIVATE rocblas::sample
 
 add_executable(rocblas-example-header-check)
 target_sources(rocblas-example-header-check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_header_check.cpp")
+# Uses C++11 to verify header compatibility with older C++ standard
 target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
-set_target_properties(rocblas-example-header-check PROPERTIES CXX_EXTENSIONS OFF)
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting (redundant to set here)
 target_link_libraries(rocblas-example-header-check PRIVATE roc::rocblas hip::host hip::device Threads::Threads)
 
 add_executable(rocblas-example-sgemm)

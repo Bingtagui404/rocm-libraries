@@ -38,11 +38,17 @@ if(ROCBLAS_ENABLE_HIPBLASLT)
     target_compile_definitions(rocblas64 PRIVATE BUILD_WITH_HIPBLASLT)
 endif()
 
+set_target_properties(rocblas64 PROPERTIES COMPILE_FLAGS "--offload-compress" )
+
 set_target_properties(rocblas64 PROPERTIES 
+    # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden # do we need these?
     VISIBILITY_INLINES_HIDDEN ON # do we need these?
 )
+
+# NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
 add_library(rocblas-helper OBJECT)
 add_library(rocblas::helper ALIAS rocblas-helper)
@@ -73,6 +79,8 @@ if(ROCBLAS_ENABLE_TENSILE)
     )
 endif()
 
+set_target_properties(rocblas-helper PROPERTIES COMPILE_FLAGS "--offload-compress" )
+
 if(ROCBLAS_ENABLE_HIPBLASLT)
     target_compile_definitions(rocblas-helper PRIVATE BUILD_WITH_HIPBLASLT)
 endif()
@@ -84,9 +92,11 @@ target_link_libraries(rocblas-helper
         hip::device
 )
 
-target_compile_features(rocblas-helper PRIVATE cxx_std_17)
+# NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
 set_target_properties(rocblas-helper PROPERTIES 
+    # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
     POSITION_INDEPENDENT_CODE ON
     # CXX_VISIBILITY_PRESET hidden
     # VISIBILITY_INLINES_HIDDEN ON
@@ -127,8 +137,10 @@ target_include_directories(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
 )
 
-set_target_properties(rocblas PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/staging)
-
+set_target_properties(rocblas
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/staging
+)
 if(ROCBLAS_ENABLE_TENSILE)
     target_compile_definitions(rocblas PRIVATE
         BUILD_WITH_TENSILE
@@ -164,7 +176,7 @@ set_target_properties(rocblas PROPERTIES
 
 # Enable variable-length array (VLA) errors to catch potential stack issues
 # need to make sure we have this flag everywhere it was previously
-target_compile_options(rocblas PRIVATE -Werror=vla)
+target_compile_options(rocblas PRIVATE -Werror=vla --offload-compress)
 
 # Prevent symbols from static libraries (like Tensile) from being re-exported
 # This linker flag has no CMake property equivalent and must be specified directly
