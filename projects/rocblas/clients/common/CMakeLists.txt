@@ -13,13 +13,18 @@ target_include_directories(rocblas-clients-common
 target_compile_definitions(rocblas-clients-common
     PRIVATE
         __HIP_HCC_COMPAT_MODE__=1
-        #ROCBLAS_INTERNAL_API
+        ROCBLAS_INTERNAL_API
         ROCM_USE_FLOAT16
         ROCBLAS_NO_DEPRECATED_WARNINGS
 )
 
 if(ROCBLAS_ENABLE_TENSILE)
-  target_compile_definitions(rocblas-clients-common PRIVATE BUILD_WITH_TENSILE)
+    target_compile_definitions(rocblas-clients-common
+        PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+    )
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
@@ -34,6 +39,7 @@ if(ROCBLAS_ENABLE_ASAN)
     target_compile_definitions(rocblas-clients-common PRIVATE ASAN_BUILD)
 endif()
 
+
 if(ROCBLAS_ENABLE_BLIS)
     target_compile_definitions(rocblas-clients-common PRIVATE
         BLIS_ENABLE_NO_UNDERSCORE_API
@@ -42,7 +48,7 @@ endif()
 
 # Compile options migrated from rocblas-clients-helper
 # FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
-target_compile_options(rocblas-clients-common PRIVATE -Wno-c++17-extensions)
+target_compile_options(rocblas-clients-common PRIVATE -Wno-c++17-extensions) # should we set this as a target property?
 
 # Link libraries migrated from rocblas-clients-helper
 target_link_libraries(rocblas-clients-common

@@ -1,66 +1,103 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-add_library(rocblas-interface INTERFACE)
+add_library(rocblas64 OBJECT)
+add_library(rocblas::64 ALIAS rocblas64)
 
-target_include_directories(
-    rocblas-interface
-    INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/internal>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-              $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/include>
-              $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+# Explicit includes for rocblas64
+target_include_directories(rocblas64
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/internal"
+        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas"
+        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
 )
 
-target_compile_definitions(
-    rocblas-interface INTERFACE ROCM_USE_FLOAT16 ROCBLAS_INTERNAL_API ROCBLAS_BETA_FEATURES_API
+# Explicit definitions for rocblas64
+target_compile_definitions(rocblas64
+    PRIVATE
+        ROCM_USE_FLOAT16
+        ROCBLAS_INTERNAL_API
+        ROCBLAS_BETA_FEATURES_API
+        ROCBLAS_INTERNAL_ILP64
+        rocblas_EXPORTS
 )
 
-# NOTE: We assume separate architectures and lazy library loading are always enabled.
+# Conditional Tensile/hipBLASLt definitions
 if(ROCBLAS_ENABLE_TENSILE)
-    target_compile_definitions(
-        rocblas-interface INTERFACE BUILD_WITH_TENSILE ROCBLAS_TENSILE_SEPARATE_ARCH=1
-                                    ROCBLAS_TENSILE_LAZY_LOAD=1
+    target_compile_definitions(rocblas64 PRIVATE
+        BUILD_WITH_TENSILE
+        ROCBLAS_TENSILE_SEPARATE_ARCH=1
+        ROCBLAS_TENSILE_LAZY_LOAD=1
     )
-    target_link_libraries(rocblas-interface INTERFACE roc::tensile-host)
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
-    target_link_libraries(rocblas-interface INTERFACE roc::hipblaslt)
-    target_compile_definitions(rocblas-interface INTERFACE BUILD_WITH_HIPBLASLT)
+    target_compile_definitions(rocblas64 PRIVATE BUILD_WITH_HIPBLASLT)
 endif()
 
-target_compile_features(rocblas-interface INTERFACE cxx_std_17)
-
-# Link warnings to interface to propagate to all library targets
-target_link_libraries(rocblas-interface INTERFACE rocblas::warnings)
-
-add_library(rocblas64 OBJECT)
-
-target_compile_definitions(rocblas64 PRIVATE ROCBLAS_INTERNAL_ILP64 rocblas_EXPORTS)
 set_target_properties(rocblas64 PROPERTIES 
     POSITION_INDEPENDENT_CODE ON
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
+    CXX_VISIBILITY_PRESET hidden # do we need these?
+    VISIBILITY_INLINES_HIDDEN ON # do we need these?
 )
 
 add_library(rocblas-helper OBJECT)
+add_library(rocblas::helper ALIAS rocblas-helper)
+
+# Explicit includes for rocblas-helper (no longer rely on interface propagation)
+target_include_directories(rocblas-helper
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/internal"
+        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas"
+        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
+)
+
+target_compile_definitions(rocblas-helper
+    PRIVATE
+        ROCM_USE_FLOAT16
+        ROCBLAS_BETA_FEATURES_API
+        ROCBLAS_INTERNAL_API
+        rocblas_EXPORTS
+)
+
+if(ROCBLAS_ENABLE_TENSILE)
+    target_compile_definitions(rocblas-helper PRIVATE
+        BUILD_WITH_TENSILE
+        ROCBLAS_TENSILE_SEPARATE_ARCH=1
+        ROCBLAS_TENSILE_LAZY_LOAD=1
+    )
+endif()
+
+if(ROCBLAS_ENABLE_HIPBLASLT)
+    target_compile_definitions(rocblas-helper PRIVATE BUILD_WITH_HIPBLASLT)
+endif()
 
 target_link_libraries(rocblas-helper
-    PRIVATE rocblas-interface hip::host hip::device)
+    PRIVATE
+        rocblas::warnings
+        hip::host
+        hip::device
+)
+
 target_compile_features(rocblas-helper PRIVATE cxx_std_17)
-target_compile_definitions(rocblas-helper PRIVATE rocblas_EXPORTS)
+
 set_target_properties(rocblas-helper PROPERTIES 
     POSITION_INDEPENDENT_CODE ON
     # CXX_VISIBILITY_PRESET hidden
     # VISIBILITY_INLINES_HIDDEN ON
 )
 
-target_link_libraries(
-    rocblas64 PUBLIC rocblas-helper PRIVATE rocblas-interface hip::device hip::host
+# Links for rocblas64 (all PRIVATE - OBJECT libraries don't need PUBLIC links)
+target_link_libraries(rocblas64
+    PRIVATE
+        rocblas::warnings
+        hip::device
+        hip::host
 )
 
 if(ROCBLAS_BUILD_SHARED_LIBS OR BUILD_SHARED_LIBS)
@@ -77,26 +114,48 @@ if(ROCBLAS_ENABLE_ASAN)
     rocblas_target_configure_sanitizers(rocblas64 PRIVATE)
 endif()
 
-target_include_directories(
-    rocblas
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-           # This is marked 'internal', but needs to be public for the clients
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/internal>
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
-           # TODO: Below include may not be required?
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
-           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas>
+target_include_directories(rocblas
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/internal>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas>
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
 )
 
 set_target_properties(rocblas PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/staging)
+
+if(ROCBLAS_ENABLE_TENSILE)
+    target_compile_definitions(rocblas PRIVATE
+        BUILD_WITH_TENSILE
+        ROCBLAS_TENSILE_SEPARATE_ARCH=1
+        ROCBLAS_TENSILE_LAZY_LOAD=1
+    )
+endif()
 
 if(ROCBLAS_ENABLE_MARKER)
     target_link_libraries(rocblas PRIVATE ${ROCTX64_LIBRARY})
 endif()
 
-target_link_libraries(
-    rocblas PRIVATE rocblas-helper rocblas-interface rocblas64 hip::device hip::host
+target_link_libraries(rocblas
+    PRIVATE
+        rocblas::helper
+        rocblas::64
+        rocblas::warnings
+        hip::device
+        hip::host
+)
+
+target_compile_definitions(rocblas
+    PRIVATE
+        ROCM_USE_FLOAT16
+        ROCBLAS_NO_DEPRECATED_WARNINGS
+        #ROCBLAS_INTERNAL_API
+        ROCBLAS_BETA_FEATURES_API
 )
 
 set_target_properties(rocblas PROPERTIES

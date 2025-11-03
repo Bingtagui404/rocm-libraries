@@ -15,26 +15,51 @@ target_sources(rocblas-helper
 )
 
 if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
-    # Create internal object library for tensile/hipblaslt_host.cpp with legacy compatibility flag
-    # 
-    # RATIONALE: __HIP_HCC_COMPAT_MODE__=1 was transitively provided in the legacy build system
-    # (not explicitly defined in any rocBLAS CMakeLists.txt files). Investigation of the develop
-    # branch confirmed this flag was pulled in through dependencies or legacy toolchain files.
-    # 
-    # DECISION: We scope this flag to tensile host code only via an internal object library to:
-    #   1. Avoid unnecessary global propagation of a legacy compatibility flag
-    #   2. Maintain compatibility with Tensile integration that may depend on this flag
-    #   3. Provide clear separation of concerns and easier future removal if needed
-    #   4. Use proper CMake target-based properties instead of source file properties
-    #
+    # Create internal object library for tensile/hipblaslt_host.cpp
     add_library(rocblas-gemm-host OBJECT)
     add_library(rocblas::tensile-host ALIAS rocblas-gemm-host)
-        
-    target_link_libraries(rocblas-gemm-host
-        PRIVATE rocblas-interface hip::device hip::host
+    
+    # Explicit includes for rocblas-gemm-host
+    target_include_directories(rocblas-gemm-host
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/library/src"
+            "${PROJECT_SOURCE_DIR}/library/include"
+            "${PROJECT_SOURCE_DIR}/library/include/internal"
+            "${PROJECT_BINARY_DIR}/library/include"
+            "${PROJECT_BINARY_DIR}/library/include/rocblas"
+            "${PROJECT_BINARY_DIR}/library/include/rocblas/internal"
     )
 
-    # Static library must be position-independent for linking into shared library
+    target_compile_definitions(rocblas-gemm-host
+        PRIVATE
+            ROCM_USE_FLOAT16
+            ROCBLAS_INTERNAL_API
+            ROCBLAS_BETA_FEATURES_API
+    )
+
+    # Conditional feature-specific definitions
+    if(ROCBLAS_ENABLE_TENSILE)
+        target_compile_definitions(rocblas-gemm-host PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+        )
+        target_link_libraries(rocblas-gemm-host PRIVATE roc::tensile-host)
+    elseif(ROCBLAS_ENABLE_HIPBLASLT)
+        target_compile_definitions(rocblas-gemm-host PRIVATE BUILD_WITH_HIPBLASLT)
+        target_link_libraries(rocblas-gemm-host PRIVATE roc::hipblaslt)
+    endif()
+    
+    target_link_libraries(rocblas-gemm-host
+        PRIVATE
+            rocblas::warnings
+            hip::device
+            hip::host
+    )
+
+    # Object library must be position-independent for linking into shared library
     set_target_properties(rocblas-gemm-host PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         # CXX_VISIBILITY_PRESET hidden

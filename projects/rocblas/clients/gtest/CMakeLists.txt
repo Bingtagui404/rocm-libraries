@@ -22,23 +22,32 @@ target_include_directories(rocblas-test
         "${PROJECT_SOURCE_DIR}/clients/include/blas_ex"
         "${PROJECT_SOURCE_DIR}/clients/common"
         "${PROJECT_SOURCE_DIR}/library/src"
-        "${PROJECT_SOURCE_DIR}/library/src/include")
+        "${PROJECT_SOURCE_DIR}/library/src/include"
+)
 
 target_compile_definitions(rocblas-test
     PRIVATE
+        ROCBLAS_INTERNAL_API
         ROCBLAS_NO_DEPRECATED_WARNINGS
         ROCM_USE_FLOAT16
+        __HIP_HCC_COMPAT_MODE__=1
         GOOGLE_TEST
 )
 
 if(ROCBLAS_ENABLE_TENSILE)
-  target_sources(rocblas-test
-    PRIVATE
-      # Keep multiheaded_gtest.cpp first to initialize TensileHost
-      "${CMAKE_CURRENT_SOURCE_DIR}/multiheaded_gtest.cpp"
-      "${CMAKE_CURRENT_SOURCE_DIR}/atomics_mode_gtest.cpp"
-      "${CMAKE_CURRENT_SOURCE_DIR}/get_solutions_gtest.cpp"
-  )
+    target_sources(rocblas-test
+        PRIVATE
+          # Keep multiheaded_gtest.cpp first to initialize TensileHost
+          "${CMAKE_CURRENT_SOURCE_DIR}/multiheaded_gtest.cpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/atomics_mode_gtest.cpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/get_solutions_gtest.cpp"
+    )
+    target_compile_definitions(rocblas-test
+        PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+    )
 endif()
 
 target_sources(rocblas-test

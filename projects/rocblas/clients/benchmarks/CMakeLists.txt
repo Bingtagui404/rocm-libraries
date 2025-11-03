@@ -64,7 +64,13 @@ if(ROCBLAS_ENABLE_TENSILE)
             #__HIP_HCC_COMPAT_MODE__=1
             #ROCBLAS_INTERNAL_API
     )
-
+    if(ROCBLAS_ENABLE_TENSILE)
+        target_compile_definitions(rocblas-gemm-tune PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+        )
+    endif()
 endif()
 
 add_subdirectory(perf_script)
