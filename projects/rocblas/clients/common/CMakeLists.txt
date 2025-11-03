@@ -3,41 +3,76 @@
 
 add_library(rocblas-clients-common STATIC)
 add_library(rocblas::clients-common ALIAS rocblas-clients-common)
-#set_target_properties(rocblas-clients-common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(rocblas-clients-common
-    PUBLIC 
-        rocblas::clients-helper
-        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
-        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
+target_include_directories(rocblas-clients-common
+  PRIVATE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/clients/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/src/include>
+)
+
+target_compile_definitions(rocblas-clients-common
     PRIVATE
+        __HIP_HCC_COMPAT_MODE__=1
+        #ROCBLAS_INTERNAL_API
+        ROCM_USE_FLOAT16
+        ROCBLAS_NO_DEPRECATED_WARNINGS
+)
+
+if(ROCBLAS_ENABLE_TENSILE)
+  target_compile_definitions(rocblas-clients-common PRIVATE BUILD_WITH_TENSILE)
+endif()
+
+if(ROCBLAS_ENABLE_HIPBLASLT)
+  target_compile_definitions(rocblas-clients-common PRIVATE BUILD_WITH_HIPBLASLT)
+endif()
+
+if(NOT ROCBLAS_ENABLE_FORTRAN)
+  target_compile_definitions(rocblas-clients-common PRIVATE CLIENTS_NO_FORTRAN)
+endif()
+
+if(ROCBLAS_ENABLE_ASAN)
+    target_compile_definitions(rocblas-clients-common PRIVATE ASAN_BUILD)
+endif()
+
+if(ROCBLAS_ENABLE_BLIS)
+    target_compile_definitions(rocblas-clients-common PRIVATE
+        BLIS_ENABLE_NO_UNDERSCORE_API
+        BLIS_ENABLE_CBLAS)
+endif()
+
+# Compile options migrated from rocblas-clients-helper
+# FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
+target_compile_options(rocblas-clients-common PRIVATE -Wno-c++17-extensions)
+
+# Link libraries migrated from rocblas-clients-helper
+target_link_libraries(rocblas-clients-common
+    PRIVATE
+        roc::rocblas
+        hip::host
+        rocblas::warnings
         hip::device
 )
-target_compile_definitions(rocblas-clients-common PRIVATE GOOGLE_TEST) # Is this the right place for GOOGLE_TEST
 
 if(ROCBLAS_ENABLE_ROCM_SMI)
-    target_link_libraries(rocblas-clients-common PUBLIC rocm_smi64) # linking to un-namespaced target
+    target_link_libraries(rocblas-clients-common PRIVATE rocm_smi64) # linking to un-namespaced target
 endif()
 
 if(NOT WIN32)
     # Need to investigate stdc++fs:
     # Not clear if we need this flag. When/why did the compiler add the flag?
     # Can we use with c++14? Do we have users still compiling with 14?
-    target_link_libraries(rocblas-clients-common PUBLIC m stdc++fs)
+    target_link_libraries(rocblas-clients-common PRIVATE m stdc++fs)
 endif()
 
 target_sources(rocblas-clients-common
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/singletons.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/client_utility.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/frequency_monitor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_arguments.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/argument_model.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_random.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_parse_data.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/host_alloc.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gtest_helpers.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_matrix.cpp"
 )
 
 if(ROCBLAS_ENABLE_FORTRAN)
@@ -69,19 +104,3 @@ if(ROCBLAS_ENABLE_FORTRAN)
             $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
     )
 endif()
-
-target_sources(rocblas-testing-common 
-    PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/cblas_interface.cpp"
-)
-if(ROCBLAS_ENABLE_BLIS)
-    target_sources(rocblas-testing-common
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/clients/common/blis_interface.cpp"
-    )
-endif()
-
-add_subdirectory(blas1)
-add_subdirectory(blas2)
-add_subdirectory(blas3)
-add_subdirectory(blas_ex)

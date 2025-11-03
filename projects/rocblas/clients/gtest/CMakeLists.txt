@@ -1,35 +1,36 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-find_package(GTest REQUIRED)
-
-target_link_libraries(rocblas-testing-common
-    PUBLIC
-        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
-        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
-        rocblas::clients-common
-        hip::device
-)
-
-target_compile_definitions(rocblas-testing-common PUBLIC GOOGLE_TEST)
-
-if(ROCBLAS_ENABLE_BLIS)
-    target_link_libraries(rocblas-testing-common PUBLIC BLIS::BLIS)
-else()
-    target_link_libraries(rocblas-testing-common PUBLIC ${BLAS_LIBRARIES})
-    if(BLAS_INCLUDE_DIRS)
-        target_include_directories(rocblas-testing-common SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}) # should we be doing this?
-    endif()
-endif()
-
-if(ROCBLAS_ENABLE_FORTRAN)
-    target_link_libraries(rocblas-testing-common PUBLIC rocblas-fortran-client)
-endif()
-
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
 add_executable(rocblas-test)
- 
+
+target_link_libraries(rocblas-test
+    PRIVATE
+        hip::device
+        roc::rocblas
+        rocblas::warnings
+        rocblas::testing-common
+        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
+)
+
+target_include_directories(rocblas-test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/clients/include"
+        "${PROJECT_SOURCE_DIR}/clients/include/blas1"
+        "${PROJECT_SOURCE_DIR}/clients/include/blas_ex"
+        "${PROJECT_SOURCE_DIR}/clients/common"
+        "${PROJECT_SOURCE_DIR}/library/src"
+        "${PROJECT_SOURCE_DIR}/library/src/include")
+
+target_compile_definitions(rocblas-test
+    PRIVATE
+        ROCBLAS_NO_DEPRECATED_WARNINGS
+        ROCM_USE_FLOAT16
+        GOOGLE_TEST
+)
+
 if(ROCBLAS_ENABLE_TENSILE)
   target_sources(rocblas-test
     PRIVATE
@@ -109,15 +110,6 @@ target_sources(rocblas-test
     "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/geam_ex_gtest.cpp"
 )
 
-
-target_link_libraries(rocblas-test
-    PRIVATE
-        rocblas::testing-common
-        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
-        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
-)
-target_compile_definitions(rocblas-test PRIVATE GOOGLE_TEST)
-
 if(WIN32)
     # FLAG: Suppress experimental filesystem deprecation warning on Windows
     target_compile_definitions(rocblas-test
@@ -147,6 +139,8 @@ set_target_properties(rocblas-test PROPERTIES
     IMPORT_SUFFIX ".lib"
     LINKER_LANGUAGE CXX
 )
+
+target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
 
 set(yaml_files
     "${CMAKE_CURRENT_SOURCE_DIR}/asum_gtest.yaml"
@@ -233,33 +227,4 @@ add_dependencies(rocblas-test rocblas-test-data)
 set_target_properties(rocblas-test-data 
     PROPERTIES
       ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
-)
-
-target_link_libraries(rocblas-test PRIVATE rocblas::testing-common)
-
-if(WIN32)
-    # FLAG: Suppress experimental filesystem deprecation warning on Windows
-    target_compile_definitions(rocblas-test PRIVATE _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING)
-
-    file(GLOB third_party_dlls
-        LIST_DIRECTORIES OFF
-        CONFIGURE_DEPENDS
-        "${OPENBLAS_DIR}/bin/*.dll"
-        "${HIP_DIR}/bin/amd*.dll"
-        "${HIP_DIR}/bin/hiprt*.dll"
-        "${HIP_DIR}/bin/hipinfo.exe"
-        "${CMAKE_SOURCE_DIR}/rtest.*"
-        "C:/Windows/System32/libomp140*.dll"
-    )
-    foreach(file_i ${third_party_dlls})
-        add_custom_command(TARGET rocblas-test POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
-    endforeach()
-endif()
-
-# why are we doing this? Is it intended for windows?
-set_target_properties(rocblas-test PROPERTIES
-    IMPORT_PREFIX ""
-    IMPORT_SUFFIX ".lib"
-    LINKER_LANGUAGE CXX
 )

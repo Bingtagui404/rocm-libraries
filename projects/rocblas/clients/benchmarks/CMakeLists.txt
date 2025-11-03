@@ -12,11 +12,26 @@ target_sources(rocblas-bench
 
 target_link_libraries(rocblas-bench 
     PRIVATE
+        roc::rocblas
+        rocblas::warnings
         rocblas::testing-common
         hip::device
 )
 
-target_compile_definitions(rocblas-bench PRIVATE ROCBLAS_BENCH)
+target_include_directories(rocblas-bench
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/clients/common"
+        "${PROJECT_SOURCE_DIR}/clients/include"
+        "${PROJECT_SOURCE_DIR}/library/src/include"
+)
+
+target_compile_definitions(rocblas-bench
+    PRIVATE
+        ROCBLAS_BENCH
+        ROCM_USE_FLOAT16
+        ROCBLAS_NO_DEPRECATED_WARNINGS
+        GOOGLE_TEST
+)
 
 if(ROCBLAS_ENABLE_TENSILE)
     add_executable(rocblas-gemm-tune)
@@ -29,16 +44,27 @@ if(ROCBLAS_ENABLE_TENSILE)
 
     target_link_libraries(rocblas-gemm-tune
         PRIVATE
-            rocblas::clients-common
+            roc::rocblas
+            rocblas::warnings
+            rocblas::testing-common
             hip::device
-    )#
+    )
 
     target_include_directories(rocblas-gemm-tune
         PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/../include/blas3"
+            "${PROJECT_SOURCE_DIR}/clients/include"
+            "${PROJECT_SOURCE_DIR}/clients/include/blas3"
     )
 
-    target_compile_definitions(rocblas-gemm-tune PRIVATE ROCBLAS_BENCH)
+    target_compile_definitions(rocblas-gemm-tune
+        PRIVATE
+            ROCBLAS_BENCH
+            ROCM_USE_FLOAT16
+            ROCBLAS_NO_DEPRECATED_WARNINGS
+            #__HIP_HCC_COMPAT_MODE__=1
+            #ROCBLAS_INTERNAL_API
+    )
+
 endif()
 
 add_subdirectory(perf_script)
