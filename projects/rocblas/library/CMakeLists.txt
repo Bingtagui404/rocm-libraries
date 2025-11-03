@@ -153,8 +153,7 @@ target_link_libraries(rocblas
 target_compile_definitions(rocblas
     PRIVATE
         ROCM_USE_FLOAT16
-        ROCBLAS_NO_DEPRECATED_WARNINGS
-        #ROCBLAS_INTERNAL_API
+        ROCBLAS_INTERNAL_API
         ROCBLAS_BETA_FEATURES_API
 )
 

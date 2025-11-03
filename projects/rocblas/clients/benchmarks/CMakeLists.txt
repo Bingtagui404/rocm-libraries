@@ -30,10 +30,19 @@ target_compile_definitions(rocblas-bench
         ROCBLAS_BENCH
         ROCM_USE_FLOAT16
         ROCBLAS_NO_DEPRECATED_WARNINGS
+        __HIP_HCC_COMPAT_MODE__=1
         GOOGLE_TEST
 )
 
 if(ROCBLAS_ENABLE_TENSILE)
+    target_compile_definitions(rocblas-bench
+        PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_INTERNAL_API
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+    )
+
     add_executable(rocblas-gemm-tune)
 
     target_sources(rocblas-gemm-tune
@@ -61,16 +70,12 @@ if(ROCBLAS_ENABLE_TENSILE)
             ROCBLAS_BENCH
             ROCM_USE_FLOAT16
             ROCBLAS_NO_DEPRECATED_WARNINGS
-            #__HIP_HCC_COMPAT_MODE__=1
-            #ROCBLAS_INTERNAL_API
-    )
-    if(ROCBLAS_ENABLE_TENSILE)
-        target_compile_definitions(rocblas-gemm-tune PRIVATE
+            __HIP_HCC_COMPAT_MODE__=1
+            ROCBLAS_INTERNAL_API
             BUILD_WITH_TENSILE
             ROCBLAS_TENSILE_SEPARATE_ARCH=1
             ROCBLAS_TENSILE_LAZY_LOAD=1
         )
-    endif()
 endif()
 
 add_subdirectory(perf_script)
