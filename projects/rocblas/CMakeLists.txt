@@ -130,6 +130,8 @@ endif()
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard version")
 option(CMAKE_CXX_STANDARD_REQUIRED "" ON)
+option(CMAKE_CXX_EXTENSIONS "Enable c++ extenstions (default: OFF)" OFF)
+
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
