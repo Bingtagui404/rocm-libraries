@@ -4,11 +4,24 @@
 add_library(rocblas-clients-common STATIC)
 add_library(rocblas::clients-common ALIAS rocblas-clients-common)
 
+target_link_libraries(rocblas-clients-common PRIVATE hip::device hip::host roc::rocblas rocblas::warnings)
+
+if(ROCBLAS_ENABLE_ROCM_SMI)
+    target_link_libraries(rocblas-clients-common PRIVATE rocm_smi64)
+endif()
+
+if(NOT WIN32)
+    target_link_libraries(rocblas-clients-common PRIVATE m stdc++fs)
+endif()
+
 target_include_directories(rocblas-clients-common
     PRIVATE
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/clients/include>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/src/include>
 )
+
+# FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
+target_compile_options(rocblas-clients-common PRIVATE -Wno-c++17-extensions)
 
 target_compile_definitions(rocblas-clients-common
     PRIVATE
@@ -38,19 +51,6 @@ if(ROCBLAS_ENABLE_BLIS)
     target_compile_definitions(rocblas-clients-common PRIVATE BLIS_ENABLE_CBLAS BLIS_ENABLE_NO_UNDERSCORE_API)
 endif()
 
-# FLAG: -Wno-c++17-extensions suppresses warnings from AMD Clang about extension usage
-target_compile_options(rocblas-clients-common PRIVATE -Wno-c++17-extensions)
-
-target_link_libraries(rocblas-clients-common PRIVATE hip::device hip::host roc::rocblas rocblas::warnings)
-
-if(ROCBLAS_ENABLE_ROCM_SMI)
-    target_link_libraries(rocblas-clients-common PRIVATE rocm_smi64)
-endif()
-
-if(NOT WIN32)
-    target_link_libraries(rocblas-clients-common PRIVATE m stdc++fs)
-endif()
-
 target_sources(rocblas-clients-common
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/argument_model.cpp"
@@ -65,6 +65,14 @@ target_sources(rocblas-clients-common
 if(ROCBLAS_ENABLE_FORTRAN)
     add_library(rocblas-fortran-wrappers STATIC)
     add_library(rocblas::fortran-wrappers ALIAS rocblas-fortran-wrappers)
+
+    target_include_directories(rocblas-fortran-wrappers
+        PRIVATE
+            $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
+    )
+
+    add_dependencies(rocblas-fortran-wrappers rocblas-fortran-module)
+
     target_sources(rocblas-fortran-wrappers
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/../include/rocblas_fortran.f90"
@@ -77,14 +85,10 @@ if(ROCBLAS_ENABLE_FORTRAN)
         )
     endif()
 
-    add_dependencies(rocblas-fortran-wrappers rocblas-fortran-module)
-    target_include_directories(rocblas-fortran-wrappers
-        PRIVATE
-            $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
-    )
-
     add_library(rocblas-fortran-client INTERFACE)
+
     target_link_libraries(rocblas-fortran-client INTERFACE rocblas::fortran-wrappers rocblas::rocblas-fortran-module)
+
     target_include_directories(rocblas-fortran-client
         INTERFACE
             $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
