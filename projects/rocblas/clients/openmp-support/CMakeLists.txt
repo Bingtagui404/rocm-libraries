@@ -38,12 +38,7 @@ target_compile_definitions(rocblas-clients-openmp
 target_sources(rocblas-clients-openmp PRIVATE "${PROJECT_SOURCE_DIR}/clients/common/client_omp.cpp")
 
 add_executable(rocblas-example-openmp)
-
 target_link_libraries(rocblas-example-openmp PRIVATE hip::host roc::rocblas rocblas::clients-openmp rocblas::warnings)
-
 target_include_directories(rocblas-example-openmp PRIVATE "${PROJECT_BINARY_DIR}/library/include")
-
-target_compile_features(rocblas-example-openmp PRIVATE cxx_std_14)
-set_target_properties(rocblas-example-openmp PROPERTIES INTERFACE_CXX_STANDARD 14)
-
+set_target_properties(rocblas-example-openmp PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-openmp PRIVATE "${PROJECT_SOURCE_DIR}/clients/samples/example_openmp.cpp")
