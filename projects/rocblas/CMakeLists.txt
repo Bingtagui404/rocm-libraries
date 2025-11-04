@@ -27,7 +27,7 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
 # - PATCH: Incremented for backwards-compatible bug fixes
 project(
     rocblas
-    VERSION 5.1.0
+    VERSION 5.2.0
     LANGUAGES C CXX)
 
 # Include required CMake modules
