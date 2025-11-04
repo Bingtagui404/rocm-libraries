@@ -1,31 +1,11 @@
-################################################################################
-#
-# Copyright (C) 2019-2022 Advanced Micro Devices, Inc. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
-################################################################################
+# Copyright Advanced Micro Devices, Inc., or its affiliates.
+# SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.13)
 
 project(TensileHostLibraryTest)
 
+# Set C++ standard globally
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -43,32 +23,28 @@ option(BUILD_CODE_COVERAGE "Enable code coverage for TensileHost library." OFF)
 if((TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE) AND (NOT CMAKE_BUILD_TYPE STREQUAL "Debug"))
     message(FATAL_ERROR "Code coverage requires CMAKE_BUILD_TYPE=Debug.")
 endif()
+
 if(TENSILE_USE_HIP)
     set(TENSILE_COMPONENTS HIP)
     if(TENSILE_USE_LLVM)
         set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} Client)
     endif()
 endif()
+
 if(TENSILE_USE_LLVM)
     set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} LLVM)
 endif()
+
 if(TENSILE_USE_OPENMP)
     set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} OpenMP)
 endif()
+
 if(TENSILE_STATIC_ONLY)
     set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} STATIC_ONLY)
 endif()
 
 if(NOT Tensile_FOUND)
-    find_package(
-        Tensile
-        4.44.0
-        EXACT
-        REQUIRED
-        ${TENSILE_COMPONENTS}
-        PATHS
-        "${CMAKE_CURRENT_SOURCE_DIR}/../Tensile"
-    )
+    find_package(Tensile 4.44.0 EXACT REQUIRED ${TENSILE_COMPONENTS} PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../Tensile")
 endif()
 
 if(NOT TENSILE_DISABLE_CTEST)
@@ -83,22 +59,22 @@ if(NOT TENSILE_DISABLE_CTEST)
 endif()
 
 set(INSTALL_GTEST OFF CACHE BOOL "Install GTest")
+
 add_subdirectory(googletest)
+
 if(NOT gtest_SOURCE_DIR)
-    message(FATAL_ERROR "googletest not found.  Run git submodule update --init")
+    message(FATAL_ERROR "googletest not found. Run git submodule update --init")
 endif()
 
 find_package(Boost COMPONENTS filesystem)
 
-# if(TENSILE_USE_HIP AND NOT HIP_DIR)
 if(TENSILE_USE_HIP)
     find_package(HIP REQUIRED CONFIG PATHS $ENV{ROCM_PATH} /opt/rocm)
 endif()
 
 if(TENSILE_USE_OPENMP AND NOT TARGET custom_openmp_cxx)
-
-    # Workaround for https://gitlab.kitware.com/cmake/cmake/-/issues/21787 ensures we link to HIP's
-    # libomp and get an rpath to it.
+    # Workaround for https://gitlab.kitware.com/cmake/cmake/-/issues/21787
+    # Ensures we link to HIP's libomp and get an rpath to it
     add_library(custom_openmp_cxx INTERFACE)
 
     if(TENSILE_USE_HIP)
@@ -124,6 +100,7 @@ foreach(FILE ${SOLUTION_LIBRARY_FILES})
 endforeach(FILE)
 
 include_directories("." ${GTEST_SOURCE_DIR}/include)
+
 add_subdirectory(testlib)
 
 set(test_sources
@@ -172,35 +149,32 @@ endif()
 
 add_executable(TensileTests ${test_sources})
 
-if(NOT TENSILE_DISABLE_CTEST)
-    if(GTEST_INTEGRATION)
-        gtest_discover_tests(TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
-    else()
-        add_test(NAME TensileHostLibraryTests COMMAND TensileTests
-                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        )
-    endif()
-endif()
-
-target_link_libraries(TensileTests PUBLIC gtest TensileHost TensileTestLib ${Boost_LIBRARIES})
+target_link_libraries(TensileTests
+    PUBLIC
+        ${Boost_LIBRARIES}
+        TensileHost
+        TensileTestLib
+        gtest
+)
 
 if(TENSILE_USE_LLVM)
     find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
     message("LLVMObjectYAML_LIBRARY: ${LLVMObjectYAML_LIBRARY}")
-    # Use LLVM shared libs if LLVMObjectYAML static lib cannot be found
+
     if(LLVMObjectYAML_LIBRARY)
         target_link_libraries(TensileTests PUBLIC LLVMObjectYAML)
     else()
         target_link_libraries(TensileTests PUBLIC LLVM)
     endif()
+
     target_include_directories(TensileTests PUBLIC ${LLVM_INCLUDE_DIRS})
 endif()
 
 if(TENSILE_USE_HIP)
-
     target_link_libraries(TensileTests PRIVATE "-Xlinker --whole-archive")
     target_link_libraries(TensileTests PUBLIC ${HIP_TEST_LIBRARIES})
     target_link_libraries(TensileTests PRIVATE "-Xlinker --no-whole-archive")
+
     foreach(arch IN LISTS GPU_TARGETS)
         target_link_libraries(TensileTests PRIVATE "--offload-arch=${arch}")
     endforeach(arch)
@@ -210,12 +184,19 @@ if(TENSILE_USE_OPENMP)
     target_link_libraries(TensileTests PRIVATE custom_openmp_cxx)
 endif()
 
+if(NOT TENSILE_DISABLE_CTEST)
+    if(GTEST_INTEGRATION)
+        gtest_discover_tests(TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
+    else()
+        add_test(NAME TensileHostLibraryTests COMMAND TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    endif()
+endif()
+
 if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
     message(STATUS "Code coverage for TensileHost is ENABLED.")
 
     target_compile_options(TensileHost PRIVATE -fprofile-instr-generate -fcoverage-mapping)
     target_link_options(TensileHost PUBLIC -fprofile-instr-generate)
-    message(STATUS "Applied coverage flags to TensileHost.")
 
     set(coverage_dir "${CMAKE_CURRENT_BINARY_DIR}/coverage-report")
 
@@ -240,14 +221,20 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
         COMMAND
             ${LLVM_PROFDATA} merge -sparse "${coverage_dir}/profraw/tensile-host-coverage_*.profraw"
             -o "${coverage_dir}/tensile-host.profdata"
-        COMMAND ${LLVM_COV} report -object $<TARGET_FILE:TensileHost>
-                -instr-profile="${coverage_dir}/tensile-host.profdata"
+        COMMAND
+            ${LLVM_COV} report -object $<TARGET_FILE:TensileHost>
+            -instr-profile="${coverage_dir}/tensile-host.profdata"
         COMMAND
             ${LLVM_COV} show -object $<TARGET_FILE:TensileHost>
             -instr-profile="${coverage_dir}/tensile-host.profdata" -format=html
             -output-dir="${coverage_dir}"
         COMMENT
-            "Generating TensileHost coverage report... HTML report in ${coverage_dir}/index.html"
+            "Generating TensileHost coverage... HTML report in ${coverage_dir}/index.html"
     )
-
 endif()
+
+</final_file_content>
+
+IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
+
+<environment_details>

@@ -17,7 +17,12 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
     add_library(rocblas-gemm-host OBJECT)
     add_library(rocblas::tensile-host ALIAS rocblas-gemm-host)
 
-    target_link_libraries(rocblas-gemm-host PRIVATE hip::device hip::host rocblas::warnings)
+    target_link_libraries(rocblas-gemm-host
+        PRIVATE
+            hip::device
+            hip::host
+            rocblas::warnings
+    )
 
     target_include_directories(rocblas-gemm-host
         PRIVATE
@@ -30,11 +35,22 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
             "${PROJECT_SOURCE_DIR}/library/include/internal"
     )
 
-    target_compile_definitions(rocblas-gemm-host PRIVATE ROCBLAS_BETA_FEATURES_API ROCBLAS_INTERNAL_API ROCM_USE_FLOAT16)
+    target_compile_definitions(rocblas-gemm-host
+        PRIVATE
+            ROCBLAS_BETA_FEATURES_API
+            ROCBLAS_INTERNAL_API
+            ROCM_USE_FLOAT16
+    )
 
     if(ROCBLAS_ENABLE_TENSILE)
         target_link_libraries(rocblas-gemm-host PUBLIC roc::tensile-host)
-        target_compile_definitions(rocblas-gemm-host PRIVATE BUILD_WITH_TENSILE ROCBLAS_TENSILE_LAZY_LOAD=1 ROCBLAS_TENSILE_SEPARATE_ARCH=1)
+
+        target_compile_definitions(rocblas-gemm-host
+            PRIVATE
+                BUILD_WITH_TENSILE
+                ROCBLAS_TENSILE_LAZY_LOAD=1
+                ROCBLAS_TENSILE_SEPARATE_ARCH=1
+        )
     elseif(ROCBLAS_ENABLE_HIPBLASLT)
         target_link_libraries(rocblas-gemm-host PRIVATE roc::hipblaslt)
         target_compile_definitions(rocblas-gemm-host PRIVATE BUILD_WITH_HIPBLASLT)

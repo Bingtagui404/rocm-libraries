@@ -3,14 +3,30 @@
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
-set(CMAKE_CXX_STANDARD 14)
-
 add_library(rocblas-samples-common INTERFACE)
 add_library(rocblas::samples-common ALIAS rocblas-samples-common)
 
-target_link_libraries(rocblas-samples-common INTERFACE hip::device roc::rocblas rocblas::testing-common rocblas::warnings)
+target_link_libraries(rocblas-samples-common
+    INTERFACE
+        hip::device
+        roc::rocblas
+        rocblas::testing-common
+        rocblas::warnings
+)
+
 target_include_directories(rocblas-samples-common INTERFACE "${PROJECT_SOURCE_DIR}/clients/include")
-target_compile_definitions(rocblas-samples-common INTERFACE ROCBLAS_INTERNAL_API ROCM_USE_FLOAT16 __HIP_HCC_COMPAT_MODE__=1)
+
+target_compile_definitions(rocblas-samples-common
+    INTERFACE
+        ROCBLAS_NO_DEPRECATED_WARNINGS
+        ROCM_USE_FLOAT16
+        __HIP_HCC_COMPAT_MODE__=1
+)
+
+# Uses C++14 to demonstrate backwards compatibility with older standard
+target_compile_features(rocblas-samples-common INTERFACE cxx_std_14)
+
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
 add_executable(rocblas-example-c-dgeam)
 
@@ -57,11 +73,10 @@ target_link_libraries(rocblas-example-header-check
         Threads::Threads
 )
 
-# Uses C++11 to verify header compatibility with older C++ standard - override directory default
-set_target_properties(rocblas-example-header-check PROPERTIES CXX_STANDARD 11)
+# Uses C++11 to verify header compatibility with older C++ standard
+target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
 
-target_compile_definitions(rocblas-example-header-check PRIVATE ROCBLAS_INTERNAL_API ROCM_USE_FLOAT16)
-target_compile_options(rocblas-example-header-check PRIVATE -Wno-unused-result)
+# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
 target_sources(rocblas-example-header-check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_header_check.cpp")
 

@@ -5,7 +5,13 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 
 add_executable(rocblas-bench)
 
-target_link_libraries(rocblas-bench PRIVATE hip::device roc::rocblas rocblas::testing-common rocblas::warnings)
+target_link_libraries(rocblas-bench
+    PRIVATE
+        hip::device
+        roc::rocblas
+        rocblas::testing-common
+        rocblas::warnings
+)
 
 target_include_directories(rocblas-bench
     PRIVATE
@@ -26,11 +32,23 @@ target_compile_definitions(rocblas-bench
 target_sources(rocblas-bench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/client.cpp")
 
 if(ROCBLAS_ENABLE_TENSILE)
-    target_compile_definitions(rocblas-bench PRIVATE BUILD_WITH_TENSILE ROCBLAS_INTERNAL_API ROCBLAS_TENSILE_LAZY_LOAD=1 ROCBLAS_TENSILE_SEPARATE_ARCH=1)
+    target_compile_definitions(rocblas-bench
+        PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_INTERNAL_API
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+    )
 
     add_executable(rocblas-gemm-tune)
 
-    target_link_libraries(rocblas-gemm-tune PRIVATE hip::device roc::rocblas rocblas::testing-common rocblas::warnings)
+    target_link_libraries(rocblas-gemm-tune
+        PRIVATE
+            hip::device
+            roc::rocblas
+            rocblas::testing-common
+            rocblas::warnings
+    )
 
     target_include_directories(rocblas-gemm-tune
         PRIVATE

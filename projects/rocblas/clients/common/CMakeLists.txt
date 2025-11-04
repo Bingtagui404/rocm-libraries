@@ -4,14 +4,24 @@
 add_library(rocblas-clients-common STATIC)
 add_library(rocblas::clients-common ALIAS rocblas-clients-common)
 
-target_link_libraries(rocblas-clients-common PRIVATE hip::device hip::host roc::rocblas rocblas::warnings)
+target_link_libraries(rocblas-clients-common
+    PRIVATE
+        hip::device
+        hip::host
+        roc::rocblas
+        rocblas::warnings
+)
 
 if(ROCBLAS_ENABLE_ROCM_SMI)
     target_link_libraries(rocblas-clients-common PRIVATE rocm_smi64)
 endif()
 
 if(NOT WIN32)
-    target_link_libraries(rocblas-clients-common PRIVATE m stdc++fs)
+    target_link_libraries(rocblas-clients-common
+        PRIVATE
+            m
+            stdc++fs
+    )
 endif()
 
 target_include_directories(rocblas-clients-common
@@ -32,7 +42,12 @@ target_compile_definitions(rocblas-clients-common
 )
 
 if(ROCBLAS_ENABLE_TENSILE)
-    target_compile_definitions(rocblas-clients-common PRIVATE BUILD_WITH_TENSILE ROCBLAS_TENSILE_LAZY_LOAD=1 ROCBLAS_TENSILE_SEPARATE_ARCH=1)
+    target_compile_definitions(rocblas-clients-common
+        PRIVATE
+            BUILD_WITH_TENSILE
+            ROCBLAS_TENSILE_LAZY_LOAD=1
+            ROCBLAS_TENSILE_SEPARATE_ARCH=1
+    )
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
@@ -48,7 +63,11 @@ if(ROCBLAS_ENABLE_ASAN)
 endif()
 
 if(ROCBLAS_ENABLE_BLIS)
-    target_compile_definitions(rocblas-clients-common PRIVATE BLIS_ENABLE_CBLAS BLIS_ENABLE_NO_UNDERSCORE_API)
+    target_compile_definitions(rocblas-clients-common
+        PRIVATE
+            BLIS_ENABLE_CBLAS
+            BLIS_ENABLE_NO_UNDERSCORE_API
+    )
 endif()
 
 target_sources(rocblas-clients-common
@@ -87,7 +106,11 @@ if(ROCBLAS_ENABLE_FORTRAN)
 
     add_library(rocblas-fortran-client INTERFACE)
 
-    target_link_libraries(rocblas-fortran-client INTERFACE rocblas::fortran-wrappers rocblas::rocblas-fortran-module)
+    target_link_libraries(rocblas-fortran-client
+        INTERFACE
+            rocblas::fortran-wrappers
+            rocblas::rocblas-fortran-module
+    )
 
     target_include_directories(rocblas-fortran-client
         INTERFACE
