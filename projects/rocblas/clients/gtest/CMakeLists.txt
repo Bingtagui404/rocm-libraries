@@ -117,6 +117,7 @@ target_sources(rocblas-test
         "${CMAKE_CURRENT_SOURCE_DIR}/blas3/geam_gtest.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/gemm_ex_gtest.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/gemmt_gtest.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/syrk_ex_gtest.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/geam_ex_gtest.cpp"
 )
 

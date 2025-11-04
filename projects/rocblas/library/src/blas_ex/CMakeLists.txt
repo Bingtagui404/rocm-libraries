@@ -36,6 +36,10 @@ target_sources(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_scal_strided_batched_ex.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_scal_ex_kernels.cpp"
         
+        # SYRK_EX
+        "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_syrk_ex.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_syrk_ex_kernels.cpp"
+        
         # GEAM_EX
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_geam_ex.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_geam_ex_kernels.cpp"

@@ -18,7 +18,7 @@ target_include_directories(rocblas-samples-common INTERFACE "${PROJECT_SOURCE_DI
 
 target_compile_definitions(rocblas-samples-common
     INTERFACE
-        ROCBLAS_NO_DEPRECATED_WARNINGS
+        ROCBLAS_INTERNAL_API
         ROCM_USE_FLOAT16
         __HIP_HCC_COMPAT_MODE__=1
 )
@@ -39,32 +39,32 @@ target_sources(rocblas-example-c-dgeam PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/exam
 
 add_executable(rocblas-example-sscal)
 target_link_libraries(rocblas-example-sscal PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-sscal PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-sscal PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-sscal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sscal.cpp")
 
 add_executable(rocblas-example-scal-template)
 target_link_libraries(rocblas-example-scal-template PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-scal-template PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-scal-template PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-scal-template PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_scal_template.cpp")
 
 add_executable(rocblas-example-scal-multiple-strided-batch)
 target_link_libraries(rocblas-example-scal-multiple-strided-batch PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-scal-multiple-strided-batch PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-scal-multiple-strided-batch PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-scal-multiple-strided-batch PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_scal_multiple_strided_batch.cpp")
 
 add_executable(rocblas-example-solver)
 target_link_libraries(rocblas-example-solver PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-solver PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-solver PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-solver PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_solver_rocblas.cpp")
 
 add_executable(rocblas-example-hip-complex-her2)
 target_link_libraries(rocblas-example-hip-complex-her2 PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-hip-complex-her2 PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-hip-complex-her2 PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-hip-complex-her2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_hip_complex_her2.cpp")
 
 add_executable(rocblas-example-gemv-graph-capture)
 target_link_libraries(rocblas-example-gemv-graph-capture PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-gemv-graph-capture PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-gemv-graph-capture PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-gemv-graph-capture PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_gemv_graph_capture.cpp")
 
 add_executable(rocblas-example-header-check)
@@ -78,7 +78,7 @@ target_link_libraries(rocblas-example-header-check
 )
 
 # Uses C++11 to verify header compatibility with older C++ standard
-target_compile_features(rocblas-example-header-check PRIVATE cxx_std_11)
+set_target_properties(rocblas-example-header-check PROPERTIES CXX_STANDARD 11)
 
 # NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
@@ -86,23 +86,23 @@ target_sources(rocblas-example-header-check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
 
 add_executable(rocblas-example-sgemm)
 target_link_libraries(rocblas-example-sgemm PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-sgemm PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-sgemm PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-sgemm PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm.cpp")
 
 add_executable(rocblas-example-sgemm-strided-batched)
 target_link_libraries(rocblas-example-sgemm-strided-batched PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-sgemm-strided-batched PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-sgemm-strided-batched PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-sgemm-strided-batched PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm_strided_batched.cpp")
 
 add_executable(rocblas-example-sgemm-multiple-strided-batch)
 target_link_libraries(rocblas-example-sgemm-multiple-strided-batch PRIVATE rocblas::samples-common)
-target_compile_features(rocblas-example-sgemm-multiple-strided-batch PRIVATE cxx_std_14)
+set_target_properties(rocblas-example-sgemm-multiple-strided-batch PROPERTIES CXX_STANDARD 14)
 target_sources(rocblas-example-sgemm-multiple-strided-batch PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_sgemm_multiple_strided_batch.cpp")
 
 if(ROCBLAS_ENABLE_TENSILE)
     add_executable(rocblas-example-user-driven-tuning)
     target_link_libraries(rocblas-example-user-driven-tuning PRIVATE rocblas::samples-common)
-    target_compile_features(rocblas-example-user-driven-tuning PRIVATE cxx_std_14)
+    set_target_properties(rocblas-example-user-driven-tuning PROPERTIES CXX_STANDARD 14)
     target_sources(rocblas-example-user-driven-tuning PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_user_driven_tuning.cpp")
 endif()
 

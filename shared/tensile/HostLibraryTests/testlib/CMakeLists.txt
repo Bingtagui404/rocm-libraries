@@ -1,37 +1,30 @@
-################################################################################
-#
-# Copyright (C) 2019-2022 Advanced Micro Devices, Inc. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
-################################################################################
+# Copyright Advanced Micro Devices, Inc., or its affiliates.
+# SPDX-License-Identifier: MIT
 
-set(testlib_sources
-    source/TestData.cpp)
+add_library(tensile-test-lib OBJECT)
+add_library(tensile::tensile-test-lib ALIAS tensile-test-lib)
 
-add_library(TensileTestLib STATIC ${testlib_sources})
+target_sources(tensile-test-lib
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/source/TestData.cpp"
+)
 
-target_include_directories(TensileTestLib PUBLIC include)
+target_include_directories(tensile-test-lib
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
 
-target_compile_definitions(TensileTestLib PRIVATE BOOST_ERROR_CODE_HEADER_ONLY)
+target_link_libraries(tensile-test-lib
+    PUBLIC
+        roc::tensile-host
+    PRIVATE
+        Boost::filesystem
+)
 
-target_link_libraries(TensileTestLib PUBLIC TensileHost ${Boost_LIBRARIES})
+target_compile_definitions(tensile-test-lib PRIVATE BOOST_ERROR_CODE_HEADER_ONLY)
+
+# NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
+
 if(TENSILE_USE_OPENMP)
-    target_link_libraries(TensileTestLib PRIVATE custom_openmp_cxx)
+    target_link_libraries(tensile-test-lib PRIVATE OpenMP::OpenMP_CXX)
 endif()

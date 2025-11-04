@@ -11,5 +11,6 @@ target_sources(rocblas-testing-common
     "${CMAKE_CURRENT_SOURCE_DIR}/common_gemm_ex.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/common_trsm_ex.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/common_gemmt.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/common_syrk_ex.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/common_geam_ex.cpp"
 )

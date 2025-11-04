@@ -13,20 +13,29 @@
 
 if(NOT ROCBLAS_ENABLE_ASAN)
     # Standard build target lists by ROCm version
-    set(TARGET_LIST_ROCM_5.6 "gfx803;gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102")
-    set(TARGET_LIST_ROCM_5.7 "gfx803;gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx942;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102")
-    set(TARGET_LIST_ROCM_6.0 "gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx942;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102")
-    set(TARGET_LIST_ROCM_6.3 "gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx942;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102;gfx1151;gfx1200;gfx1201")
-    set(TARGET_LIST_ROCM_7.0 "gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx942;gfx950;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201")
-    set(TARGET_LIST_ROCM_7.1 "gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx942;gfx950;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102;gfx1103;gfx1150;gfx1151;gfx1200;gfx1201")
+    # Common architecture groups to avoid repetition
+    set(GFX9_ARCHS "gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-")
+    set(GFX10_11_ARCHS "gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102")
+    
+    set(TARGET_LIST_ROCM_5.6 "gfx803;${GFX9_ARCHS};${GFX10_11_ARCHS}")
+    set(TARGET_LIST_ROCM_5.7 "gfx803;${GFX9_ARCHS};gfx942;${GFX10_11_ARCHS}")
+    set(TARGET_LIST_ROCM_6.0 "${GFX9_ARCHS};gfx942;${GFX10_11_ARCHS}")
+    set(TARGET_LIST_ROCM_6.3 "${GFX9_ARCHS};gfx942;${GFX10_11_ARCHS};gfx1151;gfx1200;gfx1201")
+    set(TARGET_LIST_ROCM_7.0 "${GFX9_ARCHS};gfx942;gfx950;${GFX10_11_ARCHS};gfx1150;gfx1151;gfx1200;gfx1201")
+    set(TARGET_LIST_ROCM_7.1 "${GFX9_ARCHS};gfx942;gfx950;${GFX10_11_ARCHS};gfx1103;gfx1150;gfx1151;gfx1200;gfx1201")
 else()
     # Address sanitizer build target lists by ROCm version (require xnack+)
-    set(TARGET_LIST_ROCM_5.6 "gfx908:xnack+;gfx90a:xnack+")
-    set(TARGET_LIST_ROCM_5.7 "gfx908:xnack+;gfx90a:xnack+;gfx942:xnack+")
-    set(TARGET_LIST_ROCM_6.0 "gfx908:xnack+;gfx90a:xnack+;gfx942:xnack+")
-    set(TARGET_LIST_ROCM_6.3 "gfx908:xnack+;gfx90a:xnack+;gfx942:xnack+")
-    set(TARGET_LIST_ROCM_7.0 "gfx908:xnack+;gfx90a:xnack+;gfx942:xnack+;gfx950:xnack+")
-    set(TARGET_LIST_ROCM_7.1 "gfx908:xnack+;gfx90a:xnack+;gfx942:xnack+;gfx950:xnack+")
+    # Build incrementally to avoid repetition
+    set(ASAN_BASE "gfx908:xnack+;gfx90a:xnack+")
+    set(ASAN_WITH_942 "${ASAN_BASE};gfx942:xnack+")
+    set(ASAN_WITH_950 "${ASAN_WITH_942};gfx950:xnack+")
+    
+    set(TARGET_LIST_ROCM_5.6 "${ASAN_BASE}")
+    set(TARGET_LIST_ROCM_5.7 "${ASAN_WITH_942}")
+    set(TARGET_LIST_ROCM_6.0 "${ASAN_WITH_942}")
+    set(TARGET_LIST_ROCM_6.3 "${ASAN_WITH_942}")
+    set(TARGET_LIST_ROCM_7.0 "${ASAN_WITH_950}")
+    set(TARGET_LIST_ROCM_7.1 "${ASAN_WITH_950}")
 endif()
 
 # Select appropriate target list based on ROCm platform version
