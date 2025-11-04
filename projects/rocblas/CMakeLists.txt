@@ -292,8 +292,15 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     "\${CPACK_PACKAGING_INSTALL_PREFIX}")
 
 # Work around code object stripping failure if using /usr/bin/strip
-set(CPACK_RPM_SPEC_MORE_DEFINE
-    "%define __strip ${CMAKE_PREFIX_PATH}/llvm/bin/llvm-strip")
+find_program(LLVM_STRIP 
+    NAMES llvm-strip
+    PATH_SUFFIXES lib/llvm/bin llvm/bin bin
+)
+if(LLVM_STRIP)
+    set(CPACK_RPM_SPEC_MORE_DEFINE "%define __strip ${LLVM_STRIP}")
+else()
+    message(WARNING "llvm-strip not found, using default strip tool. This may cause stripping to fail during packaging.")
+endif()
 
 # cmake-format: off
 rocm_install(
