@@ -20,11 +20,6 @@ include(rocblas_shim)
 # Set cpack license file here to avoid rocm-cmake warning
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
 
-# Version is maintained in this CMakeLists.txt and should be updated for each release.
-# The version follows semantic versioning: MAJOR.MINOR.PATCH
-# - MAJOR: Incremented for incompatible API changes
-# - MINOR: Incremented for backwards-compatible functionality additions
-# - PATCH: Incremented for backwards-compatible bug fixes
 project(
     rocblas
     VERSION 5.2.0
@@ -165,6 +160,21 @@ if(ROCBLAS_ENABLE_ROCM_SMI)
   find_package(rocm_smi REQUIRED)
 endif()
 
+# HIP runtime dependency setup
+if( HIP_RUNTIME MATCHES ".*cuda.*" )
+  rocm_package_add_dependencies(DEPENDS "hip-nvcc >= 3.5.0")
+else()
+    if(ROCBLAS_ENABLE_ASAN)
+      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd-asan")
+    else()
+      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
+    endif()
+
+    rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
+    rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
+    rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
+endif()
+
 if(ROCBLAS_ENABLE_HOST)
     if(ROCBLAS_ENABLE_TENSILE)
         if(NOT ROCBLAS_ENABLE_SUPERBUILD)
@@ -188,10 +198,10 @@ if(ROCBLAS_ENABLE_HOST)
     add_subdirectory(library)
     if(ROCBLAS_ENABLE_MARKER)
         include(FindPackageHandleStandardArgs)
-    
+
         find_path(ROCTRACER_INCLUDE_DIR "roctracer/roctx.h")
         find_library(ROCTX_LIBRARIES roctx64)
-    
+
         find_package_handle_standard_args(ROCTRACER
             REQUIRED_VARS ROCTRACER_INCLUDE_DIR rocTracer
             FAIL_MESSAGE "Could not find ROCTracer library or headers"
@@ -241,51 +251,38 @@ if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
   rocm_package_setup_client_component(
     tests
     DEPENDS
-    COMPONENT
-    clients-common
-    DEB
-    "${OPENMP_DEB}"
-    RPM
-    "${OPENMP_RPM}")
+      COMPONENT clients-common
+      DEB "${OPENMP_DEB}"
+      RPM "${OPENMP_RPM}"
+  )
 endif()
 
 if(ROCBLAS_ENABLE_BENCHMARKS)
   rocm_package_setup_client_component(
     benchmarks
     DEPENDS
-    COMPONENT
-    clients-common
-    DEB
-    "${OPENMP_DEB}"
-    RPM
-    "${OPENMP_RPM}")
+      COMPONENT clients-common
+      DEB "${OPENMP_DEB}"
+      RPM "${OPENMP_RPM}"
+  )
 endif()
 
 if(ROCBLAS_ENABLE_SAMPLES)
   rocm_package_setup_client_component(
     samples
     DEPENDS
-    COMPONENT
-    clients-common
-    DEB
-    "${OPENMP_DEB}"
-    RPM
-    "${OPENMP_RPM}")
+      COMPONENT clients-common
+      DEB "${OPENMP_DEB}"
+      RPM "${OPENMP_RPM}"
+  )
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
   rocm_package_add_rpm_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_RPM}")
   rocm_package_add_deb_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_DEB}")
-  rocm_package_add_rpm_dependencies(COMPONENT benchmarks DEPENDS
-                                    "${GFORTRAN_RPM}")
-  rocm_package_add_deb_dependencies(COMPONENT benchmarks DEPENDS
-                                    "${GFORTRAN_DEB}")
+  rocm_package_add_rpm_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_RPM}")
+  rocm_package_add_deb_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_DEB}")
 endif()
-
-rocm_package_add_deb_dependencies(STATIC_DEPENDS
-                                  "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
-rocm_package_add_rpm_dependencies(STATIC_DEPENDS
-                                  "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
 
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
