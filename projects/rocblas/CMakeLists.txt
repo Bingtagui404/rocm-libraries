@@ -41,9 +41,14 @@ rocm_setup_version(VERSION ${PROJECT_VERSION})
 set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
 
+if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
+    if(NOT DEFINED ROCBLAS_ENABLE_CLIENT OR NOT ROCBLAS_ENABLE_CLIENT)
+        set(ROCBLAS_ENABLE_CLIENT ON CACHE BOOL "Build rocBLAS clients." FORCE)
+    endif()
+endif()
+
 set(HIP_RUNTIME_MINIMUM "4.5.0" CACHE STRING "Minimum HIP runtime version required")
 
-# GPU architecture configuration
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
 if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")
@@ -62,7 +67,6 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   endif()
 endif()
 
-# TODO: compute this before making project call
 option(ROCBLAS_ENABLE_SUPERBUILD "Build as ROCm BLAS subproject." OFF)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS "Export compile_commands.json for clang tooling support" ON)
@@ -76,7 +80,6 @@ if(ROCBLAS_ENABLE_CLIENT)
   option(ROCBLAS_ENABLE_BENCHMARKS "Build benchmark client." ON)
   option(ROCBLAS_ENABLE_SAMPLES "Build client samples." ON)
   option(ROCBLAS_ENABLE_FORTRAN "Build Fortran clients." ON)
-  # rocm-smi is not presently available on Windows so we do not require it.
   cmake_dependent_option(ROCBLAS_ENABLE_ROCM_SMI "Require rocm_smi." ON "NOT WIN32" OFF)
 endif()
 
@@ -92,6 +95,7 @@ set(ROCBLAS_CONFIG_DIR "\${CPACK_PACKAGING_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDI
 
 option(ROCBLAS_ENABLE_HOST "Build rocBLAS host library." ON)
 option(ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library." ON)
+#set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries")
 option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
 option(ROCBLAS_BUILD_COVERAGE "Build tests with coverage enabled." OFF)
 set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CACHE STRING "GTest filter for coverage tests.")
@@ -170,9 +174,14 @@ else()
       set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
     endif()
 
-    rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
-    rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
-    rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
+    block(SCOPE_FOR VARIABLES)
+        # Set BUILD_SHARED_LIBS for rocm-cmake packaging functions
+        set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS})
+        
+        rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
+        rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
+        rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
+    endblock()
 endif()
 
 if(ROCBLAS_ENABLE_HOST)
@@ -186,10 +195,12 @@ if(ROCBLAS_ENABLE_HOST)
                     "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
             endif()
             message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-            # Force Tensile to build as static library to match legacy build
-            # Not 
-            set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
-            add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+            # Force Tensile to build as static library
+            block(SCOPE_FOR VARIABLES)
+                #set(BUILD_SHARED_LIBS OFF)
+                set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
+                add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+            endblock()
         elseif(ROCBLAS_ENABLE_THEROCK)
             find_package(tensile REQUIRED)
         endif()
@@ -212,14 +223,11 @@ if(ROCBLAS_ENABLE_HOST)
     endif()
 endif()
 
-if(ROCBLAS_ENABLE_CLIENT)
-  add_subdirectory(clients)
-endif()
-
 # Set up client packaging components when any client is enabled
 # This ensures dependency variables and parent components are registered
 # before child components (tests, benchmarks, samples) reference them
 if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
+  add_subdirectory(clients)
   # Set up OS-specific dependencies for client components
   if(NOT CLIENTS_OS)
     rocm_set_os_id(CLIENTS_OS)
@@ -356,6 +364,33 @@ if(ROCBLAS_ENABLE_TENSILE)
                DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}" COMPONENT runtime)
 endif()
 
+# Stage and install common client files to clients-common component
+if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
+
+  rocm_install(
+    FILES
+      "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml"
+      "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml"
+      "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients-common
+  )
+
+  rocm_install(
+    PROGRAMS
+      "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients-common
+  )
+
+  rocm_install(
+    FILES
+      "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients
+  )
+endif()
+
 if(ROCBLAS_ENABLE_CLIENT)
   if(ROCBLAS_ENABLE_BENCHMARKS)
     rocm_install(TARGETS rocblas-bench COMPONENT benchmarks DESTINATION
@@ -371,16 +406,11 @@ if(ROCBLAS_ENABLE_CLIENT)
     rocm_install(TARGETS rocblas-test COMPONENT tests DESTINATION
                  ${CMAKE_INSTALL_BINDIR})
 
-    if(TARGET rocblas-test-data)
-      get_target_property(TEST_DATA rocblas-test-data ROCBLAS_INSTALL_FILES)
-      if(TEST_DATA)
-        rocm_install(
-          FILES ${TEST_DATA}
-          DESTINATION "${CMAKE_INSTALL_BINDIR}"
-          COMPONENT tests
-        )
-      endif()
-    endif()
+    rocm_install(
+      FILES "${PROJECT_BINARY_DIR}/staging/rocblas_gtest.data"
+      DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      COMPONENT tests
+    )
 
     if(TARGET rocblas-test-files)
       get_target_property(TEST_FILES rocblas-test-files ROCBLAS_INSTALL_FILES)

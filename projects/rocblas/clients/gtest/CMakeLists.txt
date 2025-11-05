@@ -152,22 +152,24 @@ set_target_properties(rocblas-test
         LINKER_LANGUAGE CXX
 )
 
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
 set(ROCBLAS_TEST_DATA "${PROJECT_BINARY_DIR}/staging/rocblas_gtest.data")
-
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_custom_command(
     OUTPUT "${ROCBLAS_TEST_DATA}"
-    COMMAND "${Python3_EXECUTABLE}" "../common/rocblas_gentest.py" -I "../include" "rocblas_gtest.yaml" -o "${ROCBLAS_TEST_DATA}"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/clients/common/rocblas_gentest.py"
+            -I "${PROJECT_SOURCE_DIR}/clients/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gtest.yaml"
+            -o "${ROCBLAS_TEST_DATA}"
+    DEPENDS 
+        "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gtest.yaml"
+        "${PROJECT_SOURCE_DIR}/clients/common/rocblas_gentest.py"
+    COMMENT "Generating test data: ${ROCBLAS_TEST_DATA}"
+    VERBATIM
 )
 
-add_custom_target(rocblas-test-data
+add_custom_target(rocblas-test-data ALL
     DEPENDS "${ROCBLAS_TEST_DATA}"
 )
 
 add_dependencies(rocblas-test rocblas-test-data)
-
-# TODO: Investigate if this custom property is actually used
-set_target_properties(rocblas-test-data
-    PROPERTIES
-        ROCBLAS_INSTALL_FILES "${ROCBLAS_TEST_DATA}"
-)

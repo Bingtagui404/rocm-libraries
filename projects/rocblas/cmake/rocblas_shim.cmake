@@ -135,6 +135,20 @@ if(DEFINED SKIP_LIBRARY)
 endif()
 
 # ==============================================================================
+# Infer ROCBLAS_ENABLE_CLIENT from child options
+# ==============================================================================
+
+# If any child client option is ON, automatically enable ROCBLAS_ENABLE_CLIENT
+# This ensures the client packaging logic is triggered, since all clients depend
+# on the clients and clients-common infrastructure
+if(ROCBLAS_BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
+    if(NOT DEFINED ROCBLAS_ENABLE_CLIENT)
+        set(ROCBLAS_ENABLE_CLIENT ON CACHE BOOL "Build rocBLAS clients." FORCE)
+        message(STATUS "Automatically enabled ROCBLAS_ENABLE_CLIENT because at least one child client option is ON")
+    endif()
+endif()
+
+# ==============================================================================
 # Display Migration Guidance
 # ==============================================================================
 

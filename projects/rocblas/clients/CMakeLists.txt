@@ -22,7 +22,7 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
     endif()
 
     if(ROCBLAS_ENABLE_ROCM_SMI)
-        find_package(ROCmSMI REQUIRED)
+        find_package(rocm_smi REQUIRED)
     endif()
 
     find_package(GTest REQUIRED)
@@ -119,3 +119,10 @@ if(ROCBLAS_ENABLE_OPENMP)
         endif()
     endif()
 endif()
+
+# Copy files to staging directory
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_common.yaml" "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_template.yaml" "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_general.yaml" "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/rocblas_gentest.py" "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/rocblas_clients_readme.txt" "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt" COPYONLY)
