@@ -216,9 +216,11 @@ if(ROCBLAS_ENABLE_CLIENT)
   add_subdirectory(clients)
 endif()
 
-if(ROCBLAS_ENABLE_CLIENT)
-  # TODO: This code needs to be invesigated to see if it is needed,
-  # and if so, how it can be cleaned up.
+# Set up client packaging components when any client is enabled
+# This ensures dependency variables and parent components are registered
+# before child components (tests, benchmarks, samples) reference them
+if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
+  # Set up OS-specific dependencies for client components
   if(NOT CLIENTS_OS)
     rocm_set_os_id(CLIENTS_OS)
     string(TOLOWER "${CLIENTS_OS}" CLIENTS_OS)
@@ -243,45 +245,48 @@ if(ROCBLAS_ENABLE_CLIENT)
     set(GFORTRAN_RPM "gfortran")
   endif()
 
+  # Register parent components BEFORE child components reference them
   rocm_package_setup_component(clients)
   rocm_package_setup_client_component(clients-common)
-endif()
 
-if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
-  rocm_package_setup_client_component(
-    tests
-    DEPENDS
-      COMPONENT clients-common
-      DEB "${OPENMP_DEB}"
-      RPM "${OPENMP_RPM}"
-  )
-endif()
+  # Register child components with proper dependencies
+  if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
+    rocm_package_setup_client_component(
+      tests
+      DEPENDS
+        COMPONENT clients-common
+        DEB "${OPENMP_DEB}"
+        RPM "${OPENMP_RPM}"
+    )
+  endif()
 
-if(ROCBLAS_ENABLE_BENCHMARKS)
-  rocm_package_setup_client_component(
-    benchmarks
-    DEPENDS
-      COMPONENT clients-common
-      DEB "${OPENMP_DEB}"
-      RPM "${OPENMP_RPM}"
-  )
-endif()
+  if(ROCBLAS_ENABLE_BENCHMARKS)
+    rocm_package_setup_client_component(
+      benchmarks
+      DEPENDS
+        COMPONENT clients-common
+        DEB "${OPENMP_DEB}"
+        RPM "${OPENMP_RPM}"
+    )
+  endif()
 
-if(ROCBLAS_ENABLE_SAMPLES)
-  rocm_package_setup_client_component(
-    samples
-    DEPENDS
-      COMPONENT clients-common
-      DEB "${OPENMP_DEB}"
-      RPM "${OPENMP_RPM}"
-  )
-endif()
+  if(ROCBLAS_ENABLE_SAMPLES)
+    rocm_package_setup_client_component(
+      samples
+      DEPENDS
+        COMPONENT clients-common
+        DEB "${OPENMP_DEB}"
+        RPM "${OPENMP_RPM}"
+    )
+  endif()
 
-if(ROCBLAS_ENABLE_FORTRAN)
-  rocm_package_add_rpm_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_RPM}")
-  rocm_package_add_deb_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_DEB}")
-  rocm_package_add_rpm_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_RPM}")
-  rocm_package_add_deb_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_DEB}")
+  # Add Fortran dependencies if Fortran clients are enabled
+  if(ROCBLAS_ENABLE_FORTRAN)
+    rocm_package_add_rpm_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_RPM}")
+    rocm_package_add_deb_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_DEB}")
+    rocm_package_add_rpm_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_RPM}")
+    rocm_package_add_deb_dependencies(COMPONENT benchmarks DEPENDS "${GFORTRAN_DEB}")
+  endif()
 endif()
 
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
