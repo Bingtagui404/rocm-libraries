@@ -20,7 +20,6 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
 
 project(
     rocblas
-    VERSION 5.2.0
     LANGUAGES C CXX)
 
 include(CMakeDependentOption)
@@ -33,7 +32,8 @@ include(rocblas_supported_architectures)
 include(query_git_hash)
 include(FetchROCmCMake)
 
-query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
+#query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
+rocm_setup_version(VERSION "5.2.0")
 
 if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
     if(NOT DEFINED ROCBLAS_ENABLE_CLIENT OR NOT ROCBLAS_ENABLE_CLIENT)
@@ -143,9 +143,6 @@ find_package(hip REQUIRED)
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
     if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-        #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hipblaslt" "${CMAKE_CURRENT_BINARY_DIR}/hipblaslt" EXCLUDE_FROM_ALL)
-        find_package(hipblaslt 1.0.0 REQUIRED)
-    elseif(ROCBLAS_ENABLE_THEROCK)
         find_package(hipblaslt 1.0.0 REQUIRED)
     endif()
     rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
@@ -170,7 +167,7 @@ if(ROCBLAS_ENABLE_HOST)
             block(SCOPE_FOR VARIABLES)
                 set(BUILD_SHARED_LIBS OFF)
                 set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
-                add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
+                add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/_tensile" EXCLUDE_FROM_ALL)
             endblock()
         elseif(ROCBLAS_ENABLE_THEROCK)
             find_package(tensile REQUIRED)
@@ -271,16 +268,17 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
 endif()
 
 if(ROCBLAS_ENABLE_HOST)
-    rocm_setup_version(VERSION ${PROJECT_VERSION})
-    set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
     rocm_install_targets(
       TARGETS rocblas
       INCLUDE
         "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}"
     )
     if(ROCBLAS_ENABLE_TENSILE)
-      rocm_install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
-                   DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}" COMPONENT runtime)
+      rocm_install(
+        DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
+        DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}"
+        COMPONENT runtime
+      )
     endif()
     if(ROCBLAS_ENABLE_FORTRAN)
       rocm_install(
@@ -303,6 +301,8 @@ if(ROCBLAS_ENABLE_HOST)
       DEPENDS PACKAGE hip
       NAMESPACE roc::
     )
+    set(rocblas_SOVERSION 5.2)
+    rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 endif()
 
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -355,7 +355,7 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
                  ${CMAKE_INSTALL_BINDIR})
 
     rocm_install(
-      FILES "${PROJECT_BINARY_DIR}/staging/rocblas_gtest.data"
+      FILES "${PROJECT_BINARY_DIR}/clients/staging/rocblas_gtest.data"
       DESTINATION "${CMAKE_INSTALL_BINDIR}"
       COMPONENT tests
     )
@@ -427,23 +427,23 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
 
   rocm_install(
     FILES
-      "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml"
-      "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml"
-      "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_common.yaml"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_template.yaml"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_general.yaml"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     COMPONENT clients-common
   )
 
   rocm_install(
     PROGRAMS
-      "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_gentest.py"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     COMPONENT clients-common
   )
 
   rocm_install(
     FILES
-      "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_clients_readme.txt"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     COMPONENT clients
   )

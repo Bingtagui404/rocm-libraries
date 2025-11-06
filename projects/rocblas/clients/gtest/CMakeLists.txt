@@ -1,7 +1,7 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/clients/staging")
 
 add_executable(rocblas-test)
 
@@ -141,7 +141,7 @@ if(WIN32)
     )
     foreach(file_i ${third_party_dlls})
         add_custom_command(TARGET rocblas-test POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/staging/")
+            COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/clients/staging/")
     endforeach()
 endif()
 
@@ -152,8 +152,8 @@ set_target_properties(rocblas-test
         LINKER_LANGUAGE CXX
 )
 
-file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/staging")
-set(ROCBLAS_TEST_DATA "${PROJECT_BINARY_DIR}/staging/rocblas_gtest.data")
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/clients/staging")
+set(ROCBLAS_TEST_DATA "${PROJECT_BINARY_DIR}/clients/staging/rocblas_gtest.data")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_custom_command(
     OUTPUT "${ROCBLAS_TEST_DATA}"

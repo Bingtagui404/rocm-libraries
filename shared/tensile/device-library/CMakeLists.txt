@@ -9,7 +9,6 @@ set(TENSILE_LOGIC_DIR
     "${tensile_SOURCE_DIR}/../../projects/rocblas/library/src/blas3/Tensile/Logic/asm_full"
     CACHE STRING "Path to directory containing logic files"
 )
-
 set(ROCBLAS_TENSILE_LIBPATH "${PROJECT_BINARY_DIR}/Tensile"
     CACHE STRING "Path to output the device gemm libraries."
 )
@@ -32,11 +31,10 @@ if(TENSILE_JOBS)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-# Use `PROJECT_BINARY_DIR` as the output directory so that the device libraries are built into the
-# top-level Tensile binary directory, and are locatable by rocBLAS at runtime.
 set(TENSILE_CREATE_LIBRARY_COMMAND Tensile/bin/TensileCreateLibrary ${TENSILE_BUILD_OPTS}
-                                   ${TENSILE_LOGIC_DIR} ${PROJECT_BINARY_DIR} HIP
+                                   ${TENSILE_LOGIC_DIR} ${ROCBLAS_TENSILE_LIBPATH} HIP
 )
+
 set(output_stamp "${CMAKE_CURRENT_BINARY_DIR}/Tensile.stamp")
 add_custom_command(
     COMMENT "Building device libraries..."
@@ -52,3 +50,5 @@ message(VERBOSE "Device lib build command: ${FORMATTED_TCL}")
 endblock()
 
 add_custom_target(tensile-device-libraries ALL DEPENDS "${output_stamp}")
+
+add_dependencies(tensile-host tensile-device-libraries)

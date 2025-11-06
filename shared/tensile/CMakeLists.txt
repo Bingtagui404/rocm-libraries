@@ -216,4 +216,5 @@ install(
 install(
     DIRECTORY "${TENSILE_SOURCE_DIR}/lib/include/Tensile"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT devel
 )
