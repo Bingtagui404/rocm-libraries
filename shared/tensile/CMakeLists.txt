@@ -13,6 +13,7 @@ include(CMakeDependentOption)
 include(tensile_supported_architectures)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(tensile_python)
 
 # Set C++ standard globally
 set(CMAKE_CXX_STANDARD 17)
@@ -44,6 +45,9 @@ message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
 
 find_package(OpenMP REQUIRED)
 find_package(hip REQUIRED)
+
+tensile_find_python(Development)
+tensile_configure_bundled_python_command("${CMAKE_BINARY_DIR}/lib" "")
 
 if(TENSILE_ENABLE_HOST)
     if(TENSILE_BUILD_SHARED_LIBS)

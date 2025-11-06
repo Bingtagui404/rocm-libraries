@@ -19,7 +19,7 @@ set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--separate-architectures")
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--lazy-library-loading")
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--no-short-file-names")
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS}
-                       "--architecture=\"${TENSILE_GPU_TARGETS_SEMI_ESCAPED}\""
+                       "--architecture=${TENSILE_GPU_TARGETS_SEMI_ESCAPED}"
 )
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--cxx-compiler=${CMAKE_CXX_COMPILER}")
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--code-object-version=${TENSILE_CODE_OBJECT_VERSION}")
@@ -30,18 +30,22 @@ if(TENSILE_JOBS)
     set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--jobs=${TENSILE_JOBS}")
 endif()
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-set(TENSILE_CREATE_LIBRARY_COMMAND Tensile/bin/TensileCreateLibrary ${TENSILE_BUILD_OPTS}
-                                   ${TENSILE_LOGIC_DIR} ${ROCBLAS_TENSILE_LIBPATH} HIP
+set(TENSILE_CREATE_LIBRARY_COMMAND
+    ${TENSILE_PYTHON_COMMAND} "${PROJECT_SOURCE_DIR}/Tensile/bin/TensileCreateLibrary"
+    ${TENSILE_BUILD_OPTS}
+    ${TENSILE_LOGIC_DIR}
+    "${ROCBLAS_TENSILE_LIBPATH}"
+    HIP
 )
 
 set(output_stamp "${CMAKE_CURRENT_BINARY_DIR}/Tensile.stamp")
 add_custom_command(
-    COMMENT "Building device libraries..."
+    OUTPUT "${output_stamp}"
+    COMMENT "Building device libraries to ${ROCBLAS_TENSILE_LIBPATH} ..."
     COMMAND ${TENSILE_CREATE_LIBRARY_COMMAND}
     COMMAND ${CMAKE_COMMAND} -E touch "${output_stamp}"
-    OUTPUT "${output_stamp}"
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    VERBATIM
+    USES_TERMINAL
 )
 
 block(SCOPE_FOR VARIABLES)
