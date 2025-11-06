@@ -29,17 +29,18 @@ endmacro()
 
 # Helper macro for conflict detection
 macro(_tensile_check_conflict old_var new_var)
-    # Only unset the cached legacy variable if there's an actual conflict
-    # This allows both variables to coexist peacefully when set to the same value
+    # Only check for conflicts if both variables are defined.
     if(DEFINED ${new_var} AND DEFINED ${old_var})
-        if(NOT "${${old_var}}" STREQUAL "${${new_var}}")
-            # Conflict detected - unset cache to prefer new variable
-            unset(${old_var} CACHE)
-            message(FATAL_ERROR
-                "Conflicting options detected:\n"
-                "  ${old_var}=${${old_var}} (deprecated)\n"
-                "  ${new_var}=${${new_var}}\n"
-                "Please remove ${old_var} from your build configuration and use only ${new_var}.")
+        # A conflict only occurs if both variables have non-empty values and they differ.
+        # Empty strings are treated as "not set" for conflict purposes.
+        if("${${old_var}}" AND "${${new_var}}")
+            if(NOT "${${old_var}}" STREQUAL "${${new_var}}")
+                message(FATAL_ERROR
+                    "Conflicting options detected:\n"
+                    "  ${old_var}=${${old_var}} (deprecated)\n"
+                    "  ${new_var}=${${new_var}}\n"
+                    "Please remove ${old_var} from your build configuration and use only ${new_var}.")
+            endif()
         endif()
     endif()
 endmacro()
@@ -80,6 +81,13 @@ shim_mapping(Tensile_ARCHITECTURE GPU_TARGETS "AMD GFX targets to cross-compile"
 shim_mapping(TENSILE_BUILD_CLIENT TENSILE_ENABLE_CLIENT "Build client app")
 shim_mapping(TENSILE_USE_MSGPACK TENSILE_ENABLE_MSGPACK "Enable MessagePack support")
 shim_mapping(TENSILE_USE_LLVM TENSILE_ENABLE_LLVM "Use llvm yaml library")
+shim_mapping(Tensile_CPU_THREADS TENSILE_JOBS "Number of parallel jobs" STRING)
+shim_mapping(Tensile_CODE_OBJECT_VERSION TENSILE_CODE_OBJECT_VERSION "Code object version" STRING)
+shim_mapping(Tensile_MERGE_FILES TENSILE_MERGE_FILES "Merge files")
+shim_mapping(Tensile_SHORT_FILENAMES TENSILE_SHORT_FILENAMES "Short filenames")
+shim_mapping(Tensile_PRINT_DEBUG TENSILE_VERBOSITY "Debug verbosity" STRING)
+shim_mapping(Tensile_SEPARATE_ARCHITECTURES TENSILE_SEPARATE_ARCHITECTURES "Separate architectures")
+shim_mapping(Tensile_LAZY_LIBRARY_LOADING TENSILE_LAZY_LIBRARY_LOADING "Lazy loading")
 
 # Map Tensile_LIBRARY_FORMAT → TENSILE_ENABLE_MSGPACK/TENSILE_ENABLE_LLVM
 if(DEFINED Tensile_LIBRARY_FORMAT)

@@ -14,10 +14,24 @@ set(ROCBLAS_TENSILE_LIBPATH "${PROJECT_BINARY_DIR}/Tensile"
 )
 file(MAKE_DIRECTORY "${ROCBLAS_TENSILE_LIBPATH}/library")
 
-set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--merge-files")
-set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--separate-architectures")
-set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--lazy-library-loading")
-set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--no-short-file-names")
+option(TENSILE_MERGE_FILES "Merge kernel and solution files" ON)
+option(TENSILE_SEPARATE_ARCHITECTURES "Use GPU architecture-specific files" ON)
+option(TENSILE_LAZY_LIBRARY_LOADING "Load kernels on demand" ON)
+option(TENSILE_SHORT_FILENAMES "Use short file names" OFF)
+
+if(TENSILE_MERGE_FILES)
+    set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--merge-files")
+endif()
+if(TENSILE_SEPARATE_ARCHITECTURES)
+    set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--separate-architectures")
+endif()
+if(TENSILE_LAZY_LIBRARY_LOADING)
+    set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--lazy-library-loading")
+endif()
+if(NOT TENSILE_SHORT_FILENAMES)
+    set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS} "--no-short-file-names")
+endif()
+
 set(TENSILE_BUILD_OPTS ${TENSILE_BUILD_OPTS}
                        "--architecture=${TENSILE_GPU_TARGETS_SEMI_ESCAPED}"
 )

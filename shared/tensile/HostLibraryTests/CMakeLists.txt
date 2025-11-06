@@ -2,71 +2,29 @@
 # SPDX-License-Identifier: MIT
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  # Option 2: add the parent directory as a subproject
-  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
-endif()
+    # We are being run standalone
+    cmake_minimum_required(VERSION 3.25)
 
-if(TENSILE_USE_HIP)
-    set(TENSILE_COMPONENTS HIP)
-    if(TENSILE_USE_LLVM)
-        set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} Client)
+    # Pretend this is a project, but without a literal project() call.
+    # (This will prevent dev warnings about missing project())
+    set(_STANDALONE TRUE)
+    set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "No dev warnings")
+    
+    # Optionally set policies that would otherwise warn
+    if(COMMAND cmake_policy)
+        cmake_policy(SET CMP0003 NEW)
+        cmake_policy(SET CMP0012 NEW)
     endif()
+
+    # Bring in the parent (or one level up)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
-if(TENSILE_USE_LLVM)
-    set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} LLVM)
-endif()
-
-if(TENSILE_USE_OPENMP)
-    set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} OpenMP)
-endif()
-
-if(TENSILE_STATIC_ONLY)
-    set(TENSILE_COMPONENTS ${TENSILE_COMPONENTS} STATIC_ONLY)
-endif()
-
-if(NOT Tensile_FOUND)
-    find_package(Tensile 4.44.0 EXACT REQUIRED ${TENSILE_COMPONENTS} PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../Tensile")
-endif()
-
-if(NOT TENSILE_DISABLE_CTEST)
-    enable_testing()
-
-    if(CMAKE_VERSION VERSION_GREATER 3.9)
-        include(GoogleTest)
-        option(GTEST_INTEGRATION "Enable Googletest integration with CMake." ON)
-    else()
-        option(GTEST_INTEGRATION "Enable Googletest integration with CMake." OFF)
-    endif()
-endif()
-
-set(INSTALL_GTEST OFF CACHE BOOL "Install GTest")
-
-add_subdirectory(googletest)
-
-if(NOT gtest_SOURCE_DIR)
-    message(FATAL_ERROR "googletest not found. Run git submodule update --init")
-endif()
-
-find_package(Boost COMPONENTS filesystem)
-
-if(TENSILE_USE_HIP)
-    find_package(HIP REQUIRED CONFIG PATHS $ENV{ROCM_PATH} /opt/rocm)
-endif()
-
-if(TENSILE_USE_OPENMP AND NOT TARGET custom_openmp_cxx)
-    # Workaround for https://gitlab.kitware.com/cmake/cmake/-/issues/21787
-    # Ensures we link to HIP's libomp and get an rpath to it
-    add_library(custom_openmp_cxx INTERFACE)
-
-    if(TENSILE_USE_HIP)
-        target_compile_options(custom_openmp_cxx INTERFACE "-fopenmp")
-        target_link_options(custom_openmp_cxx INTERFACE "-fopenmp")
-    else()
-        find_package(OpenMP REQUIRED)
-        target_link_libraries(custom_openmp_cxx INTERFACE OpenMP::OpenMP_CXX)
-    endif()
-endif()
+enable_testing()
+find_package(hip REQUIRED)
+find_package(Threads REQUIRED)
+find_package(GTest REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem)
 
 add_subdirectory(configs)
 
@@ -81,78 +39,73 @@ foreach(FILE ${SOLUTION_LIBRARY_FILES})
     file(COPY ${FILE} DESTINATION "${TEST_DATA_DIR}")
 endforeach(FILE)
 
-include_directories("." ${GTEST_SOURCE_DIR}/include)
-
 add_subdirectory(testlib)
 
-set(test_sources
-    ${test_sources}
-    test.cpp
-    CachingLibrary_test.cpp
-    ContractionProblem_test.cpp
-    ContractionSelectionLibrary_test.cpp
-    ContractionFitness_test.cpp
-    MultipleSolutionsPerSize_test.cpp
-    DataTypes_test.cpp
-    EmbeddedData_test.cpp
-    KernelArguments_test.cpp
-    Predicates_test.cpp
-    ProjectedPerformance_test.cpp
-    DecisionTree_test.cpp
-    TensorDescriptor_test.cpp
-    TestData_test.cpp
-    Utils_test.cpp
-)
+add_executable(TensileTests)
 
-if(TENSILE_USE_LLVM)
-    find_package(LLVM REQUIRED CONFIG)
-
-    set(test_sources
-        ${test_sources}
-        ContractionLibraryLoading_test.cpp
+target_sources(TensileTests
+    PRIVATE
+        test.cpp
+        CachingLibrary_test.cpp
+        ContractionProblem_test.cpp
+        ContractionSelectionLibrary_test.cpp
         ContractionFitness_test.cpp
         MultipleSolutionsPerSize_test.cpp
-        llvm/ArithmeticUnitPredicate_test.cpp
-        llvm/CUEfficiencyPredicate_test.cpp
-        llvm/DeterministicModePredicate_test.cpp
-        llvm/KernelLanguagePredicate_test.cpp
-        llvm/LLVMYAMLContraction_test.cpp
-        llvm/LibraryPerformance_test.cpp
+        DataTypes_test.cpp
+        EmbeddedData_test.cpp
+        KernelArguments_test.cpp
+        Predicates_test.cpp
+        ProjectedPerformance_test.cpp
+        DecisionTree_test.cpp
+        TensorDescriptor_test.cpp
+        TestData_test.cpp
+        Utils_test.cpp
+)
+
+if(TENSILE_ENABLE_LLVM)
+    target_sources(TensileTests
+        PRIVATE
+            ContractionLibraryLoading_test.cpp
+            ContractionFitness_test.cpp
+            MultipleSolutionsPerSize_test.cpp
+            llvm/ArithmeticUnitPredicate_test.cpp
+            llvm/CUEfficiencyPredicate_test.cpp
+            llvm/DeterministicModePredicate_test.cpp
+            llvm/KernelLanguagePredicate_test.cpp
+            llvm/LLVMYAMLContraction_test.cpp
+            llvm/LibraryPerformance_test.cpp
     )
 endif()
 
-if(Client IN_LIST TENSILE_COMPONENTS)
-    set(test_sources ${test_sources} client/DataInitialization_test.cpp)
+if(TENSILE_ENABLE_CLIENT)
+    target_sources(TensileTests PRIVATE client/DataInitialization_test.cpp)
 endif()
 
-if(TENSILE_USE_HIP)
+if(TENSILE_ENABLE_HIP)
     add_subdirectory(hip)
 endif()
 
-add_executable(TensileTests ${test_sources})
-
 target_link_libraries(TensileTests
     PUBLIC
-        ${Boost_LIBRARIES}
-        TensileHost
+        roc::tensile-host
+        Boost::filesystem
+    PRIVATE
         TensileTestLib
-        gtest
+        GTest::gtest
+        hip::device
 )
 
-if(TENSILE_USE_LLVM)
+if(TENSILE_ENABLE_LLVM)
     find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
-    message("LLVMObjectYAML_LIBRARY: ${LLVMObjectYAML_LIBRARY}")
-
     if(LLVMObjectYAML_LIBRARY)
         target_link_libraries(TensileTests PUBLIC LLVMObjectYAML)
     else()
         target_link_libraries(TensileTests PUBLIC LLVM)
     endif()
-
     target_include_directories(TensileTests PUBLIC ${LLVM_INCLUDE_DIRS})
 endif()
 
-if(TENSILE_USE_HIP)
+if(TENSILE_ENABLE_HIP)
     target_link_libraries(TensileTests PRIVATE "-Xlinker --whole-archive")
     target_link_libraries(TensileTests PUBLIC ${HIP_TEST_LIBRARIES})
     target_link_libraries(TensileTests PRIVATE "-Xlinker --no-whole-archive")
@@ -162,23 +115,17 @@ if(TENSILE_USE_HIP)
     endforeach(arch)
 endif()
 
-if(TENSILE_USE_OPENMP)
-    target_link_libraries(TensileTests PRIVATE custom_openmp_cxx)
+if(TENSILE_ENABLE_OPENMP)
+    target_link_libraries(TensileTests PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-if(NOT TENSILE_DISABLE_CTEST)
-    if(GTEST_INTEGRATION)
-        gtest_discover_tests(TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
-    else()
-        add_test(NAME TensileHostLibraryTests COMMAND TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-    endif()
-endif()
+gtest_discover_tests(TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
 
 if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
-    message(STATUS "Code coverage for TensileHost is ENABLED.")
+    message(STATUS "Code coverage for tensile-host is ENABLED.")
 
-    target_compile_options(TensileHost PRIVATE -fprofile-instr-generate -fcoverage-mapping)
-    target_link_options(TensileHost PUBLIC -fprofile-instr-generate)
+    target_compile_options(tensile-host PRIVATE -fprofile-instr-generate -fcoverage-mapping)
+    target_link_options(tensile-host PUBLIC -fprofile-instr-generate)
 
     set(coverage_dir "${CMAKE_CURRENT_BINARY_DIR}/coverage-report")
 
@@ -204,13 +151,13 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
             ${LLVM_PROFDATA} merge -sparse "${coverage_dir}/profraw/tensile-host-coverage_*.profraw"
             -o "${coverage_dir}/tensile-host.profdata"
         COMMAND
-            ${LLVM_COV} report -object $<TARGET_FILE:TensileHost>
+            ${LLVM_COV} report -object $<TARGET_FILE:tensile-host>
             -instr-profile="${coverage_dir}/tensile-host.profdata"
         COMMAND
-            ${LLVM_COV} show -object $<TARGET_FILE:TensileHost>
+            ${LLVM_COV} show -object $<TARGET_FILE:tensile-host>
             -instr-profile="${coverage_dir}/tensile-host.profdata" -format=html
             -output-dir="${coverage_dir}"
         COMMENT
-            "Generating TensileHost coverage... HTML report in ${coverage_dir}/index.html"
+            "Generating tensile-host coverage... HTML report in ${coverage_dir}/index.html"
     )
 endif()
