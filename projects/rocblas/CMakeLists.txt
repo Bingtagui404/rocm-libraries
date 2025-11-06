@@ -14,10 +14,8 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Load backward compatibility shims BEFORE processing options
 include(rocblas_shim)
 
-# Set cpack license file here to avoid rocm-cmake warning
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
 
 project(
@@ -25,20 +23,16 @@ project(
     VERSION 5.2.0
     LANGUAGES C CXX)
 
-# Include required CMake modules
 include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 
-# Include project-specific modules
 include(rocblas_target_configure_sanitizers)
 include(rocblas_supported_architectures)
 include(query_git_hash)
 include(FetchROCmCMake)
 
-rocm_setup_version(VERSION ${PROJECT_VERSION})
-set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
@@ -95,7 +89,7 @@ set(ROCBLAS_CONFIG_DIR "\${CPACK_PACKAGING_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDI
 
 option(ROCBLAS_ENABLE_HOST "Build rocBLAS host library." ON)
 option(ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library." ON)
-#set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries")
+set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries")
 option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
 option(ROCBLAS_BUILD_COVERAGE "Build tests with coverage enabled." OFF)
 set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CACHE STRING "GTest filter for coverage tests.")
@@ -118,15 +112,12 @@ if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
   if(ROCBLAS_ENABLE_FORTRAN)
     message(FATAL_ERROR "Cannot enable fortran clients and code coverage.")
   endif()
-  # Note: Coverage flags are applied via target_compile_options which work with all build types.
-  # The previous CMAKE_BUILD_TYPE check was removed as it's not portable for multi-config generators.
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
     enable_language(Fortran)
 endif()
 
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard version")
 option(CMAKE_CXX_STANDARD_REQUIRED "" ON)
 option(CMAKE_CXX_EXTENSIONS "Enable c++ extenstions (default: OFF)" OFF)
@@ -164,26 +155,6 @@ if(ROCBLAS_ENABLE_ROCM_SMI)
   find_package(rocm_smi REQUIRED)
 endif()
 
-# HIP runtime dependency setup
-if( HIP_RUNTIME MATCHES ".*cuda.*" )
-  rocm_package_add_dependencies(DEPENDS "hip-nvcc >= 3.5.0")
-else()
-    if(ROCBLAS_ENABLE_ASAN)
-      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd-asan")
-    else()
-      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
-    endif()
-
-    block(SCOPE_FOR VARIABLES)
-        # Set BUILD_SHARED_LIBS for rocm-cmake packaging functions
-        set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS})
-        
-        rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
-        rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
-        rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
-    endblock()
-endif()
-
 if(ROCBLAS_ENABLE_HOST)
     if(ROCBLAS_ENABLE_TENSILE)
         if(NOT ROCBLAS_ENABLE_SUPERBUILD)
@@ -197,7 +168,7 @@ if(ROCBLAS_ENABLE_HOST)
             message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
             # Force Tensile to build as static library
             block(SCOPE_FOR VARIABLES)
-                #set(BUILD_SHARED_LIBS OFF)
+                set(BUILD_SHARED_LIBS OFF)
                 set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
                 add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/tensile")
             endblock()
@@ -207,6 +178,7 @@ if(ROCBLAS_ENABLE_HOST)
     endif()
 
     add_subdirectory(library)
+
     if(ROCBLAS_ENABLE_MARKER)
         include(FindPackageHandleStandardArgs)
 
@@ -254,6 +226,7 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
   endif()
 
   # Register parent components BEFORE child components reference them
+  # Set up core library packaging components
   rocm_package_setup_component(clients)
   rocm_package_setup_client_component(clients-common)
 
@@ -297,6 +270,41 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
   endif()
 endif()
 
+if(ROCBLAS_ENABLE_HOST)
+    rocm_setup_version(VERSION ${PROJECT_VERSION})
+    set(rocblas_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
+    rocm_install_targets(
+      TARGETS rocblas
+      INCLUDE
+        "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}"
+    )
+    if(ROCBLAS_ENABLE_TENSILE)
+      rocm_install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
+                   DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}" COMPONENT runtime)
+    endif()
+    if(ROCBLAS_ENABLE_FORTRAN)
+      rocm_install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
+        COMPONENT devel
+        FILES_MATCHING
+          PATTERN "*.h"
+          PATTERN "*.f90")
+    else()
+      rocm_install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
+        COMPONENT devel
+        FILES_MATCHING
+          PATTERN "*.h")
+    endif()
+    rocm_export_targets(
+      TARGETS roc::rocblas
+      DEPENDS PACKAGE hip
+      NAMESPACE roc::
+    )
+endif()
+
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     "\${CPACK_PACKAGING_INSTALL_PREFIX}")
@@ -313,29 +321,6 @@ else()
 endif()
 
 # cmake-format: off
-rocm_install(
-  TARGETS rocblas
-  EXPORT rocblas-targets
-  ARCHIVE COMPONENT devel
-  LIBRARY COMPONENT runtime
-  RUNTIME COMPONENT runtime)
-
-if(ROCBLAS_ENABLE_FORTRAN)
-  rocm_install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
-    COMPONENT devel
-    FILES_MATCHING
-      PATTERN "*.h"
-      PATTERN "*.f90")
-else()
-  rocm_install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
-    COMPONENT devel
-    FILES_MATCHING
-      PATTERN "*.h")
-endif()
 
 rocm_install(
   FILES
@@ -351,47 +336,10 @@ rocm_install(
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
   COMPONENT devel)
 
-  rocm_export_targets(
-    NAMESPACE roc::
-    TARGETS rocblas
-    EXPORT rocblas-targets
-    DEPENDS
-      PACKAGE hip)
 # cmake-format: on
-
-if(ROCBLAS_ENABLE_TENSILE)
-  rocm_install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
-               DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}" COMPONENT runtime)
-endif()
-
 # Stage and install common client files to clients-common component
 if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
 
-  rocm_install(
-    FILES
-      "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml"
-      "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml"
-      "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT clients-common
-  )
-
-  rocm_install(
-    PROGRAMS
-      "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT clients-common
-  )
-
-  rocm_install(
-    FILES
-      "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT clients
-  )
-endif()
-
-if(ROCBLAS_ENABLE_CLIENT)
   if(ROCBLAS_ENABLE_BENCHMARKS)
     rocm_install(TARGETS rocblas-bench COMPONENT benchmarks DESTINATION
                  ${CMAKE_INSTALL_BINDIR})
@@ -476,6 +424,43 @@ if(ROCBLAS_ENABLE_CLIENT)
         ${CMAKE_INSTALL_BINDIR})
     endif()
   endif()
+
+  rocm_install(
+    FILES
+      "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml"
+      "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml"
+      "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients-common
+  )
+
+  rocm_install(
+    PROGRAMS
+      "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients-common
+  )
+
+  rocm_install(
+    FILES
+      "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT clients
+  )
+endif()
+
+if( HIP_RUNTIME MATCHES ".*cuda.*" )
+  rocm_package_add_dependencies(DEPENDS "hip-nvcc >= 3.5.0")
+else()
+    if(ROCBLAS_ENABLE_ASAN)
+      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd-asan")
+    else()
+      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
+    endif()
+
+    rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
+    rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
+    rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
 endif()
 
 rocm_create_package(

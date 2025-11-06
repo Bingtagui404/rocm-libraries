@@ -29,15 +29,12 @@ endmacro()
 
 # Helper macro for conflict detection
 macro(_tensile_check_conflict old_var new_var)
-    # If new variable is defined, unset any cached legacy variable to avoid conflicts
-    # This allows smooth migration from legacy to modern options without requiring build dir removal
-    if(DEFINED ${new_var})
-        unset(${old_var} CACHE)
-    endif()
-
-    # Only check for actual conflicts if both are actively being set
-    if(DEFINED ${old_var} AND DEFINED ${new_var})
+    # Only unset the cached legacy variable if there's an actual conflict
+    # This allows both variables to coexist peacefully when set to the same value
+    if(DEFINED ${new_var} AND DEFINED ${old_var})
         if(NOT "${${old_var}}" STREQUAL "${${new_var}}")
+            # Conflict detected - unset cache to prefer new variable
+            unset(${old_var} CACHE)
             message(FATAL_ERROR
                 "Conflicting options detected:\n"
                 "  ${old_var}=${${old_var}} (deprecated)\n"

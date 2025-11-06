@@ -112,7 +112,6 @@ else()
 endif()
 
 add_library(roc::rocblas ALIAS rocblas)
-rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 
 if(ROCBLAS_ENABLE_ASAN)
     rocblas_target_configure_sanitizers(rocblas PRIVATE)

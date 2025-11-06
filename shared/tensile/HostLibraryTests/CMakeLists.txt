@@ -1,27 +1,9 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 3.13)
-
-project(TensileHostLibraryTest)
-
-# Set C++ standard globally
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-list(APPEND CMAKE_PREFIX_PATH $ENV{ROCM_PATH} /opt/rocm)
-
-option(TENSILE_USE_HIP "Use the Hip runtime." ON)
-option(TENSILE_USE_LLVM "Use LLVM for parsing config files." ON)
-option(TENSILE_USE_MSGPACK "Use msgpack for parsing config files." ON)
-option(TENSILE_USE_OPENMP "Enable OpenMP multithreading." ON)
-option(TENSILE_STATIC_ONLY "Disable exposing Tensile symbols in a shared library." ON)
-option(TENSILE_DISABLE_CTEST "Disable CTest integration." ON)
-option(TENSILE_ENABLE_COVERAGE "Enable code coverage for TensileHost library." OFF)
-option(BUILD_CODE_COVERAGE "Enable code coverage for TensileHost library." OFF)
-
-if((TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE) AND (NOT CMAKE_BUILD_TYPE STREQUAL "Debug"))
-    message(FATAL_ERROR "Code coverage requires CMAKE_BUILD_TYPE=Debug.")
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  # Option 2: add the parent directory as a subproject
+  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
 if(TENSILE_USE_HIP)
