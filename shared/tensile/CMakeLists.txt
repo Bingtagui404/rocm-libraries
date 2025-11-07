@@ -19,7 +19,7 @@ include(tensile_python)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(TENSILE_BUILD_SHARED_LIBS "Build shared library" ON)
+option(TENSILE_BUILD_SHARED_LIBS "Build shared library" OFF)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
 option(TENSILE_ENABLE_HOST "Build host library" ON)
 option(TENSILE_ENABLE_DEVICE "Build device libraries" ON)
@@ -58,7 +58,7 @@ if(TENSILE_ENABLE_HOST)
 
     add_library(roc::tensile-host ALIAS tensile-host)
 
-    target_link_libraries(tensile-host PRIVATE hip::device)
+    target_link_libraries(tensile-host PRIVATE hip::host)
 
     target_include_directories(tensile-host
         PUBLIC

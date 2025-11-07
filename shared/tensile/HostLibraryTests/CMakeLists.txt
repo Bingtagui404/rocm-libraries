@@ -4,6 +4,7 @@
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # We are being run standalone
     cmake_minimum_required(VERSION 3.25)
+    project(tensile-tests)
 
     # Pretend this is a project, but without a literal project() call.
     # (This will prevent dev warnings about missing project())
@@ -17,6 +18,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     # Bring in the parent (or one level up)
+    set(TENSILE_ENABLE_DEVICE OFF)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
@@ -32,65 +34,61 @@ set(TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
 file(MAKE_DIRECTORY "${TEST_DATA_DIR}")
 
 foreach(FILE ${SOLUTION_LIBRARY_FILES})
-    if(EXISTS ${FILE})
-        message(WARNING "Overwriting ${FILE} from ${FILE}.gz")
+    if(EXISTS "${FILE}.gz")
+        execute_process(COMMAND gzip --keep --decompress --force "${FILE}.gz")
     endif()
-    execute_process(COMMAND gzip --keep --decompress --force "${FILE}.gz")
-    file(COPY ${FILE} DESTINATION "${TEST_DATA_DIR}")
+    if(EXISTS ${FILE})
+        file(COPY ${FILE} DESTINATION "${TEST_DATA_DIR}")
+    endif()
 endforeach(FILE)
 
 add_subdirectory(testlib)
 
-add_executable(TensileTests)
+add_executable(tensile-tests)
 
-target_sources(TensileTests
+target_sources(tensile-tests
     PRIVATE
-        test.cpp
-        CachingLibrary_test.cpp
-        ContractionProblem_test.cpp
-        ContractionSelectionLibrary_test.cpp
-        ContractionFitness_test.cpp
-        MultipleSolutionsPerSize_test.cpp
-        DataTypes_test.cpp
-        EmbeddedData_test.cpp
-        KernelArguments_test.cpp
-        Predicates_test.cpp
-        ProjectedPerformance_test.cpp
-        DecisionTree_test.cpp
-        TensorDescriptor_test.cpp
-        TestData_test.cpp
-        Utils_test.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/CachingLibrary_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ContractionProblem_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ContractionSelectionLibrary_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ContractionFitness_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/MultipleSolutionsPerSize_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/DataTypes_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedData_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/KernelArguments_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Predicates_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ProjectedPerformance_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/DecisionTree_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/TensorDescriptor_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/TestData_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Utils_test.cpp"
 )
 
 if(TENSILE_ENABLE_LLVM)
-    target_sources(TensileTests
+    target_sources(tensile-tests
         PRIVATE
-            ContractionLibraryLoading_test.cpp
-            ContractionFitness_test.cpp
-            MultipleSolutionsPerSize_test.cpp
-            llvm/ArithmeticUnitPredicate_test.cpp
-            llvm/CUEfficiencyPredicate_test.cpp
-            llvm/DeterministicModePredicate_test.cpp
-            llvm/KernelLanguagePredicate_test.cpp
-            llvm/LLVMYAMLContraction_test.cpp
-            llvm/LibraryPerformance_test.cpp
+            "${CMAKE_CURRENT_SOURCE_DIR}/ContractionLibraryLoading_test.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ContractionFitness_test.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/MultipleSolutionsPerSize_test.cpp"
     )
+    add_subdirectory(llvm)
 endif()
 
 if(TENSILE_ENABLE_CLIENT)
-    target_sources(TensileTests PRIVATE client/DataInitialization_test.cpp)
+    target_sources(tensile-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/client/DataInitialization_test.cpp")
 endif()
 
 if(TENSILE_ENABLE_HIP)
     add_subdirectory(hip)
 endif()
 
-target_link_libraries(TensileTests
+target_link_libraries(tensile-tests
     PUBLIC
         roc::tensile-host
         Boost::filesystem
     PRIVATE
-        TensileTestLib
+        tensile::tensile-test-lib
         GTest::gtest
         hip::device
 )
@@ -98,28 +96,33 @@ target_link_libraries(TensileTests
 if(TENSILE_ENABLE_LLVM)
     find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
     if(LLVMObjectYAML_LIBRARY)
-        target_link_libraries(TensileTests PUBLIC LLVMObjectYAML)
+        target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
     else()
-        target_link_libraries(TensileTests PUBLIC LLVM)
+        target_link_libraries(tensile-tests PUBLIC LLVM)
     endif()
-    target_include_directories(TensileTests PUBLIC ${LLVM_INCLUDE_DIRS})
+    target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
 endif()
 
 if(TENSILE_ENABLE_HIP)
-    target_link_libraries(TensileTests PRIVATE "-Xlinker --whole-archive")
-    target_link_libraries(TensileTests PUBLIC ${HIP_TEST_LIBRARIES})
-    target_link_libraries(TensileTests PRIVATE "-Xlinker --no-whole-archive")
-
-    foreach(arch IN LISTS GPU_TARGETS)
-        target_link_libraries(TensileTests PRIVATE "--offload-arch=${arch}")
-    endforeach(arch)
+    target_link_libraries(tensile-tests PRIVATE "-Xlinker --whole-archive")
+    target_link_libraries(tensile-tests PUBLIC ${HIP_TEST_LIBRARIES})
+    target_link_libraries(tensile-tests PRIVATE "-Xlinker --no-whole-archive")
 endif()
 
 if(TENSILE_ENABLE_OPENMP)
-    target_link_libraries(TensileTests PRIVATE OpenMP::OpenMP_CXX)
+    find_package(OpenMP CONFIG)
+    if(OpenMP_FOUND)
+        add_library(rocm-omp-shim INTERFACE)
+        add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim)
+        set_target_properties(rocm-omp-shim PROPERTIES INTERFACE_COMPILE_OPTIONS -fopenmp INTERFACE_LINK_LIBRARIES OpenMP::omp)
+    else()
+        message(STATUS "Did not find rocm-omp - falling back to gomp")
+        find_package(OpenMP REQUIRED)
+    endif()
+    target_link_libraries(tensile-tests PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-gtest_discover_tests(TensileTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
+gtest_discover_tests(tensile-tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
 
 if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
     message(STATUS "Code coverage for tensile-host is ENABLED.")
@@ -131,13 +134,13 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
 
     add_custom_target(
         code_cov_tests
-        DEPENDS TensileTests
+        DEPENDS tensile-tests
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${coverage_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${coverage_dir}/profraw"
         COMMAND
             ${CMAKE_COMMAND} -E env
             "LLVM_PROFILE_FILE=${coverage_dir}/profraw/tensile-host-coverage_%m.profraw"
-            GTEST_LISTENER=NO_PASS_LINE_IN_LOG $<TARGET_FILE:TensileTests>
+            GTEST_LISTENER=NO_PASS_LINE_IN_LOG $<TARGET_FILE:tensile-tests>
             "--gtest_filter=-*Extended*:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/504:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/505:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/506:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/507:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/508:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/509"
     )
 

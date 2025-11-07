@@ -25,6 +25,6 @@ target_compile_definitions(tensile-test-lib PRIVATE BOOST_ERROR_CODE_HEADER_ONLY
 
 # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
 
-if(TENSILE_USE_OPENMP)
+if(TENSILE_ENABLE_OPENMP)
     target_link_libraries(tensile-test-lib PRIVATE OpenMP::OpenMP_CXX)
 endif()

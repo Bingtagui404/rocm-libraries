@@ -1,7 +1,7 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-if(TENSILE_USE_LLVM)
+if(TENSILE_ENABLE_LLVM)
     set(SOLUTION_LIBRARY_FILES_
         ${SOLUTION_LIBRARY_FILES_}
         "${CMAKE_CURRENT_SOURCE_DIR}/SolutionLibraries/KernelsLite.yaml"
@@ -12,7 +12,7 @@ if(TENSILE_USE_LLVM)
         "${CMAKE_CURRENT_SOURCE_DIR}/SolutionLibraries/rocBLAS_Full.yaml")
 endif()
 
-if(TENSILE_USE_MSGPACK)
+if(TENSILE_ENABLE_MSGPACK)
     set(SOLUTION_LIBRARY_FILES_
         ${SOLUTION_LIBRARY_FILES_}
         "${CMAKE_CURRENT_SOURCE_DIR}/SolutionLibraries/KernelsLite.dat"
