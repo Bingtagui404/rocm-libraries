@@ -7,7 +7,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(tensile_shim)
 
-project(tensile VERSION 4.44.0 LANGUAGES CXX)
+project(tensile VERSION 4.45.0 LANGUAGES CXX)
 
 include(CMakeDependentOption)
 include(tensile_supported_architectures)
@@ -17,7 +17,8 @@ include(tensile_python)
 
 # Set C++ standard globally
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
+option(CMAKE_CXX_EXTENSIONS "" OFF)
+option(CXX_STANDARD_REQUIRED "" ON)
 
 option(TENSILE_BUILD_SHARED_LIBS "Build shared library" OFF)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
@@ -26,12 +27,8 @@ option(TENSILE_ENABLE_DEVICE "Build device libraries" ON)
 option(TENSILE_ENABLE_CLIENT "Build client app" OFF)
 option(TENSILE_ENABLE_MSGPACK "Enable MessagePack support" ON)
 option(TENSILE_ENABLE_LLVM "Use llvm yaml library" OFF)
+option(TENSILE_ENABLE_OPENMP "Enable openmp support" ON)
 cmake_dependent_option(TENSILE_ENABLE_ROCM_SMI "Use rocm_smi." ON "NOT WIN32" OFF)
-
-set(TENSILE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source")
-
-set(TENSILE_CXX_STANDARD "17" CACHE STRING "C++ standard version to use (14, 17, 20)")
-set_property(CACHE TENSILE_CXX_STANDARD PROPERTY STRINGS "14" "17" "20")
 
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
@@ -43,8 +40,39 @@ endif()
 
 message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
 
-find_package(OpenMP REQUIRED)
+set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
+# need to account for openmp_LIB_DIR - not sure what cases that would be different from lib
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
+
+mark_as_advanced(CMAKE_SKIP_BUILD_RPATH)
+mark_as_advanced(CMAKE_BUILD_WITH_INSTALL_RPATH)
+mark_as_advanced(CMAKE_INSTALL_RPATH)
+mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
+
+set(TENSILE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source")
+
 find_package(hip REQUIRED)
+
+if(TENSILE_ENABLE_OPENMP)
+    # Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
+    find_package(OpenMP CONFIG)
+    if(OpenMP_FOUND)
+        add_library(rocm-omp-shim INTERFACE)
+        # TODO: Investigate if this alias causes issues in superbuild
+        add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim)
+    
+        set_target_properties(rocm-omp-shim
+            PROPERTIES
+                INTERFACE_COMPILE_OPTIONS -fopenmp
+                INTERFACE_LINK_LIBRARIES OpenMP::omp
+        )
+    else()
+        message(STATUS "Did not find rocm-omp - falling back to gomp")
+        find_package(OpenMP REQUIRED)
+    endif()
+endif()
 
 tensile_find_python(Development)
 tensile_configure_bundled_python_command("${CMAKE_BINARY_DIR}/lib" "")
@@ -58,7 +86,7 @@ if(TENSILE_ENABLE_HOST)
 
     add_library(roc::tensile-host ALIAS tensile-host)
 
-    target_link_libraries(tensile-host PRIVATE hip::host)
+    target_link_libraries(tensile-host PRIVATE hip::device)
 
     target_include_directories(tensile-host
         PUBLIC
@@ -122,10 +150,11 @@ if(TENSILE_ENABLE_ROCM_SMI)
 endif()
 
 if(TENSILE_ENABLE_CLIENT)
-    find_package(Boost REQUIRED COMPONENTS program_options)
 
-    add_library(tensile-client-lib OBJECT)
-    add_library(tensile::tensile-client-lib ALIAS tensile-client-lib)
+    add_library(tensile-client-lib STATIC)
+    add_library(tensile::client-lib ALIAS tensile-client-lib)
+
+    find_package(Boost REQUIRED COMPONENTS program_options)
 
     target_link_libraries(tensile-client-lib
         PRIVATE
@@ -133,73 +162,31 @@ if(TENSILE_ENABLE_CLIENT)
             Boost::program_options
             OpenMP::OpenMP_CXX
             roc::tensile-host
+            hip::device
     )
 
-    target_include_directories(tensile-client-lib PUBLIC $<BUILD_INTERFACE:${TENSILE_SOURCE_DIR}/client/include>)
+    target_include_directories(tensile-client-lib PRIVATE "${TENSILE_SOURCE_DIR}/client/include")
 
-    # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
-
-    if(rocm_smi_FOUND)
+    if(TENSILE_ENABLE_ROCM_SMI)
         target_link_libraries(tensile-client-lib PRIVATE rocm_smi64)
     endif()
 
-    add_executable(tensile-client)
-
-    target_link_libraries(tensile-client PRIVATE roc::tensile-host tensile::tensile-client-lib)
-
-    target_compile_definitions(tensile-client
+    target_compile_definitions(tensile-client-lib
         PRIVATE
             BOOST_ALL_NO_LIB
             BOOST_PROGRAM_OPTIONS_DYN_LINK
-        PUBLIC
             __HIP_HCC_COMPAT_MODE__=1
     )
+
+    add_executable(tensile-client)
+    target_link_libraries(tensile-client PRIVATE tensile::client-lib roc::tensile-host hip::device)
+    target_include_directories(tensile-client PRIVATE "${TENSILE_SOURCE_DIR}/client/include")
 
     add_subdirectory("${TENSILE_SOURCE_DIR}/client")
 endif()
 
 if(TENSILE_BUILD_TESTING)
-    find_package(Boost REQUIRED COMPONENTS filesystem)
-    find_package(GTest REQUIRED)
-
-    add_library(tensile-test-lib OBJECT)
-    add_library(tensile::tensile-test-lib ALIAS tensile-test-lib)
-
-    target_link_libraries(tensile-test-lib PRIVATE roc::tensile-host)
-
-    target_include_directories(tensile-test-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/HostLibraryTests/testlib/include>)
-
-    target_compile_definitions(tensile-test-lib
-        PRIVATE
-            BOOST_ALL_NO_LIB
-            BOOST_ERROR_CODE_HEADER_ONLY
-            BOOST_FILESYSTEM_DYN_LINK
-    )
-
-    # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
-
-    add_executable(tensile-tests)
-
-    target_link_libraries(tensile-tests
-        PRIVATE
-            Boost::filesystem
-            GTest::gtest
-            OpenMP::OpenMP_CXX
-            hip::host
-            roc::tensile-host
-            tensile-client-lib
-            tensile::tensile-test-lib
-    )
-
-    if(TENSILE_ENABLE_LLVM)
-        target_link_libraries(tensile-tests PRIVATE LLVMObjectYAML)
-    endif()
-
-    target_include_directories(tensile-tests PRIVATE $<BUILD_INTERFACE:${TENSILE_SOURCE_DIR}/client/include>)
-
-    # Data directory needs to be parallel to tensile-tests executable
-    set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/../data")
-    file(MAKE_DIRECTORY "${TENSILE_TEST_DATA_DIR}")
+    add_subdirectory(HostLibraryTests)
 endif()
 
 install(

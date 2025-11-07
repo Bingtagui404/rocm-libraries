@@ -1,16 +1,88 @@
 {
-  "version": 3,
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 2
+  },
   "configurePresets": [
     {
-      "name": "opt-rocm",
-      "displayName": "/opt/rocm Config",
-      "description": "Sets compiler and prefix path for /opt/rocm install",
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build-${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "default",
+      "displayName": "Default Full Build",
+      "description": "Default configuration with hipBLASLt, Tensile, clients, testing, and marker enabled",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
+        "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
+        "CMAKE_PREFIX_PATH": "/opt/rocm"
+      }
+    },
+    {
+      "name": "quick",
+      "displayName": "Quick Build - gfx1101",
+      "description": "Fast iteration build with host, client, and tests",
+      "inherits": "default",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
-        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm",
-        "CMAKE_BUILD_TYPE": "Release",
-        "ROCROLLER_ENABLE_FETCH": "ON"
+        "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
+        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm/lib/cmake/openmp",
+        "TENSILE_ENABLE_CLIENT": "ON",
+        "TENSILE_BUILD_TESTING": "ON",
+        "GPU_TARGETS": "gfx1101"
       }
     }
-]
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "jobs": 0
+    },
+    {
+      "name": "quick",
+      "configurePreset": "quick",
+      "jobs": 0
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "default-workflow",
+      "displayName": "Default Build Workflow",
+      "description": "Complete default build workflow (configure and build only)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "default"
+        },
+        {
+          "type": "build",
+          "name": "default"
+        }
+      ]
+    },
+    {
+      "name": "quick",
+      "displayName": "Quick Build Workflow",
+      "description": "Fast build workflow for iteration (configure and build only)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "quick"
+        },
+        {
+          "type": "build",
+          "name": "quick"
+        }
+      ]
+    }
+  ]
 }

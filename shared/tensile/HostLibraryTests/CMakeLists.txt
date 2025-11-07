@@ -19,6 +19,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     # Bring in the parent (or one level up)
     set(TENSILE_ENABLE_DEVICE OFF)
+    set(TENSILE_ENABLE_CLIENT ON)
+    set(TENSILE_BUILD_TESTING ON)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
@@ -28,23 +30,54 @@ find_package(Threads REQUIRED)
 find_package(GTest REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem)
 
-add_subdirectory(configs)
+add_executable(tensile-tests)
+target_link_libraries(tensile-tests
+    PRIVATE
+        Boost::filesystem
+        GTest::gtest
+        hip::device
+        roc::tensile-host
+)
+if(TENSILE_ENABLE_OPENMP)
+    target_link_libraries(tensile-tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
+if(TENSILE_ENABLE_LLVM)
+    target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
+    target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
+endif()
+if(TENSILE_ENABLE_HIP)
+    target_link_libraries(tensile-tests PRIVATE "-Xlinker --whole-archive")    # This
+    target_link_libraries(tensile-tests PUBLIC ${HIP_TEST_LIBRARIES})          # is
+    target_link_libraries(tensile-tests PRIVATE "-Xlinker --no-whole-archive") # suspicious
+endif()
+target_include_directories(tensile-tests
+    PRIVATE
+        "${TENSILE_SOURCE_DIR}/client/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/testlib/include"
+)
+target_compile_definitions(tensile-tests
+    PRIVATE
+        BOOST_ALL_NO_LIB
+        BOOST_ERROR_CODE_HEADER_ONLY
+        BOOST_FILESYSTEM_DYN_LINK
+)
 
-set(TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
-file(MAKE_DIRECTORY "${TEST_DATA_DIR}")
+# Data directory needs to be parallel to tensile-tests executable
+set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
+file(MAKE_DIRECTORY "${TENSILE_TEST_DATA_DIR}")
+
+add_subdirectory(configs)
 
 foreach(FILE ${SOLUTION_LIBRARY_FILES})
     if(EXISTS "${FILE}.gz")
         execute_process(COMMAND gzip --keep --decompress --force "${FILE}.gz")
     endif()
     if(EXISTS ${FILE})
-        file(COPY ${FILE} DESTINATION "${TEST_DATA_DIR}")
+        file(COPY ${FILE} DESTINATION "${TENSILE_TEST_DATA_DIR}")
     endif()
 endforeach(FILE)
 
 add_subdirectory(testlib)
-
-add_executable(tensile-tests)
 
 target_sources(tensile-tests
     PRIVATE
@@ -76,50 +109,12 @@ if(TENSILE_ENABLE_LLVM)
 endif()
 
 if(TENSILE_ENABLE_CLIENT)
+    target_link_libraries(tensile-tests PRIVATE tensile::client-lib)
     target_sources(tensile-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/client/DataInitialization_test.cpp")
 endif()
 
 if(TENSILE_ENABLE_HIP)
     add_subdirectory(hip)
-endif()
-
-target_link_libraries(tensile-tests
-    PUBLIC
-        roc::tensile-host
-        Boost::filesystem
-    PRIVATE
-        tensile::tensile-test-lib
-        GTest::gtest
-        hip::device
-)
-
-if(TENSILE_ENABLE_LLVM)
-    find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
-    if(LLVMObjectYAML_LIBRARY)
-        target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
-    else()
-        target_link_libraries(tensile-tests PUBLIC LLVM)
-    endif()
-    target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
-endif()
-
-if(TENSILE_ENABLE_HIP)
-    target_link_libraries(tensile-tests PRIVATE "-Xlinker --whole-archive")
-    target_link_libraries(tensile-tests PUBLIC ${HIP_TEST_LIBRARIES})
-    target_link_libraries(tensile-tests PRIVATE "-Xlinker --no-whole-archive")
-endif()
-
-if(TENSILE_ENABLE_OPENMP)
-    find_package(OpenMP CONFIG)
-    if(OpenMP_FOUND)
-        add_library(rocm-omp-shim INTERFACE)
-        add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim)
-        set_target_properties(rocm-omp-shim PROPERTIES INTERFACE_COMPILE_OPTIONS -fopenmp INTERFACE_LINK_LIBRARIES OpenMP::omp)
-    else()
-        message(STATUS "Did not find rocm-omp - falling back to gomp")
-        find_package(OpenMP REQUIRED)
-    endif()
-    target_link_libraries(tensile-tests PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
 gtest_discover_tests(tensile-tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)

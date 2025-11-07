@@ -1,7 +1,6 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
-# Tensile client library source files (files that actually exist in this version)
 target_sources(tensile-client-lib
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/source/BenchmarkTimer.cpp"
