@@ -51,8 +51,6 @@ mark_as_advanced(CMAKE_BUILD_WITH_INSTALL_RPATH)
 mark_as_advanced(CMAKE_INSTALL_RPATH)
 mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 
-set(TENSILE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source")
-
 find_package(hip REQUIRED)
 
 if(TENSILE_ENABLE_OPENMP)
@@ -90,9 +88,9 @@ if(TENSILE_ENABLE_HOST)
 
     target_include_directories(tensile-host
         PUBLIC
-            $<BUILD_INTERFACE:${TENSILE_SOURCE_DIR}/lib/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/lib/include>
         PRIVATE
-            "${TENSILE_SOURCE_DIR}/lib/include/Tensile"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/lib/include/Tensile"
     )
 
     target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP __HIP_HCC_COMPAT_MODE__=1)
@@ -138,7 +136,7 @@ if(TENSILE_ENABLE_HOST)
         target_compile_definitions(tensile-host PUBLIC TENSILE_DEFAULT_SERIALIZATION)
     endif()
 
-    add_subdirectory("${TENSILE_SOURCE_DIR}/lib")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/lib")
 endif()
 
 if(TENSILE_ENABLE_DEVICE)
@@ -165,7 +163,7 @@ if(TENSILE_ENABLE_CLIENT)
             hip::device
     )
 
-    target_include_directories(tensile-client-lib PRIVATE "${TENSILE_SOURCE_DIR}/client/include")
+    target_include_directories(tensile-client-lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/client/include")
 
     if(TENSILE_ENABLE_ROCM_SMI)
         target_link_libraries(tensile-client-lib PRIVATE rocm_smi64)
@@ -180,12 +178,12 @@ if(TENSILE_ENABLE_CLIENT)
 
     add_executable(tensile-client)
     target_link_libraries(tensile-client PRIVATE tensile::client-lib roc::tensile-host hip::device)
-    target_include_directories(tensile-client PRIVATE "${TENSILE_SOURCE_DIR}/client/include")
+    target_include_directories(tensile-client PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/client/include")
 
-    add_subdirectory("${TENSILE_SOURCE_DIR}/client")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/client")
 endif()
 
-if(TENSILE_BUILD_TESTING)
+if(TENSILE_BUILD_TESTING AND NOT _TENSILE_HOSTLIBRARYTESTS_INCLUDED)
     add_subdirectory(HostLibraryTests)
 endif()
 
@@ -205,7 +203,7 @@ install(
 )
 
 install(
-    DIRECTORY "${TENSILE_SOURCE_DIR}/lib/include/Tensile"
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/lib/include/Tensile"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     COMPONENT devel
 )

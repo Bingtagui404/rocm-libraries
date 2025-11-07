@@ -3,6 +3,9 @@
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # We are being run standalone
+    # IMPORTANT: when updating this cmake lists file,
+    # the PROJECT_SOURCE_DIR will be considered the directory
+    # comtaining this file not the root directory.
     cmake_minimum_required(VERSION 3.25)
     project(tensile-tests)
 
@@ -18,9 +21,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     # Bring in the parent (or one level up)
+    set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
+    set(TENSILE_BUILD_TESTING OFF)
     set(TENSILE_ENABLE_DEVICE OFF)
     set(TENSILE_ENABLE_CLIENT ON)
-    set(TENSILE_BUILD_TESTING ON)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
@@ -52,7 +56,7 @@ if(TENSILE_ENABLE_HIP)
 endif()
 target_include_directories(tensile-tests
     PRIVATE
-        "${TENSILE_SOURCE_DIR}/client/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../Tensile/Source/client/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/testlib/include"
 )
 target_compile_definitions(tensile-tests
