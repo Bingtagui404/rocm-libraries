@@ -15,10 +15,9 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(tensile_python)
 
-# Set C++ standard globally
 set(CMAKE_CXX_STANDARD 17)
-option(CMAKE_CXX_EXTENSIONS "" OFF)
-option(CXX_STANDARD_REQUIRED "" ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(TENSILE_BUILD_SHARED_LIBS "Build shared library" OFF)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
@@ -54,22 +53,21 @@ mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 find_package(hip REQUIRED)
 
 if(TENSILE_ENABLE_OPENMP)
-    # Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
-    find_package(OpenMP CONFIG)
-    if(OpenMP_FOUND)
-        add_library(rocm-omp-shim INTERFACE)
-        # TODO: Investigate if this alias causes issues in superbuild
-        add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim)
-    
-        set_target_properties(rocm-omp-shim
-            PROPERTIES
-                INTERFACE_COMPILE_OPTIONS -fopenmp
-                INTERFACE_LINK_LIBRARIES OpenMP::omp
-        )
-    else()
-        message(STATUS "Did not find rocm-omp - falling back to gomp")
-        find_package(OpenMP REQUIRED)
-    endif()
+  # Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
+  find_package(OpenMP CONFIG)
+  add_library(tensile-omp-shim INTERFACE)
+  add_library(tensile::omp-shim ALIAS tensile-omp-shim)
+  if(OpenMP_FOUND)
+    set_target_properties(tensile-omp-shim
+      PROPERTIES
+        INTERFACE_COMPILE_OPTIONS -fopenmp
+        INTERFACE_LINK_LIBRARIES OpenMP::omp
+    )
+  else()
+    message(STATUS "Did not find rocm-omp - falling back to gomp")
+    find_package(OpenMP REQUIRED)
+    target_link_libraries(tensile-omp-shim INTERFACE OpenMP::OpenMP_CXX)
+  endif()
 endif()
 
 tensile_find_python(Development)
@@ -158,7 +156,7 @@ if(TENSILE_ENABLE_CLIENT)
         PRIVATE
             Boost::boost
             Boost::program_options
-            OpenMP::OpenMP_CXX
+            tensile::omp-shim
             roc::tensile-host
             hip::device
     )

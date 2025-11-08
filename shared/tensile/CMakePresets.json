@@ -11,7 +11,8 @@
       "hidden": true,
       "binaryDir": "${sourceDir}/build-${presetName}",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install-${presetName}"
       }
     },
     {
@@ -50,6 +51,7 @@
     {
       "name": "quick",
       "configurePreset": "quick",
+      "targets": ["install"],
       "jobs": 0
     }
   ],

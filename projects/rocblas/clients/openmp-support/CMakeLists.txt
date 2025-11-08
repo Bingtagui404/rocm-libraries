@@ -5,20 +5,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/clients/staging")
 
 # Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
 find_package(OpenMP CONFIG)
-
+add_library(rocblas-omp-shim INTERFACE)
+add_library(rocblas::omp-shim ALIAS rocblas-omp-shim)
 if(OpenMP_FOUND)
-    add_library(rocm-omp-shim INTERFACE)
-    # TODO: Investigate if this alias causes issues in superbuild
-    add_library(OpenMP::OpenMP_CXX ALIAS rocm-omp-shim)
-
-    set_target_properties(rocm-omp-shim
-        PROPERTIES
-            INTERFACE_COMPILE_OPTIONS -fopenmp
-            INTERFACE_LINK_LIBRARIES OpenMP::omp
-    )
+  set_target_properties(rocblas-omp-shim
+    PROPERTIES
+      INTERFACE_COMPILE_OPTIONS -fopenmp
+      INTERFACE_LINK_LIBRARIES OpenMP::omp
+  )
 else()
-    message(STATUS "Did not find rocm-omp - falling back to gomp")
-    find_package(OpenMP REQUIRED)
+  message(STATUS "Did not find rocm-omp - falling back to gomp")
+  find_package(OpenMP REQUIRED)
+  target_link_libraries(rocblas-omp-shim INTERFACE OpenMP::OpenMP_CXX)
 endif()
 
 add_library(rocblas-clients-openmp STATIC)
@@ -26,7 +24,7 @@ add_library(rocblas::clients-openmp ALIAS rocblas-clients-openmp)
 
 target_link_libraries(rocblas-clients-openmp
     PUBLIC
-        OpenMP::OpenMP_CXX
+        rocblas::omp-shim
     PRIVATE
         hip::device
         roc::rocblas

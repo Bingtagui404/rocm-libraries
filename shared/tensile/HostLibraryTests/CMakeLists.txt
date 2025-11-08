@@ -45,7 +45,7 @@ target_link_libraries(tensile-tests
         roc::tensile-host
 )
 if(TENSILE_ENABLE_OPENMP)
-    target_link_libraries(tensile-tests PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(tensile-tests PRIVATE tensile::omp-shim)
 endif()
 if(TENSILE_ENABLE_LLVM)
     target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
