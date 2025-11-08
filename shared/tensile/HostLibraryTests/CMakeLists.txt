@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # the PROJECT_SOURCE_DIR will be considered the directory
     # comtaining this file not the root directory.
     cmake_minimum_required(VERSION 3.25)
-    project(tensile-tests)
+    project(tensile-tests LANGUAGES CXX)
 
     # Pretend this is a project, but without a literal project() call.
     # (This will prevent dev warnings about missing project())
@@ -19,6 +19,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         cmake_policy(SET CMP0003 NEW)
         cmake_policy(SET CMP0012 NEW)
     endif()
+
+    find_package(hip REQUIRED)
 
     # Bring in the parent (or one level up)
     set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
@@ -48,11 +50,6 @@ endif()
 if(TENSILE_ENABLE_LLVM)
     target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
     target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
-endif()
-if(TENSILE_ENABLE_HIP)
-    target_link_libraries(tensile-tests PRIVATE "-Xlinker --whole-archive")    # This
-    target_link_libraries(tensile-tests PUBLIC ${HIP_TEST_LIBRARIES})          # is
-    target_link_libraries(tensile-tests PRIVATE "-Xlinker --no-whole-archive") # suspicious
 endif()
 target_include_directories(tensile-tests
     PRIVATE

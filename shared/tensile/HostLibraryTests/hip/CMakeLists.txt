@@ -10,21 +10,23 @@ add_custom_target(
     DEPENDS ${test_yaml}
 )
 
-target_sources(TensileTests
+target_sources(tensile-tests
     PRIVATE
         hip/HipSolutionAdapter_test.cpp
         hip/CopyTensor_test.cpp
         hip/RunGEMMKernel_test.cpp
 )
 
-target_link_libraries(TensileTests
+target_link_libraries(tensile-tests
     PRIVATE
         hip::host
+        "-Wl,--whole-archive"
         test_kernels_lite
         test_kernels_lite_2
         test_kernels_lite_mixed
         test_tile_aware_selection
         TensileClient
+        "-Wl,--no-whole-archive"
 )
 
 set(TENSILE_CONFIG_DIR "${PROJECT_SOURCE_DIR}/HostLibraryTests/configs")
@@ -79,4 +81,3 @@ add_library(test-device-kernels OBJECT
   "${TENSILE_TEST_DATA_DIR}/test_tile_aware_selection/library/test_tile_aware_selection.cpp")
 target_link_libraries(test-device-kernels PRIVATE tensile-host)
 target_compile_definitions(test-device-kernels PRIVATE __HIP_HCC_COMPAT_MODE__=1)
-target_compile_features(test-device-kernels PUBLIC cxx_std_17)
