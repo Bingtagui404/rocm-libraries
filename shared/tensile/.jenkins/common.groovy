@@ -56,14 +56,12 @@ def runCompileCommand(platform, project, jobName, boolean debug=false, boolean c
             export TENSILE_COMPILER=${compiler}
             export HIPCC_COMPILE_FLAGS_APPEND='-O3 -Wno-format-nonliteral -parallel-jobs=4'
 
-            cmake --trace-expand \
-                -B build -S HostLibraryTests \
+            cmake -B build -S HostLibraryTests \
                 -DCMAKE_BUILD_TYPE=${buildType} \
                 -DCMAKE_CXX_COMPILER=${compiler} \
                 -DCMAKE_CXX_FLAGS="-D__HIP_HCC_COMPAT_MODE__=1" \
                 -DTensile_CPU_THREADS=${buildThreads} \
                 -DTensile_ROOT=`pwd`/Tensile \
-                -DCMAKE_FIND_DEBUG_MODE=ON \
                 ${codeCovString}
 
             cmake --build build --parallel -j\$((`nproc`<16 ? `nproc` : 16)) --verbose
