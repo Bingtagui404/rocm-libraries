@@ -129,10 +129,12 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
 set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
 
-mark_as_advanced(CMAKE_SKIP_BUILD_RPATH)
-mark_as_advanced(CMAKE_BUILD_WITH_INSTALL_RPATH)
-mark_as_advanced(CMAKE_INSTALL_RPATH)
-mark_as_advanced(CMAKE_INSTALL_RPATH_USE_LINK_PATH)
+mark_as_advanced(
+  CMAKE_SKIP_BUILD_RPATH
+  CMAKE_BUILD_WITH_INSTALL_RPATH
+  CMAKE_INSTALL_RPATH
+  CMAKE_INSTALL_RPATH_USE_LINK_PATH
+)
 
 # Interface library for common warning suppression flags
 add_library(rocblas-warnings INTERFACE)
