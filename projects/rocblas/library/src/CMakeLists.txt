@@ -62,7 +62,12 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
     # NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
     # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
-    set_target_properties(rocblas-gemm-host PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    set_target_properties(rocblas-gemm-host
+        PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            POSITION_INDEPENDENT_CODE ON
+            VISIBILITY_INLINES_HIDDEN ON
+    )
 
     target_link_libraries(rocblas PRIVATE rocblas-gemm-host)
 

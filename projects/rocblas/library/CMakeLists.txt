@@ -102,7 +102,9 @@ endif()
 set_target_properties(rocblas-helper
     PROPERTIES
         COMPILE_FLAGS "--offload-compress"
+        CXX_VISIBILITY_PRESET hidden
         POSITION_INDEPENDENT_CODE ON
+        VISIBILITY_INLINES_HIDDEN ON
 )
 
 if(ROCBLAS_BUILD_SHARED_LIBS OR BUILD_SHARED_LIBS)
