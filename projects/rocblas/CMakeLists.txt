@@ -35,9 +35,9 @@ include(FetchROCmCMake)
 rocm_setup_version(VERSION "5.2.0")
 
 if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
-    if(NOT DEFINED ROCBLAS_ENABLE_CLIENT OR NOT ROCBLAS_ENABLE_CLIENT)
-        set(ROCBLAS_ENABLE_CLIENT ON CACHE BOOL "Build rocBLAS clients." FORCE)
-    endif()
+  if(NOT DEFINED ROCBLAS_ENABLE_CLIENT OR NOT ROCBLAS_ENABLE_CLIENT)
+    set(ROCBLAS_ENABLE_CLIENT ON CACHE BOOL "Build rocBLAS clients." FORCE)
+  endif()
 endif()
 
 set(HIP_RUNTIME_MINIMUM "4.5.0" CACHE STRING "Minimum HIP runtime version required")
@@ -45,9 +45,9 @@ set(HIP_RUNTIME_MINIMUM "4.5.0" CACHE STRING "Minimum HIP runtime version requir
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
 if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")
-    rocblas_get_base_architectures(GPU_TARGETS)
+  rocblas_get_base_architectures(GPU_TARGETS)
 else()
-    rocblas_validate_gpu_targets("${GPU_TARGETS}")
+  rocblas_validate_gpu_targets("${GPU_TARGETS}")
 endif()
 
 message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
@@ -113,7 +113,7 @@ if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
 endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
-    enable_language(Fortran)
+  enable_language(Fortran)
 endif()
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard version")
@@ -141,10 +141,10 @@ target_compile_options(rocblas-warnings INTERFACE -Wno-unused-result -Wno-c++17-
 find_package(hip REQUIRED)
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
-    if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-        find_package(hipblaslt 1.0.0 REQUIRED)
-    endif()
-    rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
+  if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+    find_package(hipblaslt 1.0.0 REQUIRED)
+  endif()
+  rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
 endif()
 
 if(ROCBLAS_ENABLE_ROCM_SMI)
@@ -152,42 +152,42 @@ if(ROCBLAS_ENABLE_ROCM_SMI)
 endif()
 
 if(ROCBLAS_ENABLE_HOST)
-    if(ROCBLAS_ENABLE_TENSILE)
-        if(NOT ROCBLAS_ENABLE_SUPERBUILD)
-            if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
-                message(FATAL_ERROR
-                    "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
-                    "Please ensure the Tensile repository is cloned at this location, or\n"
-                    "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"
-                    "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
-            endif()
-            message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-            block(SCOPE_FOR VARIABLES)
-                set(BUILD_SHARED_LIBS OFF)
-                set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
-                add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/_tensile" EXCLUDE_FROM_ALL)
-            endblock()
-        elseif(ROCBLAS_ENABLE_THEROCK)
-            find_package(tensile REQUIRED)
-        endif()
+  if(ROCBLAS_ENABLE_TENSILE)
+    if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+      if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
+        message(FATAL_ERROR
+          "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
+          "Please ensure the Tensile repository is cloned at this location, or\n"
+          "set ROCBLAS_TENSILE_SUBDIR_PATH to the correct path.\n"
+          "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
+      endif()
+      message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
+      block(SCOPE_FOR VARIABLES)
+        set(BUILD_SHARED_LIBS OFF)
+        set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
+        add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/_tensile" EXCLUDE_FROM_ALL)
+      endblock()
+    elseif(ROCBLAS_ENABLE_THEROCK)
+      find_package(tensile REQUIRED)
     endif()
+  endif()
 
-    add_subdirectory(library)
+  add_subdirectory(library)
 
-    if(ROCBLAS_ENABLE_MARKER)
-        include(FindPackageHandleStandardArgs)
+  if(ROCBLAS_ENABLE_MARKER)
+    include(FindPackageHandleStandardArgs)
 
-        find_path(ROCTRACER_INCLUDE_DIR "roctracer/roctx.h")
-        find_library(ROCTX_LIBRARIES roctx64)
+    find_path(ROCTRACER_INCLUDE_DIR "roctracer/roctx.h")
+    find_library(ROCTX_LIBRARIES roctx64)
 
-        find_package_handle_standard_args(ROCTRACER
-            REQUIRED_VARS ROCTRACER_INCLUDE_DIR rocTracer
-            FAIL_MESSAGE "Could not find ROCTracer library or headers"
-        )
-        target_link_libraries(rocblas PRIVATE ${ROCTX_LIBRARIES})
-    else()
-        target_compile_definitions(rocblas PRIVATE DISABLE_ROCTX)
-    endif()
+    find_package_handle_standard_args(ROCTRACER
+      REQUIRED_VARS ROCTRACER_INCLUDE_DIR rocTracer
+      FAIL_MESSAGE "Could not find ROCTracer library or headers"
+    )
+    target_link_libraries(rocblas PRIVATE ${ROCTX_LIBRARIES})
+  else()
+    target_compile_definitions(rocblas PRIVATE DISABLE_ROCTX)
+  endif()
 endif()
 
 if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
@@ -260,41 +260,41 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
 endif()
 
 if(ROCBLAS_ENABLE_HOST)
-    rocm_install_targets(
-      TARGETS rocblas
-      INCLUDE
-        "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}"
+  rocm_install_targets(
+    TARGETS rocblas
+    INCLUDE
+      "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}"
+  )
+  if(ROCBLAS_ENABLE_TENSILE)
+    rocm_install(
+      DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
+      DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}"
+      COMPONENT runtime
     )
-    if(ROCBLAS_ENABLE_TENSILE)
-      rocm_install(
-        DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Tensile/library/"
-        DESTINATION "${ROCBLAS_TENSILE_INSTALL_DIR}"
-        COMPONENT runtime
-      )
-    endif()
-    if(ROCBLAS_ENABLE_FORTRAN)
-      rocm_install(
-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
-        COMPONENT devel
-        FILES_MATCHING
-          PATTERN "*.h"
-          PATTERN "*.f90")
-    else()
-      rocm_install(
-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
-        COMPONENT devel
-        FILES_MATCHING
-          PATTERN "*.h")
-    endif()
-    rocm_export_targets(
-      TARGETS roc::rocblas
-      DEPENDS PACKAGE hip
-      NAMESPACE roc::
-    )
-    set(rocblas_SOVERSION 5.2)
-    rocm_set_soversion(rocblas ${rocblas_SOVERSION})
+  endif()
+  if(ROCBLAS_ENABLE_FORTRAN)
+    rocm_install(
+      DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
+      COMPONENT devel
+      FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.f90")
+  else()
+    rocm_install(
+      DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/library/include/"
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas"
+      COMPONENT devel
+      FILES_MATCHING
+        PATTERN "*.h")
+  endif()
+  rocm_export_targets(
+    TARGETS roc::rocblas
+    DEPENDS PACKAGE hip
+    NAMESPACE roc::
+  )
+  set(rocblas_SOVERSION 5.2)
+  rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 endif()
 
 set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -302,13 +302,13 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     "\${CPACK_PACKAGING_INSTALL_PREFIX}")
 
 find_program(LLVM_STRIP 
-    NAMES llvm-strip
-    PATH_SUFFIXES lib/llvm/bin llvm/bin bin
+  NAMES llvm-strip
+  PATH_SUFFIXES lib/llvm/bin llvm/bin bin
 )
 if(LLVM_STRIP)
-    set(CPACK_RPM_SPEC_MORE_DEFINE "%define __strip ${LLVM_STRIP}")
+  set(CPACK_RPM_SPEC_MORE_DEFINE "%define __strip ${LLVM_STRIP}")
 else()
-    message(WARNING "llvm-strip not found, using default strip tool. This may cause stripping to fail during packaging.")
+  message(WARNING "llvm-strip not found, using default strip tool. This may cause stripping to fail during packaging.")
 endif()
 
 rocm_install(
@@ -436,15 +436,15 @@ endif()
 if( HIP_RUNTIME MATCHES ".*cuda.*" )
   rocm_package_add_dependencies(DEPENDS "hip-nvcc >= 3.5.0")
 else()
-    if(ROCBLAS_ENABLE_ASAN)
-      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd-asan")
-    else()
-      set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
-    endif()
+  if(ROCBLAS_ENABLE_ASAN)
+    set(DEPENDS_HIP_RUNTIME "hip-runtime-amd-asan")
+  else()
+    set(DEPENDS_HIP_RUNTIME "hip-runtime-amd")
+  endif()
 
-    rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
-    rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
-    rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
+  rocm_package_add_dependencies(SHARED_DEPENDS "${DEPENDS_HIP_RUNTIME} >= ${HIP_RUNTIME_MINIMUM}")
+  rocm_package_add_deb_dependencies(STATIC_DEPENDS "hip-static-dev >= ${HIP_RUNTIME_MINIMUM}")
+  rocm_package_add_rpm_dependencies(STATIC_DEPENDS "hip-static-devel >= ${HIP_RUNTIME_MINIMUM}")
 endif()
 
 rocm_create_package(
