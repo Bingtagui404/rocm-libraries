@@ -51,6 +51,13 @@ if(ROCBLAS_ENABLE_TENSILE)
     )
 endif()
 
+if(ROCBLAS_ENABLE_HIPBLASLT)
+    target_compile_definitions(rocblas-test
+        PRIVATE
+            BUILD_WITH_HIPBLASLT
+    )
+endif()
+
 target_sources(rocblas-test
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gtest_main.cpp"

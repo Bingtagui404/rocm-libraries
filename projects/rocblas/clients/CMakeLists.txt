@@ -71,10 +71,33 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
     target_compile_definitions(rocblas-testing-common
         PRIVATE
             GOOGLE_TEST
+            ROCBLAS_INTERNAL_API
             ROCBLAS_NO_DEPRECATED_WARNINGS
             ROCM_USE_FLOAT16
             __HIP_HCC_COMPAT_MODE__=1
     )
+
+    if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
+        target_compile_definitions(rocblas-testing-common
+            PRIVATE
+                ROCBLAS_TENSILE_LAZY_LOAD=1
+                ROCBLAS_TENSILE_SEPARATE_ARCH=1
+        )
+    endif()
+
+    if(ROCBLAS_ENABLE_TENSILE)
+        target_compile_definitions(rocblas-testing-common
+            PRIVATE
+                BUILD_WITH_TENSILE
+        )
+    endif()
+
+    if(ROCBLAS_ENABLE_HIPBLASLT)
+        target_compile_definitions(rocblas-testing-common
+            PRIVATE
+                BUILD_WITH_HIPBLASLT
+        )
+    endif()
 
     target_sources(rocblas-testing-common
         PRIVATE

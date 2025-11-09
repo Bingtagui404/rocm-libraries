@@ -75,4 +75,15 @@ if(ROCBLAS_ENABLE_TENSILE)
     )
 endif()
 
+if(ROCBLAS_ENABLE_HIPBLASLT)
+    target_compile_definitions(rocblas-bench
+        PRIVATE
+            BUILD_WITH_HIPBLASLT
+    )
+    target_compile_definitions(rocblas-gemm-tune
+        PRIVATE
+            BUILD_WITH_HIPBLASLT
+    )
+endif()
+
 add_subdirectory(perf_script)
