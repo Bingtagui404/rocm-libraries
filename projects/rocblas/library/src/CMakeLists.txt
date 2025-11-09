@@ -51,7 +51,9 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
                 ROCBLAS_TENSILE_LAZY_LOAD=1
                 ROCBLAS_TENSILE_SEPARATE_ARCH=1
         )
-    elseif(ROCBLAS_ENABLE_HIPBLASLT)
+    endif()
+
+    if(ROCBLAS_ENABLE_HIPBLASLT)
         target_link_libraries(rocblas-gemm-host PRIVATE roc::hipblaslt)
         target_compile_definitions(rocblas-gemm-host PRIVATE BUILD_WITH_HIPBLASLT)
     endif()
@@ -64,10 +66,14 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
 
     target_link_libraries(rocblas PRIVATE rocblas-gemm-host)
 
+    if(ROCBLAS_ENABLE_TENSILE)
+        target_sources(rocblas-gemm-host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tensile_host.cpp")
+    endif()
+
     if(ROCBLAS_ENABLE_HIPBLASLT)
         target_sources(rocblas PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/hipblaslt_host.cpp")
-    elseif(ROCBLAS_ENABLE_TENSILE)
-        target_sources(rocblas-gemm-host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tensile_host.cpp")
+        # Link hipBLASLt to main rocblas target (not just rocblas-gemm-host)
+        target_link_libraries(rocblas PRIVATE roc::hipblaslt)
     endif()
 endif()
 
