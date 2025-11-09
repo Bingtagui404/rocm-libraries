@@ -70,7 +70,7 @@ def build_client(c, clean=False, configure=True, build=True, build_type="Release
 
         cmake_cmd = [
             "cmake",
-            "-S", "next-cmake",
+            "-S", ".",
             "-B", client_build_dir,
             "-DCMAKE_PREFIX_PATH=/opt/rocm",
             "-DCMAKE_CXX_COMPILER=/opt/rocm/bin/amdclang++",
