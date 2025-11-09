@@ -41,7 +41,6 @@ message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
-# need to account for openmp_LIB_DIR - not sure what cases that would be different from lib
 set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
 
@@ -55,7 +54,6 @@ mark_as_advanced(
 find_package(hip REQUIRED)
 
 if(TENSILE_ENABLE_OPENMP)
-  # Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
   find_package(OpenMP CONFIG)
   add_library(tensile-omp-shim INTERFACE)
   add_library(tensile::omp-shim ALIAS tensile-omp-shim)
@@ -95,16 +93,12 @@ if(TENSILE_ENABLE_HOST)
 
     target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP __HIP_HCC_COMPAT_MODE__=1)
 
-    # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
-    # NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
-
     if(NOT TENSILE_BUILD_SHARED_LIBS)
         set_target_properties(tensile-host PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
         target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
     endif()
 
     if(TENSILE_ENABLE_MSGPACK)
-        # Prefer msgpack-cxx 6.x, fallback to 5.x
         find_package(msgpack-cxx CONFIG)
         if(msgpack-cxx_FOUND)
             message(STATUS "Found msgpack-cxx (>=6.x)")

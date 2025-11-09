@@ -3,7 +3,6 @@
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/clients/staging")
 
-# Prefer ROCm LLVM OpenMP (config-based) located in <rocm install>/llvm/lib/cmake/openmp
 find_package(OpenMP CONFIG)
 add_library(rocblas-omp-shim INTERFACE)
 add_library(rocblas::omp-shim ALIAS rocblas-omp-shim)
@@ -58,10 +57,7 @@ target_link_libraries(rocblas-example-openmp
 
 target_include_directories(rocblas-example-openmp PRIVATE "${PROJECT_BINARY_DIR}/library/include")
 
-# Uses C++14 to demonstrate OpenMP with C++14 standard
 set_target_properties(rocblas-example-openmp PROPERTIES CXX_STANDARD 14)
-
-# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
 target_compile_definitions(rocblas-example-openmp PRIVATE ROCBLAS_INTERNAL_API ROCM_USE_FLOAT16)
 

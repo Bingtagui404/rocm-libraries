@@ -2,19 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    # We are being run standalone
-    # IMPORTANT: when updating this cmake lists file,
-    # the PROJECT_SOURCE_DIR will be considered the directory
-    # comtaining this file not the root directory.
     cmake_minimum_required(VERSION 3.25)
     project(tensile-tests LANGUAGES CXX)
 
-    # Pretend this is a project, but without a literal project() call.
-    # (This will prevent dev warnings about missing project())
     set(_STANDALONE TRUE)
     set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "No dev warnings")
     
-    # Optionally set policies that would otherwise warn
     if(COMMAND cmake_policy)
         cmake_policy(SET CMP0003 NEW)
         cmake_policy(SET CMP0012 NEW)
@@ -22,7 +15,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     find_package(hip REQUIRED)
 
-    # Bring in the parent (or one level up)
     set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
     set(TENSILE_BUILD_TESTING OFF)
     set(TENSILE_ENABLE_DEVICE OFF)
@@ -63,7 +55,6 @@ target_compile_definitions(tensile-tests
         BOOST_FILESYSTEM_DYN_LINK
 )
 
-# Data directory needs to be parallel to tensile-tests executable
 set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
 file(MAKE_DIRECTORY "${TENSILE_TEST_DATA_DIR}")
 

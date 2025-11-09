@@ -32,7 +32,6 @@ include(rocblas_supported_architectures)
 include(query_git_hash)
 include(FetchROCmCMake)
 
-#query_git_hash(rocblas "${CMAKE_CURRENT_SOURCE_DIR}")
 rocm_setup_version(VERSION "5.2.0")
 
 if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
@@ -94,7 +93,6 @@ option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
 option(ROCBLAS_BUILD_COVERAGE "Build tests with coverage enabled." OFF)
 set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CACHE STRING "GTest filter for coverage tests.")
 
-# I don't know that we can build with BLIS OFF
 option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." OFF)
 option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
 option(ROCBLAS_ENABLE_OPENMP "Enable OpenMP for parallel reference implementations in clients." ON)
@@ -125,7 +123,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE CACHE BOOL "Skip build RPATH")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE CACHE BOOL "Build with install RPATH")
-# need to account for openmp_LIB_DIR - not sure what cases that would be different from lib
 set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../llvm/lib" CACHE STRING "Install RPATH")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE CACHE BOOL "Use link path for RPATH")
 
@@ -165,7 +162,6 @@ if(ROCBLAS_ENABLE_HOST)
                     "Example: -DROCBLAS_TENSILE_SUBDIR_PATH=/path/to/tensile")
             endif()
             message(STATUS "Adding Tensile from subdirectory: ${ROCBLAS_TENSILE_SUBDIR_PATH}")
-            # Force Tensile to build as static library
             block(SCOPE_FOR VARIABLES)
                 set(BUILD_SHARED_LIBS OFF)
                 set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
@@ -194,12 +190,8 @@ if(ROCBLAS_ENABLE_HOST)
     endif()
 endif()
 
-# Set up client packaging components when any client is enabled
-# This ensures dependency variables and parent components are registered
-# before child components (tests, benchmarks, samples) reference them
 if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
   add_subdirectory(clients)
-  # Set up OS-specific dependencies for client components
   if(NOT CLIENTS_OS)
     rocm_set_os_id(CLIENTS_OS)
     string(TOLOWER "${CLIENTS_OS}" CLIENTS_OS)
@@ -229,7 +221,6 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
   rocm_package_setup_component(clients)
   rocm_package_setup_client_component(clients-common)
 
-  # Register child components with proper dependencies
   if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
     rocm_package_setup_client_component(
       tests
@@ -260,7 +251,6 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
     )
   endif()
 
-  # Add Fortran dependencies if Fortran clients are enabled
   if(ROCBLAS_ENABLE_FORTRAN)
     rocm_package_add_rpm_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_RPM}")
     rocm_package_add_deb_dependencies(COMPONENT tests DEPENDS "${GFORTRAN_DEB}")
@@ -311,7 +301,6 @@ set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     "\${CPACK_PACKAGING_INSTALL_PREFIX}")
 
-# Work around code object stripping failure if using /usr/bin/strip
 find_program(LLVM_STRIP 
     NAMES llvm-strip
     PATH_SUFFIXES lib/llvm/bin llvm/bin bin
@@ -322,8 +311,6 @@ else()
     message(WARNING "llvm-strip not found, using default strip tool. This may cause stripping to fail during packaging.")
 endif()
 
-# cmake-format: off
-
 rocm_install(
   FILES
   "${CMAKE_CURRENT_BINARY_DIR}/library/include/rocblas/internal/rocblas-export.h"
@@ -332,14 +319,11 @@ rocm_install(
   "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
   COMPONENT devel)
 
-# For one off inclusion of files required in the install tree
 rocm_install(
   FILES "${PROJECT_SOURCE_DIR}/library/src/include/rocblas_device_malloc.hpp"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/rocblas/internal"
   COMPONENT devel)
 
-# cmake-format: on
-# Stage and install common client files to clients-common component
 if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
 
   if(ROCBLAS_ENABLE_BENCHMARKS)
@@ -397,8 +381,6 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
       rocblas-example-sgemm-strided-batched
       rocblas-example-solver
       rocblas-example-sscal
-      # `rocblas-example-header-check` is not installed because it is used to check
-      # a C++ version guard exists, and thereby serves as a compile time check.
       COMPONENT
       samples
       DESTINATION
