@@ -82,38 +82,30 @@ target_sources(rocblas-clients-common
 )
 
 if(ROCBLAS_ENABLE_FORTRAN)
-    add_library(rocblas-fortran-wrappers STATIC)
-    add_library(rocblas::fortran-wrappers ALIAS rocblas-fortran-wrappers)
+    add_library(rocblas-fortran-client STATIC)
+    add_library(rocblas::fortran-client ALIAS rocblas-fortran-client)
 
-    target_include_directories(rocblas-fortran-wrappers
+    target_link_libraries(rocblas-fortran-client
+        PUBLIC
+            rocblas::rocblas-fortran-module
+    )
+
+    target_include_directories(rocblas-fortran-client
         PRIVATE
             $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
     )
 
-    add_dependencies(rocblas-fortran-wrappers rocblas-fortran-module)
+    add_dependencies(rocblas-fortran-client rocblas-fortran-module)
 
-    target_sources(rocblas-fortran-wrappers
+    target_sources(rocblas-fortran-client
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/../include/rocblas_fortran.f90"
     )
 
     if(ROCBLAS_ENABLE_TENSILE)
-        target_sources(rocblas-fortran-wrappers
+        target_sources(rocblas-fortran-client
             PRIVATE
                 "${CMAKE_CURRENT_SOURCE_DIR}/../include/rocblas_fortran_tensile.f90"
         )
     endif()
-
-    add_library(rocblas-fortran-client INTERFACE)
-
-    target_link_libraries(rocblas-fortran-client
-        INTERFACE
-            rocblas::fortran-wrappers
-            rocblas::rocblas-fortran-module
-    )
-
-    target_include_directories(rocblas-fortran-client
-        INTERFACE
-            $<TARGET_PROPERTY:rocblas-fortran-module,Fortran_MODULE_DIRECTORY>
-    )
 endif()

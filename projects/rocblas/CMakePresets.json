@@ -17,7 +17,7 @@
       }
     },
     {
-      "name": "default",
+      "name": "default:release",
       "displayName": "Default Full Build",
       "description": "Default configuration with hipBLASLt, Tensile, clients, testing, and marker enabled",
       "inherits": "base",
@@ -25,7 +25,9 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
         "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
+        "CMAKE_Fortran_COMPILER": "gfortran",
         "CMAKE_PREFIX_PATH": "/opt/rocm",
+        "ROCBLAS_ENABLE_BLIS": "ON",
         "ROCBLAS_ENABLE_HIPBLASLT": "ON",
         "ROCBLAS_ENABLE_TENSILE": "ON",
         "ROCBLAS_ENABLE_CLIENT": "ON",
@@ -167,8 +169,8 @@
   ],
   "buildPresets": [
     {
-      "name": "default",
-      "configurePreset": "default"
+      "name": "default:release",
+      "configurePreset": "default:release"
     },
     {
       "name": "release",
@@ -223,8 +225,8 @@
   ],
   "testPresets": [
     {
-      "name": "default",
-      "configurePreset": "default",
+      "name": "default:release",
+      "configurePreset": "default:release",
       "output": {
         "outputOnFailure": true
       }
@@ -266,11 +268,11 @@
       "steps": [
         {
           "type": "configure",
-          "name": "default"
+          "name": "default:release"
         },
         {
           "type": "build",
-          "name": "default"
+          "name": "default:release"
         }
       ]
     },
