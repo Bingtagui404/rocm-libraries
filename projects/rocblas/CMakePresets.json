@@ -38,124 +38,15 @@
       }
     },
     {
-      "name": "release",
-      "displayName": "Release",
-      "description": "Release build with optimizations",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
-      "name": "debug",
-      "displayName": "Debug",
-      "description": "Debug build with symbols",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "relwithdebinfo",
-      "displayName": "RelWithDebInfo",
-      "description": "Release build with debug symbols",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
-      }
-    },
-    {
-      "name": "release-with-clients",
-      "displayName": "Release with Clients",
-      "description": "Release build with test clients enabled",
-      "inherits": "release",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_CLIENT": "ON",
-        "ROCBLAS_BUILD_TESTING": "ON",
-        "ROCBLAS_ENABLE_BENCHMARKS": "ON",
-        "ROCBLAS_ENABLE_SAMPLES": "ON"
-      }
-    },
-    {
-      "name": "debug-with-clients",
-      "displayName": "Debug with Clients",
-      "description": "Debug build with test clients enabled",
-      "inherits": "debug",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_CLIENT": "ON",
-        "ROCBLAS_BUILD_TESTING": "ON",
-        "ROCBLAS_ENABLE_BENCHMARKS": "ON",
-        "ROCBLAS_ENABLE_SAMPLES": "ON"
-      }
-    },
-    {
-      "name": "release-no-tensile",
-      "displayName": "Release without Tensile",
-      "description": "Release build without Tensile GEMM libraries",
-      "inherits": "release",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_TENSILE": "OFF"
-      }
-    },
-    {
-      "name": "release-with-hipblaslt",
-      "displayName": "Release with hipBLASLt",
-      "description": "Release build with hipBLASLt backend enabled",
-      "inherits": "release",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_HIPBLASLT": "ON"
-      }
-    },
-    {
-      "name": "debug-asan",
-      "displayName": "Debug with AddressSanitizer",
-      "description": "Debug build with address sanitizer enabled",
-      "inherits": "debug",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_ASAN": "ON",
-        "ROCBLAS_ENABLE_FORTRAN": "OFF"
-      }
-    },
-    {
-      "name": "debug-coverage",
-      "displayName": "Debug with Code Coverage",
-      "description": "Debug build with code coverage instrumentation",
-      "inherits": "debug",
-      "cacheVariables": {
-        "ROCBLAS_BUILD_COVERAGE": "ON",
-        "ROCBLAS_ENABLE_CLIENT": "ON",
-        "ROCBLAS_BUILD_TESTING": "ON",
-        "ROCBLAS_ENABLE_FORTRAN": "OFF"
-      }
-    },
-    {
-      "name": "ci-quick",
-      "displayName": "CI Quick Build",
-      "description": "Fast build for CI smoke tests (library only, no Tensile)",
-      "inherits": "release",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_TENSILE": "OFF",
-        "ROCBLAS_ENABLE_CLIENT": "OFF"
-      }
-    },
-    {
-      "name": "ci-full",
-      "displayName": "CI Full Build",
-      "description": "Complete build for CI with all features",
-      "inherits": "release-with-clients",
-      "cacheVariables": {
-        "ROCBLAS_ENABLE_TENSILE": "ON"
-      }
-    },
-    {
       "name": "quick",
       "displayName": "Quick Build - gfx1101",
-      "description": "Fast iteration build with Tensile, clients, and gfx1101 target (no hipBLASLt)",
-      "inherits": "release",
+      "description": "Fast iteration build with Tensile, clients, and gfx1101 target",
+      "inherits": "base",
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
         "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
-        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm/lib/cmake/openmp",
+        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm/lib/cmake",
         "ROCBLAS_ENABLE_HIPBLASLT": "OFF",
         "ROCBLAS_ENABLE_TENSILE": "ON",
         "ROCBLAS_ENABLE_CLIENT": "ON",
@@ -173,98 +64,17 @@
       "configurePreset": "default:release"
     },
     {
-      "name": "release",
-      "configurePreset": "release"
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug"
-    },
-    {
-      "name": "relwithdebinfo",
-      "configurePreset": "relwithdebinfo"
-    },
-    {
-      "name": "release-with-clients",
-      "configurePreset": "release-with-clients"
-    },
-    {
-      "name": "debug-with-clients",
-      "configurePreset": "debug-with-clients"
-    },
-    {
-      "name": "release-no-tensile",
-      "configurePreset": "release-no-tensile"
-    },
-    {
-      "name": "release-with-hipblaslt",
-      "configurePreset": "release-with-hipblaslt"
-    },
-    {
-      "name": "debug-asan",
-      "configurePreset": "debug-asan"
-    },
-    {
-      "name": "debug-coverage",
-      "configurePreset": "debug-coverage"
-    },
-    {
-      "name": "ci-quick",
-      "configurePreset": "ci-quick"
-    },
-    {
-      "name": "ci-full",
-      "configurePreset": "ci-full"
-    },
-    {
       "name": "quick",
       "configurePreset": "quick",
       "targets": ["install"],
       "jobs": 0
     }
   ],
-  "testPresets": [
-    {
-      "name": "default:release",
-      "configurePreset": "default:release",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "release-with-clients",
-      "configurePreset": "release-with-clients",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "debug-with-clients",
-      "configurePreset": "debug-with-clients",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "debug-coverage",
-      "configurePreset": "debug-coverage",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "ci-full",
-      "configurePreset": "ci-full",
-      "output": {
-        "outputOnFailure": true
-      }
-    }
-  ],
   "workflowPresets": [
     {
       "name": "default-workflow",
       "displayName": "Default Build Workflow",
-      "description": "Complete default build workflow (configure and build only)",
+      "description": "Complete default build workflow",
       "steps": [
         {
           "type": "configure",
@@ -277,84 +87,9 @@
       ]
     },
     {
-      "name": "release-workflow",
-      "displayName": "Release Build Workflow",
-      "description": "Complete release build workflow (configure and build only)",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "release-with-clients"
-        },
-        {
-          "type": "build",
-          "name": "release-with-clients"
-        }
-      ]
-    },
-    {
-      "name": "debug-workflow",
-      "displayName": "Debug Build Workflow",
-      "description": "Complete debug build workflow (configure and build only)",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "debug-with-clients"
-        },
-        {
-          "type": "build",
-          "name": "debug-with-clients"
-        }
-      ]
-    },
-    {
-      "name": "coverage-workflow",
-      "displayName": "Coverage Build Workflow",
-      "description": "Build with code coverage (configure and build only)",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "debug-coverage"
-        },
-        {
-          "type": "build",
-          "name": "debug-coverage"
-        }
-      ]
-    },
-    {
-      "name": "ci-quick-workflow",
-      "displayName": "CI Quick Workflow",
-      "description": "Fast CI smoke test workflow",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "ci-quick"
-        },
-        {
-          "type": "build",
-          "name": "ci-quick"
-        }
-      ]
-    },
-    {
-      "name": "ci-full-workflow",
-      "displayName": "CI Full Workflow",
-      "description": "Complete CI build workflow (configure and build only)",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "ci-full"
-        },
-        {
-          "type": "build",
-          "name": "ci-full"
-        }
-      ]
-    },
-    {
-      "name": "quick",
+      "name": "quick-workflow",
       "displayName": "Quick Build Workflow",
-      "description": "Fast build workflow for iteration (configure and build only)",
+      "description": "Fast build workflow for iteration",
       "steps": [
         {
           "type": "configure",
