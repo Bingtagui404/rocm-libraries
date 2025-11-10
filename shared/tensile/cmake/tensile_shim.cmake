@@ -12,11 +12,22 @@
 #
 # Legacy → Modern Mappings:
 # ------------------------
-# Tensile_ARCHITECTURE      → GPU_TARGETS
-# TENSILE_BUILD_CLIENT      → TENSILE_ENABLE_CLIENT
-# TENSILE_USE_MSGPACK       → TENSILE_ENABLE_MSGPACK
-# TENSILE_USE_LLVM          → TENSILE_ENABLE_LLVM
-# Tensile_LIBRARY_FORMAT    → TENSILE_ENABLE_MSGPACK/TENSILE_ENABLE_LLVM
+# Tensile_ARCHITECTURE              → GPU_TARGETS
+# TENSILE_BUILD_CLIENT              → TENSILE_ENABLE_CLIENT
+# TENSILE_USE_MSGPACK               → TENSILE_ENABLE_MSGPACK
+# TENSILE_USE_LLVM                  → TENSILE_ENABLE_LLVM
+# Tensile_LIBRARY_FORMAT            → TENSILE_ENABLE_MSGPACK/TENSILE_ENABLE_LLVM
+# Tensile_CPU_THREADS               → TENSILE_JOBS
+# Tensile_CODE_OBJECT_VERSION       → TENSILE_CODE_OBJECT_VERSION
+# Tensile_MERGE_FILES               → TENSILE_MERGE_FILES
+# Tensile_SHORT_FILENAMES           → TENSILE_SHORT_FILENAMES
+# Tensile_PRINT_DEBUG               → TENSILE_VERBOSITY
+# Tensile_SEPARATE_ARCHITECTURES    → TENSILE_SEPARATE_ARCHITECTURES
+# Tensile_LAZY_LIBRARY_LOADING      → TENSILE_LAZY_LIBRARY_LOADING
+# Tensile_GENERATE_PACKAGE          → TENSILE_GENERATE_PACKAGE
+# Tensile_KEEP_BUILD_TMP            → TENSILE_KEEP_BUILD_TMP
+# Tensile_VERBOSE                   → TENSILE_VERBOSITY
+# Tensile_NO_ENUMERATE              → TENSILE_NO_ENUMERATE
 # ==============================================================================
 
 # Helper macro for deprecation warnings using native CMake mechanism
@@ -88,6 +99,10 @@ shim_mapping(Tensile_SHORT_FILENAMES TENSILE_SHORT_FILENAMES "Short filenames")
 shim_mapping(Tensile_PRINT_DEBUG TENSILE_VERBOSITY "Debug verbosity" STRING)
 shim_mapping(Tensile_SEPARATE_ARCHITECTURES TENSILE_SEPARATE_ARCHITECTURES "Separate architectures")
 shim_mapping(Tensile_LAZY_LIBRARY_LOADING TENSILE_LAZY_LIBRARY_LOADING "Lazy loading")
+shim_mapping(Tensile_GENERATE_PACKAGE TENSILE_GENERATE_PACKAGE "Generate Tensile package")
+shim_mapping(Tensile_KEEP_BUILD_TMP TENSILE_KEEP_BUILD_TMP "Keep temporary build files")
+shim_mapping(Tensile_VERBOSE TENSILE_VERBOSITY "Verbosity level" STRING)
+shim_mapping(Tensile_NO_ENUMERATE TENSILE_NO_ENUMERATE "Disable GPU enumeration")
 
 # Map Tensile_LIBRARY_FORMAT → TENSILE_ENABLE_MSGPACK/TENSILE_ENABLE_LLVM
 if(DEFINED Tensile_LIBRARY_FORMAT)
@@ -114,9 +129,6 @@ if(DEFINED Tensile_LIBRARY_FORMAT)
         list(APPEND _TENSILE_CURRENT_OPTIONS "TENSILE_ENABLE_MSGPACK=OFF")
     endif()
 endif()
-
-# Special case for BUILD_SHARED_LIBS → TENSILE_BUILD_SHARED_LIBS
-shim_mapping(BUILD_SHARED_LIBS TENSILE_BUILD_SHARED_LIBS "Build shared library")
 
 # ==============================================================================
 # Display Migration Guidance

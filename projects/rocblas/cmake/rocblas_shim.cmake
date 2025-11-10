@@ -19,7 +19,6 @@
 # BUILD_WITH_TENSILE        → ROCBLAS_ENABLE_TENSILE
 # BUILD_WITH_HIPBLASLT      → ROCBLAS_ENABLE_HIPBLASLT
 # AMDGPU_TARGETS            → GPU_TARGETS
-# BUILD_SHARED_LIBS         → ROCBLAS_BUILD_SHARED_LIBS
 # BUILD_ADDRESS_SANITIZER   → ROCBLAS_ENABLE_ASAN
 # BUILD_CODE_COVERAGE       → ROCBLAS_BUILD_COVERAGE
 # BUILD_VERBOSE             → CMAKE_VERBOSE_MAKEFILE
@@ -117,7 +116,6 @@ endif()
 
 # Additional mappings with special handling
 shim_mapping(BUILD_VERBOSE CMAKE_VERBOSE_MAKEFILE "Enable verbose output from Makefile builds.")
-shim_mapping(BUILD_SHARED_LIBS ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library.")
 
 # Map SKIP_LIBRARY → ROCBLAS_ENABLE_HOST (inverted logic)
 if(DEFINED SKIP_LIBRARY)
@@ -133,22 +131,6 @@ if(DEFINED SKIP_LIBRARY)
         list(APPEND _ROCBLAS_CURRENT_OPTIONS "ROCBLAS_ENABLE_HOST=${ROCBLAS_ENABLE_HOST}")
     endif()
 endif()
-
-# ==============================================================================
-# Tensile Legacy Option Mappings
-# ==============================================================================
-
-# Map legacy Tensile function parameter style options to cache variables
-# These correspond to parameters in the old TensileCreateLibraryFiles function
-
-shim_mapping(TENSILE_MERGE_FILES TENSILE_MERGE_FILES "Merge kernel and solution files")
-shim_mapping(TENSILE_SHORT_FILE_NAMES TENSILE_SHORT_FILENAMES "Use short file names")
-shim_mapping(TENSILE_GENERATE_PACKAGE TENSILE_GENERATE_PACKAGE "Generate Tensile package")
-shim_mapping(TENSILE_SEPARATE_ARCHITECTURES TENSILE_SEPARATE_ARCHITECTURES "Use GPU architecture-specific files")
-shim_mapping(TENSILE_LAZY_LIBRARY_LOADING TENSILE_LAZY_LIBRARY_LOADING "Load kernels on demand")
-shim_mapping(TENSILE_KEEP_BUILD_TMP TENSILE_KEEP_BUILD_TMP "Keep temporary build files")
-shim_mapping(TENSILE_CPU_THREADS TENSILE_JOBS "Number of jobs to run in parallel" STRING)
-shim_mapping(TENSILE_VERBOSE TENSILE_VERBOSITY "Verbosity level for the TensileCreateLibrary command" STRING)
 
 # ==============================================================================
 # Infer ROCBLAS_ENABLE_CLIENT from child options
