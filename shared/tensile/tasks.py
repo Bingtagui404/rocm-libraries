@@ -77,7 +77,7 @@ def build_client(c, clean=False, configure=True, build=True, build_type="Release
             f"-DCMAKE_BUILD_TYPE={build_type}",
             "-DTENSILE_ENABLE_CLIENT=ON",
             "-DTENSILE_ENABLE_HOST=ON",
-            "-DTENSILE_ENABLE_DEVICE=OFF",
+            "-DTENSILE_ENABLE_GEMM=OFF",
             f"-DGPU_TARGETS={gpu_targets}"
         ]
 
