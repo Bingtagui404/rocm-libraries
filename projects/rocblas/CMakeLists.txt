@@ -90,7 +90,7 @@ option(ROCBLAS_ENABLE_HOST "Build rocBLAS host library." ON)
 option(ROCBLAS_BUILD_SHARED_LIBS "Build the rocBLAS shared or static library." ON)
 set(BUILD_SHARED_LIBS ${ROCBLAS_BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries")
 option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
-option(ROCBLAS_BUILD_COVERAGE "Build tests with coverage enabled." OFF)
+option(ROCBLAS_ENABLE_COVERAGE "Build tests with coverage enabled." OFF)
 set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CACHE STRING "GTest filter for coverage tests.")
 
 option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." OFF)
@@ -106,7 +106,7 @@ if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)
   message(FATAL_ERROR "Cannot enable fortran clients and address sanitizers.")
 endif()
 
-if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
+if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
   if(ROCBLAS_ENABLE_FORTRAN)
     message(FATAL_ERROR "Cannot enable fortran clients and code coverage.")
   endif()
@@ -132,6 +132,65 @@ mark_as_advanced(
   CMAKE_INSTALL_RPATH
   CMAKE_INSTALL_RPATH_USE_LINK_PATH
 )
+
+# =============================================================================
+# Validate and handle incompatible build option combinations
+# =============================================================================
+# NOTE: This is a transitional implementation to avoid breaking existing CI pipelines.
+# The reference build silently disabled Fortran when ASAN or coverage was enabled.
+# We match that behavior here but add warnings to alert users.
+#
+# TODO: Once CI systems are updated to explicitly set -DROCBLAS_ENABLE_FORTRAN=OFF
+#       in coverage/ASAN builds, change the WARNING messages below to FATAL_ERROR
+#       for better user experience and to enforce build invariants explicitly.
+#       This will prevent silent configuration changes and make build requirements clear.
+# =============================================================================
+
+# Address sanitizer configuration
+if(ROCBLAS_ENABLE_ASAN)
+  # ASAN requires shared libraries (matches reference build requirement)
+  if(NOT ROCBLAS_BUILD_SHARED_LIBS)
+    message(FATAL_ERROR 
+      "Address sanitizer requires shared libraries.\n"
+      "Please set: -DROCBLAS_BUILD_SHARED_LIBS=ON\n"
+      "Or disable ASAN: -DROCBLAS_ENABLE_ASAN=OFF")
+  endif()
+  
+  # ASAN incompatible with Fortran linking
+  # TODO: Change to FATAL_ERROR once CI updated (preferred behavior)
+  if(ROCBLAS_ENABLE_FORTRAN)
+    message(WARNING 
+      "================================================================\n"
+      "Address sanitizer is incompatible with Fortran clients.\n"
+      "Automatically disabling Fortran clients (ROCBLAS_ENABLE_FORTRAN=OFF).\n"
+      "This matches reference build behavior to avoid breaking CI pipelines.\n"
+      "================================================================")
+    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (incompatible with ASAN)" FORCE)
+  endif()
+endif()
+
+# Code coverage configuration
+if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
+  # Coverage requires shared libraries for instrumentation
+  if(NOT ROCBLAS_BUILD_SHARED_LIBS)
+    message(FATAL_ERROR 
+      "Code coverage requires shared libraries.\n"
+      "Please set: -DROCBLAS_BUILD_SHARED_LIBS=ON\n"
+      "Or disable coverage: -DROCBLAS_ENABLE_COVERAGE=OFF")
+  endif()
+  
+  # Coverage incompatible with Fortran linking
+  # TODO: Change to FATAL_ERROR once CI updated (preferred behavior)
+  if(ROCBLAS_ENABLE_FORTRAN)
+    message(WARNING 
+      "================================================================\n"
+      "Code coverage is incompatible with Fortran clients.\n"
+      "Automatically disabling Fortran clients (ROCBLAS_ENABLE_FORTRAN=OFF).\n"
+      "This matches reference build behavior to avoid breaking CI pipelines.\n"
+      "================================================================")
+    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (incompatible with coverage)" FORCE)
+  endif()
+endif()
 
 # Interface library for common warning suppression flags
 add_library(rocblas-warnings INTERFACE)
@@ -457,7 +516,7 @@ rocm_create_package(
   LDCONFIG_DIR
   ${ROCBLAS_CONFIG_DIR})
 
-if(ROCBLAS_BUILD_COVERAGE OR BUILD_CODE_COVERAGE)
+if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
   message(STATUS "Configuring code coverage target")
   target_compile_options(rocblas PRIVATE -fprofile-instr-generate -fcoverage-mapping)
   target_link_options(rocblas PRIVATE -fprofile-instr-generate)
