@@ -26,7 +26,7 @@
         "CMAKE_CXX_COMPILER": "/opt/rocm/bin/amdclang++",
         "CMAKE_C_COMPILER": "/opt/rocm/bin/amdclang",
         "CMAKE_Fortran_COMPILER": "gfortran",
-        "CMAKE_PREFIX_PATH": "/opt/rocm",
+        "CMAKE_PREFIX_PATH": "/opt/rocm;/opt/rocm/llvm/lib/cmake",
         "ROCBLAS_ENABLE_BLIS": "ON",
         "ROCBLAS_ENABLE_HIPBLASLT": "ON",
         "ROCBLAS_ENABLE_TENSILE": "ON",
