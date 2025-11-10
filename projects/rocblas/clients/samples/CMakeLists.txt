@@ -33,6 +33,9 @@ target_link_libraries(rocblas-example-c-dgeam PRIVATE rocblas::samples-common)
 # FLAG: -std=c11 - C example requires C11 standard
 target_compile_options(rocblas-example-c-dgeam PRIVATE -std=c11)
 
+# FLAG: __HIP_PLATFORM_HCC__ - Legacy HIP platform identifier (C example only)
+target_compile_definitions(rocblas-example-c-dgeam PRIVATE __HIP_PLATFORM_HCC__)
+
 set_target_properties(rocblas-example-c-dgeam PROPERTIES LINKER_LANGUAGE C)
 
 target_sources(rocblas-example-c-dgeam PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_c_dgeam.c")
@@ -117,6 +120,8 @@ if(ROCBLAS_ENABLE_FORTRAN)
             Threads::Threads
     )
 
+    target_compile_definitions(rocblas-example-fortran-axpy PRIVATE ROCBLAS_INTERNAL_API)
+
     add_dependencies(rocblas-example-fortran-axpy rocblas-fortran-module)
 
     target_sources(rocblas-example-fortran-axpy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_axpy.f90")
@@ -131,6 +136,8 @@ if(ROCBLAS_ENABLE_FORTRAN)
             Threads::Threads
     )
 
+    target_compile_definitions(rocblas-example-fortran-scal PRIVATE ROCBLAS_INTERNAL_API)
+
     add_dependencies(rocblas-example-fortran-scal rocblas-fortran-module)
 
     target_sources(rocblas-example-fortran-scal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_scal.f90")
@@ -144,6 +151,8 @@ if(ROCBLAS_ENABLE_FORTRAN)
             rocblas-fortran-client
             Threads::Threads
     )
+
+    target_compile_definitions(rocblas-example-fortran-gemv PRIVATE ROCBLAS_INTERNAL_API)
 
     add_dependencies(rocblas-example-fortran-gemv rocblas-fortran-module)
 

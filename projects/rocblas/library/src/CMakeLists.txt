@@ -61,6 +61,10 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
     # NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
     # NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
 
+    # Compiler flags for rocblas-gemm-host
+    target_compile_options(rocblas-gemm-host PRIVATE --offload-compress)
+    target_compile_definitions(rocblas-gemm-host PRIVATE rocblas_EXPORTS)
+
     # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
     set_target_properties(rocblas-gemm-host
         PROPERTIES
