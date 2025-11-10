@@ -135,6 +135,22 @@ if(DEFINED SKIP_LIBRARY)
 endif()
 
 # ==============================================================================
+# Tensile Legacy Option Mappings
+# ==============================================================================
+
+# Map legacy Tensile function parameter style options to cache variables
+# These correspond to parameters in the old TensileCreateLibraryFiles function
+
+shim_mapping(TENSILE_MERGE_FILES TENSILE_MERGE_FILES "Merge kernel and solution files")
+shim_mapping(TENSILE_SHORT_FILE_NAMES TENSILE_SHORT_FILENAMES "Use short file names")
+shim_mapping(TENSILE_GENERATE_PACKAGE TENSILE_GENERATE_PACKAGE "Generate Tensile package")
+shim_mapping(TENSILE_SEPARATE_ARCHITECTURES TENSILE_SEPARATE_ARCHITECTURES "Use GPU architecture-specific files")
+shim_mapping(TENSILE_LAZY_LIBRARY_LOADING TENSILE_LAZY_LIBRARY_LOADING "Load kernels on demand")
+shim_mapping(TENSILE_KEEP_BUILD_TMP TENSILE_KEEP_BUILD_TMP "Keep temporary build files")
+shim_mapping(TENSILE_CPU_THREADS TENSILE_JOBS "Number of jobs to run in parallel" STRING)
+shim_mapping(TENSILE_VERBOSE TENSILE_VERBOSITY "Verbosity level for the TensileCreateLibrary command" STRING)
+
+# ==============================================================================
 # Infer ROCBLAS_ENABLE_CLIENT from child options
 # ==============================================================================
 

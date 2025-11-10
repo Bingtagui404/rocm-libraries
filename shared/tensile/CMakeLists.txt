@@ -201,3 +201,26 @@ install(
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   COMPONENT devel
 )
+
+# Configure and install package config files
+set(TENSILE_INSTALL_CONFIGDIR "${CMAKE_INSTALL_LIBDIR}/cmake/tensile")
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tensile-config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/tensile-config.cmake"
+  INSTALL_DESTINATION "${TENSILE_INSTALL_CONFIGDIR}"
+)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/tensile-config-version.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/tensile-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/tensile-config-version.cmake"
+  DESTINATION "${TENSILE_INSTALL_CONFIGDIR}"
+  COMPONENT devel
+)
