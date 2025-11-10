@@ -59,16 +59,25 @@ namespace rocRoller
                     const auto storeLDSTags{
                         getAssociatedOps<LoadTiled, StoreLDSTile>(kgraph, loadGlobal)};
 
+                    Log::info("loadGlobal = {},  storeLDSTags = {}", loadGlobal, storeLDSTags);
+
                     if(storeLDSTags.size() == 1)
                     {
                         result.push_back({loadGlobal, storeLDSTags[0]});
                     }
                     else
                     {
-                        AssertFatal(
-                            storeLDSTags.size() <= 2,
-                            "AddDirect2LDS: More than 2 ComputeIndex operation required for "
-                            "StoreLDSTile.");
+                        //if(not (storeLDSTags.size() <= 2))
+                        //{
+                        //    std::ofstream ofs("lds.dot");
+                        //    ofs << kgraph.control.toDOT();
+                        //}
+                        //AssertFatal(
+                        //    storeLDSTags.size() <= 2,
+                        //    ShowValue(storeLDSTags),
+                        //    ShowValue(loadGlobal),
+                        //    "AddDirect2LDS: More than 2 ComputeIndex operation required for "
+                        //    "StoreLDSTile.");
                         for(const auto& storeLDS : storeLDSTags)
                         {
                             auto maybeForLoopOfLoad
@@ -135,12 +144,12 @@ namespace rocRoller
             using namespace CoordinateGraph;
             using namespace AddDirect2LDSDetail;
 
-            Log::debug("  AddDirect2LDS control graph transform.");
+            Log::info("  AddDirect2LDS control graph transform.");
 
             auto candidates = searchCandidates(original);
             if(std::ranges::empty(candidates))
             {
-                Log::debug("No candidates for AddDirect2LDS.");
+                Log::info("No candidates for AddDirect2LDS.");
                 return original;
             }
 
@@ -157,7 +166,7 @@ namespace rocRoller
             std::unordered_set<int> nodesToPurge;
             for(auto [loadTiledTag, storeLDSTileTag] : candidates)
             {
-                Log::debug(
+                Log::info(
                     "  Found LoadTiled({}) and StoreLDSTile({}).", loadTiledTag, storeLDSTileTag);
 
                 // create LoadTileDirect2LDS operation
@@ -170,7 +179,7 @@ namespace rocRoller
                 if(nodesToPurge.count(storeLDSTileTag) == 0)
                 {
                     replaceWith(kgraph, storeLDSTileTag, kgraph.control.addElement(NOP()), false);
-                    Log::debug("  Replaced StoreLDSTile({}) with NOP.", storeLDSTileTag);
+                    Log::info("  Replaced StoreLDSTile({}) with NOP.", storeLDSTileTag);
                     nodesToPurge.insert(storeLDSTileTag);
                 }
             }
@@ -179,6 +188,23 @@ namespace rocRoller
             {
                 purgeNodes(kgraph, {node});
             }
+
+            AssertFatal(kgraph.control.getNodes<StoreLDSTile>().empty(), "Still have StoreLDSTile");
+            AssertFatal(kgraph.control
+                            .findElements([&](int tag) {
+                                if(kgraph.control.get<LoadTiled>(tag))
+                                {
+                                    auto macroTile = kgraph.coordinates.get<MacroTile>(
+                                        kgraph.mapper.get<MacroTile>(tag));
+                                    if(macroTile)
+                                        Log::info("mt type = {}", toString(macroTile->memoryType));
+                                    return macroTile
+                                           && macroTile->memoryType == MemoryType::WAVE_Direct2LDS;
+                                }
+                                return false;
+                            })
+                            .empty(),
+                        "Still have LoadTiled with WAVE_Direct2LDS");
 
             return kgraph;
         }

@@ -1035,52 +1035,7 @@ def fp4_target():
     )
 
 
-def fp4_target_d2lds_mi32x32x64_pf2x1():
-    yield GEMMRun(
-        M=4096,
-        N=4096,
-        K=32768,
-        mac_m=256,
-        mac_n=256,
-        mac_k=128,
-        wave_m=32,
-        wave_n=32,
-        wave_k=64,
-        wave_b=1,
-        workgroup_size_x=128,
-        workgroup_size_y=2,
-        unroll_x=0,
-        unroll_y=0,
-        load_A="BufferToLDS",
-        load_B="BufferToLDS",
-        loadLDSScale_A=True,
-        loadLDSScale_B=True,
-        storeLDS_D=True,
-        prefetch=True,
-        prefetchInFlight=2,
-        prefetchLDSFactor=1,
-        betaInFma=True,
-        scheduler="Priority",
-        matchMemoryAccess=True,
-        types=TypeParameters(
-            trans_A="T",
-            trans_B="N",
-            type_A="fp4",
-            type_B="fp4",
-            type_C="half",
-            type_D="half",
-            type_acc="float",
-            scale_A="Separate",
-            scaleType_A="E8M0",
-            scale_B="Separate",
-            scaleType_B="E8M0",
-            scaleBlockSize=32,
-        ),
-        swizzleTileSize=MKNLTuple(64, 64 // 32 * 2 * 2, 64, 64 // 32 * 2 * 2),
-        numOuter=1,
-        numWarmUp=1000,
-        numInner=1000,
-    )
+
 
 
 def add_wgm(mapping, suite):
@@ -1229,6 +1184,71 @@ def fp4_target_d2lds_mi16x16x128_pf4x1_wgm():
 def fp4_target_d2lds_mi16x16x128_pf4x1_both():
     yield from fp4_target_d2lds_mi16x16x128_pf4x1()
     yield from fp4_target_d2lds_mi16x16x128_pf4x1_wgm()
+
+
+
+# Test different macro tile sizes
+def fp4_target_d2lds_mt(mac_m, mac_n, mac_k, workgroup_size_x, workgroup_size_y):
+    yield GEMMRun(
+        M=4096,
+        N=4096,
+        K=32768,
+        beta=0.0,
+        mac_m=mac_m,
+        mac_n=mac_n,
+        mac_k=mac_k,
+        wave_m=16,
+        wave_n=16,
+        wave_k=128,
+        wave_b=1,
+        workgroup_size_x=workgroup_size_x,
+        workgroup_size_y=workgroup_size_y,
+        unroll_x=0,
+        unroll_y=0,
+        load_A="BufferToLDS",
+        load_B="BufferToLDS",
+        loadLDSScale_A=False,
+        loadLDSScale_B=False,
+        storeLDS_D=False,
+        prefetch=True,
+        prefetchInFlight=2,
+        prefetchLDSFactor=1,
+        prefetchScale=True,
+        swizzleScale=True,
+        prefetchMixMemOps=False,
+        betaInFma=True,
+        scheduler="Priority",
+        matchMemoryAccess=True,
+        types=TypeParameters(
+            trans_A="T",
+            trans_B="N",
+            type_A="fp4",
+            type_B="fp4",
+            type_C="half",
+            type_D="half",
+            type_acc="float",
+            scale_A="Separate",
+            scaleType_A="E8M0",
+            scale_B="Separate",
+            scaleType_B="E8M0",
+            scaleBlockSize=32,
+        ),
+        swizzleTileSize=MKNLTuple(64, 64 // 32 * 2 * 4, 64, 64 // 32 * 2 * 4),
+        numOuter=1,
+        numWarmUp=1000,
+        numInner=1000,
+    )
+
+def fp4_target_d2lds_mt32x32x256():
+    yield from fp4_target_d2lds_mt(mac_m=32, mac_n=32, mac_k=256, workgroup_size_x=128, workgroup_size_y=2)
+
+def fp4_target_d2lds_mt32x32x128():
+    yield from fp4_target_d2lds_mt(mac_m=32, mac_n=32, mac_k=128, workgroup_size_x=128, workgroup_size_y=1)
+
+def fp4_target_d2lds_mt16x16x256():
+    yield from fp4_target_d2lds_mt(mac_m=16, mac_n=16, mac_k=256, workgroup_size_x=64, workgroup_size_y=1)
+
+
 
 
 def does_this_fail():

@@ -321,7 +321,12 @@ namespace rocRoller
                     AssertFatal(solutionParams.macM * solutionParams.macK
                                         * DataTypeInfo::Get(typeA).elementBytes
                                     > wave_m * wave_k,
-                                "Not enough elements (A).");
+                                "Not enough elements (A).",
+                                ShowValue(solutionParams.macM),
+                                ShowValue(solutionParams.macK),
+                                ShowValue(DataTypeInfo::Get(typeA).elementBytes),
+                                ShowValue(wave_m),
+                                ShowValue(wave_k));
                     AssertFatal(solutionParams.macN * solutionParams.macK
                                         * DataTypeInfo::Get(typeA).elementBytes
                                     > wave_n * wave_k,
@@ -335,8 +340,17 @@ namespace rocRoller
                     uint wavetilePerWavefrontN
                         = solutionParams.macN / wave_n / solutionParams.workgroupSizeY;
 
-                    AssertFatal(wavetilePerWavefrontM > 0, "WaveTile size mismatch.");
-                    AssertFatal(wavetilePerWavefrontN > 0, "WaveTile size mismatch.");
+                    AssertFatal(wavetilePerWavefrontM > 0,
+                                "WaveTile size mismatch.",
+                                ShowValue(wavefrontSize),
+                                ShowValue(solutionParams.macM),
+                                ShowValue(wave_m),
+                                ShowValue(solutionParams.workgroupSizeX));
+                    AssertFatal(wavetilePerWavefrontN > 0,
+                                "WaveTile size mismatch.",
+                                ShowValue(solutionParams.macN),
+                                ShowValue(wave_n),
+                                ShowValue(solutionParams.workgroupSizeY));
 
                     AssertFatal(solutionParams.macM % (wave_m * wavetilePerWavefrontM) == 0,
                                 "WaveTile size mismatch (M)",
