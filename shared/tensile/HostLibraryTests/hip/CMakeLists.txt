@@ -74,10 +74,10 @@ add_custom_command(
   OUTPUT "${TENSILE_TEST_DATA_DIR}/test_tile_aware_selection/library/test_tile_aware_selection.cpp"
   WORKING_DIRECTORY "${TENSILE_SOURCE_TREE}/../..")
 
-add_library(test-device-kernels OBJECT
+add_library(test-gemm-kernels OBJECT
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite/library/test_kernels_lite.cpp"
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_2/library/test_kernels_lite_2.cpp"
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_mixed/library/test_kernels_lite_mixed.cpp"
   "${TENSILE_TEST_DATA_DIR}/test_tile_aware_selection/library/test_tile_aware_selection.cpp")
-target_link_libraries(test-device-kernels PRIVATE tensile-host)
-target_compile_definitions(test-device-kernels PRIVATE __HIP_HCC_COMPAT_MODE__=1)
+target_link_libraries(test-gemm-kernels PRIVATE tensile-host)
+target_compile_definitions(test-gemm-kernels PRIVATE __HIP_HCC_COMPAT_MODE__=1)

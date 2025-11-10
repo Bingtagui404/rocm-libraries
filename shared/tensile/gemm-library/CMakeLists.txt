@@ -93,6 +93,6 @@ list(JOIN TENSILE_CREATE_LIBRARY_COMMAND " " FORMATTED_TCL)
 message(VERBOSE "Device lib build command: ${FORMATTED_TCL}")
 endblock()
 
-add_custom_target(tensile-device-libraries ALL DEPENDS "${output_stamp}")
+add_custom_target(tensile-gemm-libraries ALL DEPENDS "${output_stamp}")
 
-add_dependencies(tensile-host tensile-device-libraries)
+add_dependencies(tensile-host tensile-gemm-libraries)
