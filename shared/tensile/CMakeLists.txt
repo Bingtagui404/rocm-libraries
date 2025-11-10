@@ -133,7 +133,7 @@ if(TENSILE_ENABLE_HOST)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/lib")
 endif()
 
-if(TENSILE_ENABLE_DEVICE)
+if(TENSILE_ENABLE_GEMM)
   add_subdirectory(gemm-library)
 endif()
 
