@@ -43,7 +43,7 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
     )
 
     if(ROCBLAS_ENABLE_TENSILE)
-        target_link_libraries(rocblas-gemm-host PUBLIC roc::tensile-host)
+        target_link_libraries(rocblas-gemm-host PRIVATE roc::tensile-host)
 
         target_compile_definitions(rocblas-gemm-host
             PRIVATE

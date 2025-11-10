@@ -109,7 +109,7 @@ if(TENSILE_ENABLE_HOST)
     endif()
 
     target_link_libraries(tensile-host PUBLIC msgpack::msgpack-cxx)
-    target_compile_definitions(tensile-host PUBLIC TENSILE_MSGPACK)
+    target_compile_definitions(tensile-host PRIVATE TENSILE_MSGPACK)
   endif()
 
   if(TENSILE_ENABLE_LLVM)
