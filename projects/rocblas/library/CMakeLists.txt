@@ -43,14 +43,10 @@ if(ROCBLAS_ENABLE_HIPBLASLT)
     target_compile_definitions(rocblas64 PRIVATE BUILD_WITH_HIPBLASLT)
 endif()
 
-# NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
-# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
-
 set_target_properties(rocblas64
     PROPERTIES
         COMPILE_FLAGS "--offload-compress"
         CXX_VISIBILITY_PRESET hidden
-        # POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
         POSITION_INDEPENDENT_CODE ON
         VISIBILITY_INLINES_HIDDEN ON
 )
@@ -74,6 +70,12 @@ target_include_directories(rocblas-helper
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
 )
 
+# FLAG: -Werror=vla catches variable-length array usage to prevent stack issues
+target_compile_options(rocblas-helper
+    PRIVATE
+        -Werror=vla
+)
+
 target_compile_definitions(rocblas-helper
     PRIVATE
         ROCBLAS_BETA_FEATURES_API
@@ -95,10 +97,6 @@ if(ROCBLAS_ENABLE_HIPBLASLT)
     target_compile_definitions(rocblas-helper PRIVATE BUILD_WITH_HIPBLASLT)
 endif()
 
-# NOTE: C++ standard inherited from global CMAKE_CXX_STANDARD=17 setting
-# NOTE: CXX_EXTENSIONS inherited from global CMAKE_CXX_EXTENSIONS=OFF setting
-
-# POSITION_INDEPENDENT_CODE required for OBJECT library linking into shared library
 set_target_properties(rocblas-helper
     PROPERTIES
         COMPILE_FLAGS "--offload-compress"
@@ -142,6 +140,13 @@ target_include_directories(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
 )
 
+# FLAG: -Werror=vla catches variable-length array usage to prevent stack issues
+target_compile_options(rocblas
+    PRIVATE
+        --offload-compress
+        -Werror=vla
+)
+
 target_compile_definitions(rocblas
     PRIVATE
         ROCBLAS_BETA_FEATURES_API
@@ -158,12 +163,9 @@ if(ROCBLAS_ENABLE_TENSILE)
     )
 endif()
 
-# FLAG: -Werror=vla catches variable-length array usage to prevent stack issues
-target_compile_options(rocblas
-    PRIVATE
-        --offload-compress
-        -Werror=vla
-)
+if(ROCBLAS_ENABLE_HIPBLASLT)
+    target_compile_definitions(rocblas PRIVATE BUILD_WITH_HIPBLASLT)
+endif()
 
 # Prevent symbols from static libraries (like Tensile) from being re-exported
 target_link_options(rocblas PRIVATE -Xlinker --exclude-libs=ALL)
@@ -171,7 +173,7 @@ target_link_options(rocblas PRIVATE -Xlinker --exclude-libs=ALL)
 set_target_properties(rocblas
     PROPERTIES
         CXX_VISIBILITY_PRESET hidden
-        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/staging
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging"
         VISIBILITY_INLINES_HIDDEN ON
 )
 
