@@ -48,14 +48,13 @@ setup(
   name="Tensile",
   version=readVersionFromInit(),
   description="An auto-tuning tool for GEMMs and higher-dimensional tensor contractions on GPUs.",
-  url="https://github.com/ROCmSoftwarePlatform/Tensile",
+  url="https://github.com/ROCm/rocm-libraries/shared/tensile",
   author="Advanced Micro Devices",
   license="MIT",
   install_requires=readRequirementsFromTxt(),
   python_requires='>=3.5',
   packages=["Tensile"],
   package_data={ "Tensile": ["Tensile/cmake/*"] },
-  data_files=[ ("cmake", ["Tensile/cmake/TensileConfig.cmake", "Tensile/cmake/TensileConfigVersion.cmake"]) ],
   include_package_data=True,
   entry_points={"console_scripts": [
     # user runs a benchmark
