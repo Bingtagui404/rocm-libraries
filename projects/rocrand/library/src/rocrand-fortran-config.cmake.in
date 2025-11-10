@@ -48,7 +48,7 @@
 # Example (requires HIP):
 #
 #    // First find and include HIP
-#    // See https://github.com/ROCm-Developer-Tools/HIP
+#    // See https://github.com/ROCm/HIP
 #    find_package(rocrand REQUIRED CONFIG PATHS "/opt/rocm/rocrand")
 #    add_executable(foo foo.cpp)
 #    // Set HIP flags, add HIP includes

@@ -178,7 +178,7 @@ def TensileRetuneLibrary(userArgs):
     argParser.add_argument("SizeFile", type=os.path.realpath, nargs="?",
                            help="Yaml file with sizes to tune; same format as the 'ProblemSizes' "
                            "section of a regular Tensile config "
-                           "(https://github.com/ROCmSoftwarePlatform/Tensile/wiki/Benchmark-Protocol)",
+                           "(https://rocm.docs.amd.com/projects/Tensile/en/latest/src/conceptual/benchmarking.html#benchmark-protocol)",
                            default=None)
     argParser.add_argument("--update-method", "-u", dest="updateMethod",
                            choices=["remake", "update", "both"], default="remake",

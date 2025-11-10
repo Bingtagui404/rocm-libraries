@@ -30,7 +30,7 @@
 #include <gtest/gtest.h>
 
 // Tensorflow uses dlopen to load the ROCm libraries.
-// https://github.com/ROCmSoftwarePlatform/rocSOLVER/issues/230
+// https://github.com/ROCm/rocSOLVER/issues/230
 TEST(TestDynamicLinking, AllSymbolsResolved)
 {
     ASSERT_NE(dlopen(ROCSOLVER_LIB_NAME, RTLD_NOW | RTLD_LOCAL), nullptr) << dlerror();

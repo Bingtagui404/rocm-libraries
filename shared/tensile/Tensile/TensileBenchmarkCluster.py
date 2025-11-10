@@ -152,6 +152,7 @@ class BenchmarkImplSLURM(object):
         section.createValue("DockerBuildFile", os.path.join(rootTensileDir, "docker", "dockerfile-tensile-tuning-slurm"))
         section.createValue("DockerImageName", "tensile-tuning-cluster-executable")
         section.createValue("DockerImageTag", "TEST")
+        # TODO: Fix the tensile package locationa as per rocm/rocm-libraries repo structure.
         section.createValue("TensileFork", "ROCmSoftwarePlatform")
         section.createValue("TensileBranch", "develop")
         section.createValue("TensileCommit", "HEAD")

@@ -206,7 +206,7 @@ void example_dynamic_shared_memory(const T* input, T* output)
     using block_scan_type = rocprim::block_scan<T, BlockSize>;
 
     // Allocation done in runtime, for more information please visit:
-    // https://github.com/ROCm-Developer-Tools/HIP/tree/master/samples/2_Cookbook/6_dynamic_shared
+    // https://github.com/ROCm/HIP/tree/master/samples/2_Cookbook/6_dynamic_shared
     HIP_DYNAMIC_SHARED(typename block_scan_type::storage_type, primitive_storage);
 
     // Variables required for performing a scan

@@ -69,11 +69,13 @@ RUN pip3 install setuptools --upgrade && \
     pip3 install tox pyyaml msgpack joblib
 
 # Parameters related to building Tensile
+# TODO: Fix the tensile fork as per the structure of rocm/rocm-libraries repo.
 ARG tensile_fork=ROCmSoftwarePlatform
 ARG tensile_branch=develop
 ARG tensile_commit=HEAD
 
 # Check out desired Tensile code
+# TODO: Fix the tensile path as per the structure of rocm/rocm-libraries repo.
 RUN bash -xc \
 " \
     echo \"Tensile Fork: ${tensile_fork}\"; \

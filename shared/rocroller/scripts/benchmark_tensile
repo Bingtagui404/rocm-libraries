@@ -57,10 +57,12 @@ class keyvalue(argparse.Action):
 def process_cli():
     parser = argparse.ArgumentParser(description="Run Tensile")
     parser.add_argument("config", type=str, help="Path of Tensile Config.")
+    # TODO: Fix the default URL and other relevant arguments as per structure
+    # of the rocm/rocm-libraries repo.
     parser.add_argument(
         "--tensile_repo_url",
         type=str,
-        default="https://github.com/ROCmSoftwarePlatform/Tensile.git",
+        default="https://github.com/ROCm/rocm-libraries/tree/develop/projects/Tensile.git",
         help="URL of Tensile Repo.",
     )
     parser.add_argument(
@@ -95,7 +97,7 @@ def parse_tensile_result(result_row):
     retval["scheduler"] = "Tensile"
 
     # Information on Tensile kernel names:
-    # https://github.com/ROCmSoftwarePlatform/Tensile/blob/36b5a45961477433b1da8518df3b79295e76fec0/Tensile/SolutionStructs.py#L1115
+    # https://github.com/ROCm/Tensile/blob/36b5a45961477433b1da8518df3b79295e76fec0/Tensile/SolutionStructs.py#L1115
     # This functionality may need to be expanded if we add more configs.
     kernel_name_fields = result_row["WinnerName"].split("_")
 

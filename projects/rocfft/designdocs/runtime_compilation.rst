@@ -230,7 +230,7 @@ that the library will be able to find.
 The easiest solution here, as employed by `other math libraries` is
 to look for this the cache file relative to the shared library itself.
 
-.. _other math libraries: https://github.com/ROCmSoftwarePlatform/rocBLAS/blob/d8e00e169ccc7ca21211705643e85545e98e455a/library/src/tensile_host.cpp#L521
+.. _other math libraries: https://github.com/ROCm/rocBLAS/blob/38ca796b7ec6cf58e9d5d62be78a1c70c5982c1c/library/src/tensile_host.cpp#L690
 
 Environment variables can override the locations of caches used by
 rocFFT.  During normal operation, we would expect one read-only cache

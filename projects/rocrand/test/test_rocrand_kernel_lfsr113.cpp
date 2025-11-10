@@ -213,7 +213,7 @@ TEST(rocrand_kernel_lfsr113, rocrand_state_lfsr113_type)
     typedef rocrand_state_lfsr113 state_type;
     EXPECT_EQ(sizeof(state_type), 8 * sizeof(unsigned int));
     EXPECT_EQ(sizeof(state_type[32]), 32 * sizeof(state_type));
-    //TODO: Enable after this after the following PR merged in https://github.com/ROCm-Developer-Tools/hipamd/pull/25
+    //TODO: Enable after this after the following PR merged in https://github.com/ROCm/hipamd/pull/25
     //EXPECT_TRUE(std::is_trivially_copyable<state_type>::value);
     //EXPECT_TRUE(std::is_trivially_destructible<state_type>::value);
 }

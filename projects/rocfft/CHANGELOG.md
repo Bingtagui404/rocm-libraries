@@ -183,7 +183,7 @@ Documentation for rocFFT is available at
 
   These interfaces are still experimental and subject to change. We are interested in getting feedback.
   You can raise questions and concerns by opening issues in the
-  [rocFFT issue tracker](https://github.com/ROCmSoftwarePlatform/rocFFT/issues).
+  [rocm-libraries issue tracker](https://github.com/ROCm/rocm-libraries/issues).
 
   Note that multi-device FFTs currently have several limitations (we plan to address these in future
   releases):
@@ -395,7 +395,7 @@ Documentation for rocFFT is available at
 ### Removals
 
 * The hipFFT API (header) has been removed; use the
-  [hipFFT](https://github.com/ROCmSoftwarePlatform/hipFFT) package or repository to obtain the API
+  [hipFFT](https://github.com/ROCm/rocm-libraries/tree/develop/projects/hipfft) package or repository to obtain the API
 
 ## rocFFT 1.0.15 for ROCm 5.0.0
 
@@ -524,9 +524,9 @@ Documentation for rocFFT is available at
 ### Known issues
 
 * Fixed potential crashes in small 3D transforms with unusual strides
-  ([issue 311](https://github.com/ROCmSoftwarePlatform/rocFFT/issues/311))
+  ([issue 311](https://github.com/ROCm/rocFFT/issues/311))
 * Fixed potential crashes when running transforms on multiple devices
-  ([issue 310](https://github.com/ROCmSoftwarePlatform/rocFFT/issues/310))
+  ([issue 310](https://github.com/ROCm/rocFFT/issues/310))
 
 ## rocFFT 1.0.10 for ROCm 4.1.0
 

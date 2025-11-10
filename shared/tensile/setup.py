@@ -44,11 +44,12 @@ def readVersionFromInit():
     import Tensile
     return Tensile.__version__
 
+# TODO: Fix the url and other relevant fields as per the structure of rocm/rocm-libraries repo.
 setup(
   name="Tensile",
   version=readVersionFromInit(),
   description="An auto-tuning tool for GEMMs and higher-dimensional tensor contractions on GPUs.",
-  url="https://github.com/ROCmSoftwarePlatform/Tensile",
+  url="https://github.com/ROCm/rocm-libraries",
   author="Advanced Micro Devices",
   license="MIT",
   install_requires=readRequirementsFromTxt(),

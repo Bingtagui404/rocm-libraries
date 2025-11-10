@@ -191,7 +191,7 @@ Documentation for rocThrust available at
 * Fixed issue where `transform_iterator` would not compile with `__device__`-only operators.
 
 ### Changes
-* Updated `docs` directory structure to match the standard of [rocm-docs-core](https://github.com/RadeonOpenCompute/rocm-docs-core).
+* Updated `docs` directory structure to match the standard of [rocm-docs-core](https://github.com/ROCm/rocm-docs-core).
 * Removed references to and workarounds for deprecated hcc
 
 ## rocThrust 2.17.0 for ROCm 5.5

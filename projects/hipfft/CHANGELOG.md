@@ -213,4 +213,4 @@ Documentation for hipFFT is available at
 
 ### Changes
 
-* Testing infrastructure reuses code from [rocFFT](https://github.com/ROCmSoftwarePlatform/rocFFT)
+* Testing infrastructure reuses code from [rocFFT](https://github.com/ROCm/rocm-libraries/tree/develop/projects/rocfft)

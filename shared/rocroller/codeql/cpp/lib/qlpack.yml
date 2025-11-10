@@ -1,6 +1,8 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier:  MIT
 
+# TODO: Fix the name and the location of the package as per the structure of
+# rocm/rocm-libraries repo.
 name: rocmsoftwareplatform/rocroller-lib
 library: true
 version: 0.0.1

@@ -40,9 +40,10 @@ if (NOT BUILD_WITH_LIB STREQUAL "CUDA")
     elseif (DOWNLOAD_ROCRAND)
         # Download and install rocRAND.
         # This assumes that there is no system-installed rocRAND or that CMAKE_NO_SYSTEM_FROM_IMPORTED is ON.
+        # TODO: Fix GIT_REPOSITORY and other relevant fields as per the structure of rocm/rocm-libraries repo.
         download_project(
                 PROJ rocrand
-                GIT_REPOSITORY https://github.com/ROCmSoftwarePlatform/rocRAND.git
+                GIT_REPOSITORY https://github.com/ROCm/rocm-libraries.git
                 GIT_TAG develop
                 GIT_SHALLOW TRUE
                 INSTALL_DIR ${ROCRAND_ROOT}

@@ -13,13 +13,14 @@ if sys.version_info < (3, 4):
 
 version = "1.0"
 release = "1.0.0"
+# TODO: Fix url and other relevant fields as per the structure of rocm/rocm-libraries repo.
 setup(
     name="rocrand",
     version=release,
     description="rocRAND Python Wrapper",
     long_description=readme,
     author="Advanced Micro Devices, Inc.",
-    url="https://github.com/ROCmSoftwarePlatform/rocRAND",
+    url="https://github.com/ROCm/rocm-libraries/tree/develop/projects/rocRAND",
     license="MIT",
     packages=["rocrand"],
     install_requires=REQUIRED_PACKAGES,

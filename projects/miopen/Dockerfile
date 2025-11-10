@@ -79,7 +79,7 @@ RUN apt-get update && \
     python3-venv \
     redis \
     rocblas-dev \
-    rocm-developer-tools \
+    ROCm \
     rocm-llvm-dev \
     rocrand-dev \
     rpm \
@@ -108,7 +108,7 @@ RUN wget https://github.com/Yelp/dumb-init/releases/download/v1.2.0/dumb-init_1.
     dpkg -i dumb-init_*.deb && rm dumb-init_*.deb && \
 # Install cget && rbuild
     pip3 install https://github.com/pfultz2/cget/archive/a426e4e5147d87ea421a3101e6a3beca541c8df8.tar.gz && \
-    pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/6d78a0553babdaea8d2da5de15cbda7e869594b8.tar.gz && \
+    pip3 install https://github.com/ROCm/rbuild/archive/6d78a0553babdaea8d2da5de15cbda7e869594b8.tar.gz && \
 # Add symlink to /opt/rocm
     [ -d /opt/rocm ] || ln -sd $(realpath /opt/rocm-*) /opt/rocm && \
 # clear ccachc temp

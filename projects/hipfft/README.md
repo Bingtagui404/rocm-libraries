@@ -75,7 +75,7 @@ The commands above will output the coverage report to the terminal and save an h
 
 If you have existing CUDA code and want to transition to HIP, follow these steps:
 
-1. [HIPIFY](https://github.com/ROCm-Developer-Tools/HIPIFY) your code and fix all unsupported CUDA
+1. [HIPIFY](https://github.com/ROCm/HIPIFY) your code and fix all unsupported CUDA
    features and user-defined macros
 2. Build with HIP-Clang to run on an AMD device
 

@@ -313,7 +313,7 @@ Documentation for rocRAND is available at
 
 ### Changes
 
-* [hipRAND](https://github.com/ROCmSoftwarePlatform/hipRAND.git) has been split into a separate
+* [hipRAND](https://github.com/ROCm/rocm-libraries/tree/develop/projects/hiprand) has been split into a separate
   package
 * Header file installation location changed to match other libraries.
   * When using the `rocrand.h` header file, use `#include <rocrand/rocrand.h>` rather than

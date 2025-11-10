@@ -235,7 +235,7 @@ if( MIOPEN_BACKEND STREQUAL "OpenCL")
 
     # This is to pass all necessary build flags to HIP compiler
     # for device code compilation. Used within "find_package(hip...".
-    # See https://github.com/ROCm-Developer-Tools/HIP/pull/2035#issuecomment-616861118.
+    # See https://github.com/ROCm/HIP/pull/2035#issuecomment-616861118.
     set (HIP_CXX_COMPILER ${MIOPEN_HIP_COMPILER})
 endif()
 

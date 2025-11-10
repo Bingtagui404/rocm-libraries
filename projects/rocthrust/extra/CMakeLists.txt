@@ -29,9 +29,11 @@ include(DownloadProject)
 if(NOT DEFINED ROCPRIM_ROOT)
   message(STATUS "Downloading and building rocPRIM.")
   set(ROCPRIM_ROOT "${CMAKE_CURRENT_BINARY_DIR}/rocprim" CACHE PATH "")
+  # TODO: Fix GIT_REPOSITORY and other relevant fields as per the structure
+  # of rocm/rocm-libraries repo.
   download_project(
     PROJ                rocprim
-    GIT_REPOSITORY      https://github.com/ROCmSoftwarePlatform/rocPRIM.git
+    GIT_REPOSITORY      https://github.com/ROCm/rocm-libraries.git
     GIT_TAG             master
     INSTALL_DIR         ${ROCPRIM_ROOT}
     CMAKE_ARGS          -DBUILD_TEST=OFF -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>

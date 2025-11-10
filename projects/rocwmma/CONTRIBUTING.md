@@ -159,6 +159,7 @@ When you create a pull request, you should target the **develop** branch for int
 
 The typical workflow for creating a rocWMMA pull request is as follows:
 
+<!-- TODO: Fix the following instructions as per the structure of rocm/rocm-libraries repo. -->
 1. Create and track a rocWMMA fork, if you haven't already done so.
 2. Clone your fork:
 
@@ -173,7 +174,7 @@ The typical workflow for creating a rocWMMA pull request is as follows:
     ...
     ```
 
-3. Create a pull request to the ROCmSoftwarePlatform/rocWMMA develop branch.
+3. Create a pull request to the [ROCm/rocWMMA](https://github.com/ROCm/rocm-libraries/tree/develop/projects/rocwmma) develop branch.
 4. Await CI and approval feedback.
 5. Once approved, merge.
 

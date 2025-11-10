@@ -49,7 +49,7 @@
 # Example (requires HIP, and rocRAND or cuRAND):
 #
 #    // Remember to first find and include HIP
-#    // See https://github.com/ROCm-Developer-Tools/HIP
+#    // See https://github.com/ROCm/HIP
 #    find_package(hiprand REQUIRED CONFIG PATHS "/opt/rocm/hiprand")
 #    if(HIP_PLATFORM STREQUAL "amd")
 #      find_package(rocrand REQUIRED CONFIG PATHS "/opt/rocm/rocrand")

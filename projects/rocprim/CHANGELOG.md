@@ -423,7 +423,7 @@ when the input or inital type was smaller than the output type.
   * `device_radix_sort`
   * `device_merge_sort`
 * Updated the `docs` directory structure to match the standard of
-  [rocm-docs-core](https://github.com/RadeonOpenCompute/rocm-docs-core)
+  [rocm-docs-core](https://github.com/ROCm/rocm-docs-core)
 
 ### Known Issues
 
@@ -592,7 +592,7 @@ when the input or inital type was smaller than the output type.
 * Code coverage tools build option
 * AddressSanitizer build option
 * gfx1030 support added
-* Experimental [HIP-CPU](https://github.com/ROCm-Developer-Tools/HIP-CPU) support; build using
+* Experimental [HIP-CPU](https://github.com/ROCm/HIP-CPU) support; build using
   GCC/Clang/MSVC on Windows and Linux (this is work in progress and many algorithms are known to
   fail)
 
