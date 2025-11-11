@@ -50,6 +50,11 @@ namespace rocRoller
                         auto macroTile
                             = kgraph.coordinates.get<MacroTile>(kgraph.mapper.get<MacroTile>(tag));
                         rv = macroTile && macroTile->memoryType == MemoryType::WAVE_Direct2LDS;
+
+                        AssertFatal(!rv
+                                        or (macroTile->layoutType == LayoutType::MATRIX_A
+                                            or macroTile->layoutType == LayoutType::MATRIX_B),
+                                    "Currently only MATRIX A and MATRIX B can use Direct2LDS");
                     }
                     return rv;
                 };
@@ -189,13 +194,20 @@ namespace rocRoller
                 purgeNodes(kgraph, {node});
             }
 
-            // Post-check: ensure all LDS LoadTiled have been replaced
+            // Post-check: ensure all LDS LoadTiled and StoreLDSTiled have been replaced
+            for(auto tag : kgraph.control.getNodes<StoreLDSTile>())
+            {
+                auto [_, macTile] = kgraph.getDimension<MacroTile>(tag);
+                AssertFatal(macTile.memoryType not_eq MemoryType::WAVE_Direct2LDS,
+                            "WAVE_Direct2LDS StoreLDSTiled not replaced");
+            }
             for(auto tag : kgraph.control.getNodes<LoadTiled>())
             {
                 auto macroTile
                     = kgraph.coordinates.get<MacroTile>(kgraph.mapper.get<MacroTile>(tag));
                 if(macroTile)
                 {
+                    // Remaining LoadTiled should not be WAVE_Direct2LDS
                     AssertFatal(macroTile->memoryType not_eq MemoryType::WAVE_Direct2LDS,
                                 "WAVE_Direct2LDS LoadTiled not replaced");
                 }
