@@ -1035,8 +1035,52 @@ def fp4_target():
     )
 
 
-
-
+def fp4_target_d2lds_mi32x32x64_pf2x1():
+    yield GEMMRun(
+        M=4096,
+        N=4096,
+        K=32768,
+        mac_m=256,
+        mac_n=256,
+        mac_k=128,
+        wave_m=32,
+        wave_n=32,
+        wave_k=64,
+        wave_b=1,
+        workgroup_size_x=128,
+        workgroup_size_y=2,
+        unroll_x=0,
+        unroll_y=0,
+        load_A="BufferToLDS",
+        load_B="BufferToLDS",
+        loadLDSScale_A=True,
+        loadLDSScale_B=True,
+        storeLDS_D=True,
+        prefetch=True,
+        prefetchInFlight=2,
+        prefetchLDSFactor=1,
+        betaInFma=True,
+        scheduler="Priority",
+        matchMemoryAccess=True,
+        types=TypeParameters(
+            trans_A="T",
+            trans_B="N",
+            type_A="fp4",
+            type_B="fp4",
+            type_C="half",
+            type_D="half",
+            type_acc="float",
+            scale_A="Separate",
+            scaleType_A="E8M0",
+            scale_B="Separate",
+            scaleType_B="E8M0",
+            scaleBlockSize=32,
+        ),
+        swizzleTileSize=MKNLTuple(64, 64 // 32 * 2 * 2, 64, 64 // 32 * 2 * 2),
+        numOuter=1,
+        numWarmUp=1000,
+        numInner=1000,
+    )
 
 def add_wgm(mapping, suite):
     for run in suite:
