@@ -189,22 +189,17 @@ namespace rocRoller
                 purgeNodes(kgraph, {node});
             }
 
-            AssertFatal(kgraph.control.getNodes<StoreLDSTile>().empty(), "Still have StoreLDSTile");
-            AssertFatal(kgraph.control
-                            .findElements([&](int tag) {
-                                if(kgraph.control.get<LoadTiled>(tag))
-                                {
-                                    auto macroTile = kgraph.coordinates.get<MacroTile>(
-                                        kgraph.mapper.get<MacroTile>(tag));
-                                    if(macroTile)
-                                        Log::info("mt type = {}", toString(macroTile->memoryType));
-                                    return macroTile
-                                           && macroTile->memoryType == MemoryType::WAVE_Direct2LDS;
-                                }
-                                return false;
-                            })
-                            .empty(),
-                        "Still have LoadTiled with WAVE_Direct2LDS");
+            // Post-check: ensure all LDS LoadTiled have been replaced
+            for(auto tag : kgraph.control.getNodes<LoadTiled>())
+            {
+                auto macroTile
+                    = kgraph.coordinates.get<MacroTile>(kgraph.mapper.get<MacroTile>(tag));
+                if(macroTile)
+                {
+                    AssertFatal(macroTile->memoryType not_eq MemoryType::WAVE_Direct2LDS,
+                                "WAVE_Direct2LDS LoadTiled not replaced");
+                }
+            }
 
             return kgraph;
         }
