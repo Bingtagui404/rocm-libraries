@@ -406,6 +406,8 @@ def config_cmd():
     if args.codecoverage:
         if args.debug or args.relwithdebinfo:
             cmake_options.append(f"-DBUILD_CODE_COVERAGE=ON")
+            cmake_options.append(f"-DROCBLAS_BUILD_TESTING=ON")
+            cmake_options.append(f"-DROCBLAS_ENABLE_FORTRAN=OFF")
         else:
             fatal("*** Code coverage is not supported for Release build! Aborting. ***")
 

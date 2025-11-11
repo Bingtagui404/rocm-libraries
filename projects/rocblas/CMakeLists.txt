@@ -516,46 +516,68 @@ rocm_create_package(
   LDCONFIG_DIR
   ${ROCBLAS_CONFIG_DIR})
 
+
 if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
   message(STATUS "Configuring code coverage target")
+
+  if(CMAKE_BUILD_TYPE MATCHES "Debug" AND NOT WIN32)
+    target_compile_options(rocblas PRIVATE -O1 -gz -ggdb)
+    target_compile_options(rocblas64 PRIVATE -O1 -gz -ggdb)
+  endif()
+  
+  # Apply coverage instrumentation flags to rocblas library
   target_compile_options(rocblas PRIVATE -fprofile-instr-generate -fcoverage-mapping)
   target_link_options(rocblas PRIVATE -fprofile-instr-generate)
 
-  set(coverage_dir "${CMAKE_CURRENT_BINARY_DIR}/coverage-report")
-  set(coverage_test_arguments
-    "--precompile=rocblas-test-precompile.db"
+  target_compile_options(rocblas64 PRIVATE -fprofile-instr-generate -fcoverage-mapping)
+  target_link_options(rocblas64 PRIVATE -fprofile-instr-generate)
+  
+  # Find Python for running rtest.py
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  
+  # Run coverage analysis using rtest.py (matches develop branch)
+  add_custom_target(coverage_analysis
+    COMMAND ${CMAKE_COMMAND} -E make_directory ./coverage-report/profraw
+    COMMAND ${CMAKE_COMMAND} -E env 
+            LLVM_PROFILE_FILE="./coverage-report/profraw/rocblas-coverage_%m.profraw" 
+            ${Python3_EXECUTABLE} ./clients/staging/rocblas_rtest.py -t code_coverage
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Running coverage tests via rtest.py"
   )
-  if(ROCBLAS_COVERAGE_GTEST_FILTER)
-    list(APPEND coverage_test_arguments "--gtest_filter=${ROCBLAS_COVERAGE_GTEST_FILTER}")
-  endif()
-
-  add_custom_target(
-    code_cov_tests
-    DEPENDS rocblas-test
-    COMMAND ${CMAKE_COMMAND} -E rm -rf "${coverage_dir}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${coverage_dir}/profraw"
-    COMMAND
-      ${CMAKE_COMMAND} -E env
-      LLVM_PROFILE_FILE="${coverage_dir}/profraw/rocblas-coverage_%p.profraw"
-      $<TARGET_FILE:rocblas-test> ${coverage_test_arguments}
-    COMMENT "Running coverage with test command: $<TARGET_FILE:rocblas-test> ${coverage_test_arguments}")
-
-  find_program(LLVM_PROFDATA llvm-profdata HINTS llvm/bin REQUIRED)
-  find_program(LLVM_COV llvm-cov REQUIRED HINTS llvm/bin)
-
-  add_custom_target(
-    coverage
-    DEPENDS code_cov_tests
-    COMMAND
-      ${LLVM_PROFDATA} merge -sparse
-      "${coverage_dir}/profraw/rocblas-coverage_*.profraw" -o
-      "${coverage_dir}/rocblas.profdata"
-    COMMAND ${LLVM_COV} report -object $<TARGET_FILE:rocblas>
-            -instr-profile="${coverage_dir}/rocblas.profdata"
-    COMMAND
-      ${LLVM_COV} show -object $<TARGET_FILE:rocblas>
-      -instr-profile="${coverage_dir}/rocblas.profdata" -format=html
-      -output-dir="${coverage_dir}"
-    COMMENT "Generating coverage... report can be found in ${coverage_dir}/index.html")
-
+  
+  add_dependencies(coverage_analysis rocblas)
+  
+  # Find LLVM coverage tools
+  find_program(LLVM_PROFDATA llvm-profdata REQUIRED 
+    HINTS ${ROCM_PATH}/llvm/bin 
+    PATHS /opt/rocm/llvm/bin)
+  
+  find_program(LLVM_COV llvm-cov REQUIRED 
+    HINTS ${ROCM_PATH}/llvm/bin 
+    PATHS /opt/rocm/llvm/bin)
+  
+  # Generate coverage report (matches develop branch)
+  add_custom_target(coverage
+    DEPENDS coverage_analysis
+    COMMAND ${LLVM_PROFDATA} merge -sparse 
+            ./coverage-report/profraw/rocblas-coverage_*.profraw 
+            -o ./coverage-report/rocblas.profdata
+    COMMAND ${LLVM_COV} report 
+            -object ./library/librocblas.so 
+            -instr-profile=./coverage-report/rocblas.profdata
+    COMMAND ${LLVM_COV} show 
+            -object ./library/librocblas.so 
+            -instr-profile=./coverage-report/rocblas.profdata 
+            -format=html 
+            -output-dir=coverage-report
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Generating coverage report in ${CMAKE_BINARY_DIR}/coverage-report/index.html"
+  )
+  
+  # Coverage cleanup target
+  add_custom_target(coverage_cleanup
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ./coverage-report
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Removing coverage report"
+  )
 endif()

@@ -143,3 +143,11 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_template.yaml" "${PR
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_general.yaml" "${PROJECT_BINARY_DIR}/clients/staging/rocblas_general.yaml" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/rocblas_gentest.py" "${PROJECT_BINARY_DIR}/clients/staging/rocblas_gentest.py" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/rocblas_clients_readme.txt" "${PROJECT_BINARY_DIR}/clients/staging/rocblas_clients_readme.txt" COPYONLY)
+
+if(NOT ROCBLAS_ENABLE_FORTRAN)
+  target_compile_definitions(rocblas-bench PRIVATE CLIENTS_NO_FORTRAN)
+  target_compile_definitions(rocblas-test PRIVATE CLIENTS_NO_FORTRAN)
+  target_compile_definitions(rocblas-testing-common PRIVATE CLIENTS_NO_FORTRAN)
+  target_compile_definitions(rocblas-clients-common PRIVATE CLIENTS_NO_FORTRAN)
+  # need to add others to the list that may require this
+endif()

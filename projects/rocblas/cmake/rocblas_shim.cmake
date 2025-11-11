@@ -101,6 +101,7 @@ shim_mapping(BUILD_CLIENTS_TESTS ROCBLAS_BUILD_TESTING "Build test client; maste
 shim_mapping(BUILD_CLIENTS_BENCHMARKS ROCBLAS_ENABLE_BENCHMARKS "Build benchmark client.")
 shim_mapping(BUILD_CLIENTS_SAMPLES ROCBLAS_ENABLE_SAMPLES "Build client samples.")
 shim_mapping(BUILD_WITH_TENSILE ROCBLAS_ENABLE_TENSILE "Build Tensile GEMM device libraries.")
+shim_mapping(BUILD_WITH_HIPBLASLT ROCBLAS_ENABLE_HIPBLASLT "Build rocBLAS host library with hipBLASLt backend.")
 shim_mapping(AMDGPU_TARGETS GPU_TARGETS "AMD GFX targets to cross-compile" STRING)
 shim_mapping(BUILD_ADDRESS_SANITIZER ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled.")
 shim_mapping(BUILD_CODE_COVERAGE ROCBLAS_ENABLE_COVERAGE "Build tests with coverage enabled.")
