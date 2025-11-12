@@ -14,6 +14,10 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+# IMPORTANT: rocblas_shim must be included BEFORE build-options and project options
+# are processed. The shim maps legacy option names to new standardized names,
+# ensuring backward compatibility. If included later, the mapping would not take
+# effect for options set during configuration.
 include(rocblas_shim)
 
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md")
@@ -30,7 +34,7 @@ include(GNUInstallDirs)
 include(rocblas_target_configure_sanitizers)
 include(rocblas_supported_architectures)
 include(query_git_hash)
-include(FetchROCmCMake)
+include(fetch_rocm_cmake)
 
 rocm_setup_version(VERSION "5.2.0")
 
