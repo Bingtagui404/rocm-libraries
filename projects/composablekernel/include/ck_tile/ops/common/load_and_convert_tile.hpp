@@ -10,12 +10,16 @@
 
 namespace ck_tile {
 
-template <typename SrcDataType, typename DstDataType, index_t UnaryOpSize>
+template <typename SrcDataType,
+          typename DstDataType,
+          index_t UnaryOpSize,
+          bool LoadTranspose = false>
 struct ConverterLoader
 {
     template <typename WarpWindow, typename WarpTile>
     CK_TILE_DEVICE static void load_interleaved_pk_type(WarpTile& dst, const WarpWindow& src_window)
     {
+        static_assert(!LoadTranspose, "LoadTranspose not supported with pk_int4_t or pk_fp4_t");
         static_assert(WarpTile::get_thread_buffer_size() % UnaryOpSize == 0);
         constexpr index_t thread_buffer_size = WarpTile::get_thread_buffer_size() / UnaryOpSize;
         const auto src                       = load_tile(src_window);
@@ -33,6 +37,36 @@ struct ConverterLoader
                            src.get_thread_buffer().template get_as<SrcVectorType>()[i]);
         });
     }
+
+    template <typename WarpWindow, typename WarpTile>
+    CK_TILE_DEVICE static void load_with_type_convert(WarpTile& dst, const WarpWindow& src_window)
+    {
+        if constexpr(LoadTranspose)
+        {
+            if constexpr(std::is_same_v<SrcDataType, DstDataType>)
+            {
+                load_tile_transpose(dst, src_window);
+            }
+            else
+            {
+                load_tile_transpose_convert(dst, src_window, number<UnaryOpSize>{});
+            }
+        }
+        else
+        {
+            if constexpr(std::is_same_v<SrcDataType, DstDataType>)
+            {
+                load_tile(dst, src_window);
+            }
+            else
+            {
+                auto tmp = load_tile(src_window);
+                sweep_tile<WarpTile>([&](auto i) {
+                    dst(i) = type_convert<DstDataType>(type_convert<float>(tmp(i)));
+                });
+            }
+        }
+    }
 };
 
 template <index_t UnaryOpSize, bool LoadTranspose = false, typename WarpTile, typename WarpWindow>
@@ -43,18 +77,13 @@ CK_TILE_DEVICE void load_and_convert_tile(WarpTile& dst, const WarpWindow& src_w
 
     if constexpr(is_packed_type_v<SrcDataType> && !is_packed_type_v<DstDataType>)
     {
-        static_assert(!LoadTranspose, "LoadTranspose not supported with pk_int4_t or pk_fp4_t");
-        ConverterLoader<SrcDataType, DstDataType, UnaryOpSize>::load_interleaved_pk_type(
-            dst, src_window);
-    }
-    else if constexpr(LoadTranspose)
-    {
-        load_tile_transpose(dst, src_window);
+        ConverterLoader<SrcDataType, DstDataType, UnaryOpSize, LoadTranspose>::
+            load_interleaved_pk_type(dst, src_window);
     }
     else
     {
-        load_tile(dst, src_window);
+        ConverterLoader<SrcDataType, DstDataType, UnaryOpSize, LoadTranspose>::
+            load_with_type_convert(dst, src_window);
     }
 }
-
 } // namespace ck_tile
