@@ -128,30 +128,6 @@ target_sources(rocblas-test
         "${CMAKE_CURRENT_SOURCE_DIR}/blas_ex/geam_ex_gtest.cpp"
 )
 
-if(WIN32)
-    # FLAG: Suppress experimental filesystem deprecation warning on Windows
-    target_compile_definitions(rocblas-test
-        PRIVATE
-            _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
-    )
-
-    # Copy required DLLs to staging directory for Windows execution
-    file(GLOB third_party_dlls
-        LIST_DIRECTORIES OFF
-        CONFIGURE_DEPENDS
-        "${OPENBLAS_DIR}/bin/*.dll"
-        "${HIP_DIR}/bin/amd*.dll"
-        "${HIP_DIR}/bin/hiprt*.dll"
-        "${HIP_DIR}/bin/hipinfo.exe"
-        "${CMAKE_SOURCE_DIR}/rtest.*"
-        "C:/Windows/System32/libomp140*.dll"
-    )
-    foreach(file_i ${third_party_dlls})
-        add_custom_command(TARGET rocblas-test POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E copy "${file_i}" "${PROJECT_BINARY_DIR}/clients/staging/")
-    endforeach()
-endif()
-
 set_target_properties(rocblas-test
     PROPERTIES
         IMPORT_PREFIX ""
