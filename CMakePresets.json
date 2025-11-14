@@ -45,6 +45,13 @@
             }
         },
         {
+            "name": "rocblas",
+            "inherits": ["default:release"],
+            "cacheVariables": {
+                "ROCM_LIBS_ENABLE_COMPONENTS": "rocblas"
+            }
+        },
+        {
             "name": "rocprim",
             "inherits": ["default:release"],
             "cacheVariables": {
@@ -56,6 +63,13 @@
             "inherits": ["default:release"],
             "cacheVariables": {
                 "ROCM_LIBS_ENABLE_COMPONENTS": "rocrand"
+            }
+        },
+        {
+            "name": "tensile",
+            "inherits": ["default:release"],
+            "cacheVariables": {
+                "ROCM_LIBS_ENABLE_COMPONENTS": "tensile"
             }
         }
     ],
