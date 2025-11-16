@@ -61,7 +61,7 @@ namespace rocRoller
             , m_scheme(scheme)
         {
             //m_scheme = AllocatorScheme::PerfectFit;
-            //m_scheme = AllocatorScheme::FirstFit;
+            m_scheme = AllocatorScheme::FirstFit;
         }
 
         Type Allocator::regType() const
@@ -531,7 +531,7 @@ namespace rocRoller
                     }
                 }
 
-                if(!found)
+                if(not found)
                 {
                     // Could not allocate this chunk, full failure
                     return {};
