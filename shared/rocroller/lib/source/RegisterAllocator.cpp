@@ -436,6 +436,22 @@ namespace rocRoller
                 }
             }
 
+            std::vector<std::pair<int, int>> merged_candidates;
+            if(not candidates.empty())
+                merged_candidates.push_back(candidates[0]);
+            for(int i = 1; i < candidates.size(); i++)
+            {
+                auto [beg, size] = merged_candidates.back();
+
+                AssertFatal(beg + size <= candidates[i].first);
+
+                if(beg + size == candidates[i].first)
+                    merged_candidates.back().second += candidates[i].second;
+                else
+                    merged_candidates.push_back(candidates[i]);
+            }
+            std::swap(candidates, merged_candidates);
+
             while(currentCount > 0)
             {
                 // Have we found a place for the current chunk?
@@ -462,10 +478,10 @@ namespace rocRoller
                 }
 
                 // If a perfect fit was not found, use any other block
-                if(!found)
+                if(not found)
                 {
                     int bestBlock = -1;
-                    int diff      = std::numeric_limits<int>::max();
+                    int diff      = m_registers.size();
 
                     for(int i = 0; i < candidates.size(); i++)
                     {
@@ -496,14 +512,14 @@ namespace rocRoller
                         // Check if chunk is outside of block, or if it runs up against the end of the total number of registers
                         // The equal check in `start + width >= m_registers.size()`
                         // is to avoid increasing register high-water mark by not allocating the last register
-                        //if(start + width > idx + blockSize || start + width >= m_registers.size())
-                        //{
-                        // Should not use end of block, revert to using beginning
-                        start = idx;
+                        if(start + width > idx + blockSize || start + width >= m_registers.size())
+                        {
+                            //Should not use end of block, revert to using beginning
+                            start = idx;
 
-                        // Update candidate
-                        idx += width;
-                        //}
+                            // Update candidate
+                            idx += width;
+                        }
 
                         std::iota(indices.begin(), indices.end(), start);
                         rv.insert(rv.begin(), indices.begin(), indices.end());
