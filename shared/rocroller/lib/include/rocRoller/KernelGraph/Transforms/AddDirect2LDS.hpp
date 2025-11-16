@@ -52,6 +52,8 @@ namespace rocRoller
                 return "AddDirect2LDS";
             }
 
+            std::vector<GraphConstraint> postConstraints() const override;
+
         private:
             ContextPtr           m_context;
             CommandParametersPtr m_params;

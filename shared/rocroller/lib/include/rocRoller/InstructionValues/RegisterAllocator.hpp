@@ -39,6 +39,7 @@ namespace rocRoller
         {
             FirstFit,
             PerfectFit,
+            BestFit,
 
             Count,
         };
@@ -49,9 +50,8 @@ namespace rocRoller
         class Allocator : public std::enable_shared_from_this<Allocator>
         {
         public:
-            Allocator(Type            regType,
-                      int             count,
-                      AllocatorScheme scheme = AllocatorScheme::PerfectFit);
+            Allocator(Type regType, int count, AllocatorScheme scheme = AllocatorScheme::BestFit);
+            //AllocatorScheme scheme = AllocatorScheme::PerfectFit);
 
             Type regType() const;
 
@@ -118,6 +118,8 @@ namespace rocRoller
             std::vector<int> findFreeFirstFit(int count, AllocationOptions const& options) const;
 
             std::vector<int> findFreePerfectFit(int count, AllocationOptions const& options) const;
+
+            std::vector<int> findFreeBestFit(int count, AllocationOptions const& options) const;
 
             AllocatorScheme m_scheme;
 

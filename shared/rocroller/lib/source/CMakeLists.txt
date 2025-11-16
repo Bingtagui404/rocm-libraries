@@ -43,6 +43,7 @@ target_sources(rocroller
         "${CMAKE_CURRENT_SOURCE_DIR}/Logging.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Random.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Register.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/RegisterAllocator.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ReplaceKernelArgs.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ScheduledInstructions.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Scheduler.cpp"

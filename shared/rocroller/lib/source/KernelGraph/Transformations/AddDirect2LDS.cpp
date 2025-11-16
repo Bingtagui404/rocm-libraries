@@ -64,7 +64,7 @@ namespace rocRoller
                     const auto storeLDSTags{
                         getAssociatedOps<LoadTiled, StoreLDSTile>(kgraph, loadGlobal)};
 
-                    Log::info("loadGlobal = {},  storeLDSTags = {}", loadGlobal, storeLDSTags);
+                    //Log::info("loadGlobal = {},  storeLDSTags = {}", loadGlobal, storeLDSTags);
 
                     if(storeLDSTags.size() == 1)
                     {
@@ -151,12 +151,19 @@ namespace rocRoller
 
             Log::info("  AddDirect2LDS control graph transform.");
 
+            //Log::info("Original LoadTiled number = {}", original.control.getNodes<LoadTiled>().to<std::vector>().size());
+
             auto candidates = searchCandidates(original);
             if(std::ranges::empty(candidates))
             {
                 Log::info("No candidates for AddDirect2LDS.");
                 return original;
             }
+
+            //{
+            //    std::ofstream ofs("before.dot");
+            //    ofs << original.control.toDOT();
+            //}
 
             const auto& arch           = m_context->targetArchitecture();
             const auto  hasDirectToLDS = arch.HasCapability(GPUCapability::HasDirectToLds);
@@ -194,26 +201,51 @@ namespace rocRoller
                 purgeNodes(kgraph, {node});
             }
 
+            //Log::info("Remaining LoadTiled number = {}", kgraph.control.getNodes<LoadTiled>().to<std::vector>().size());
+
+            //{
+            //    std::ofstream ofs("after.dot");
+            //    ofs << kgraph.control.toDOT();
+            //}
+
+            return kgraph;
+        }
+
+        ConstraintStatus NoWaveDirect2LDSTile(const KernelGraph& kgraph)
+        {
+            TIMER(t, "Constraint::NoWaveDirect2LDSTile");
+            using namespace ControlGraph;
+            using namespace CoordinateGraph;
+
+            ConstraintStatus retval;
+
             // Post-check: ensure all LDS LoadTiled and StoreLDSTiled have been replaced
             for(auto tag : kgraph.control.getNodes<StoreLDSTile>())
             {
                 auto [_, macTile] = kgraph.getDimension<MacroTile>(tag);
-                AssertFatal(macTile.memoryType not_eq MemoryType::WAVE_Direct2LDS,
-                            "WAVE_Direct2LDS StoreLDSTiled not replaced");
-            }
-            for(auto tag : kgraph.control.getNodes<LoadTiled>())
-            {
-                auto macroTile
-                    = kgraph.coordinates.get<MacroTile>(kgraph.mapper.get<MacroTile>(tag));
-                if(macroTile)
+                if(macTile.memoryType == MemoryType::WAVE_Direct2LDS)
                 {
-                    // Remaining LoadTiled should not be WAVE_Direct2LDS
-                    AssertFatal(macroTile->memoryType not_eq MemoryType::WAVE_Direct2LDS,
-                                "WAVE_Direct2LDS LoadTiled not replaced");
+                    retval.combine(
+                        false, concatenate("Exists a StoreLDSTiled with WAVE_Direct2LDS: ", tag));
                 }
             }
 
-            return kgraph;
+            for(auto tag : kgraph.control.getNodes<LoadTiled>())
+            {
+                auto macTile = kgraph.coordinates.get<MacroTile>(kgraph.mapper.get<MacroTile>(tag));
+                if(macTile && macTile->memoryType == MemoryType::WAVE_Direct2LDS)
+                {
+                    retval.combine(false,
+                                   concatenate("Exists a LoadTiled with WAVE_Direct2LDS: ", tag));
+                }
+            }
+
+            return retval;
+        }
+
+        std::vector<GraphConstraint> AddDirect2LDS::postConstraints() const
+        {
+            return {NoWaveDirect2LDSTile};
         }
     }
 }
