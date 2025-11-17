@@ -130,7 +130,7 @@ endif()
 if(ROCBLAS_ENABLE_OPENMP)
     add_subdirectory(openmp-support)
 
-    if(ROCBLAS_BUILD_TESTING)
+    if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
         target_link_libraries(rocblas-test PRIVATE rocblas::clients-openmp)
     endif()
 

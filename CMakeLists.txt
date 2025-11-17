@@ -20,6 +20,12 @@ include(fetch_rocm_cmake)
 
 # --- Options and cache variables ---
 option(ROCM_LIBS_SUPERBUILD "Enable superbuild mode" ON)
+option(ROCM_LIBS_SUPPRESS_WARNINGS "Suppress warnings" OFF)
+
+if(ROCM_LIBS_SUPPRESS_WARNINGS)
+    # Allow global compile options only to suppress warnings
+    add_compile_options(-Wno-deprecated-declarations)
+endif()
 
 set(ROCM_LIBS_ENABLE_COMPONENTS "all"
     CACHE STRING "Semicolon-separated list of components to build (default: 'all')"
@@ -30,16 +36,16 @@ set(SUPPORTED_COMPONENTS
     mxdatagenerator
     rocroller
     origami
+    tensile
     # projects
     hipblas-common
     hipblaslt
+    rocblas
     rocprim
     rocrand
 )
 
 set(UNSUPPORTED_COMPONENTS
-    # shared
-    tensile
     # projects
     composablekernel
     hipblas
@@ -50,7 +56,6 @@ set(UNSUPPORTED_COMPONENTS
     hipsparse
     hipsparselt
     miopen
-    rocblas
     rocfft
     rocsolver
     rocsparse
@@ -84,19 +89,13 @@ foreach(component ${ROCM_LIBS_ENABLE_COMPONENTS})
 endforeach()
 
 # --- Add subdirectories ---
+
+# Shared
 if("mxdatagenerator" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
     add_subdirectory_with_message(
         COMPONENT mxdatagenerator
         PREFIX_PATH shared
         EXPECT_TARGET roc::mxDataGenerator
-    )
-endif()
-
-if("hipblas-common" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
-    add_subdirectory_with_message(
-        COMPONENT hipblas-common
-        PREFIX_PATH projects
-        EXPECT_TARGET roc::hipblas-common
     )
 endif()
 
@@ -120,6 +119,23 @@ if("origami" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
     )
 endif()
 
+if("tensile" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
+    add_subdirectory_with_message(
+        COMPONENT tensile
+        PREFIX_PATH shared
+        EXPECT_TARGET roc::tensile-host
+    )
+endif()
+
+# Projects
+if("hipblas-common" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
+    add_subdirectory_with_message(
+        COMPONENT hipblas-common
+        PREFIX_PATH projects
+        EXPECT_TARGET roc::hipblas-common
+    )
+endif()
+
 if("hipblaslt" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
     set(HIPBLASLT_ENABLE_BLIS OFF)
     add_subdirectory_with_message(
@@ -127,6 +143,14 @@ if("hipblaslt" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
         PREFIX_PATH projects
         EXPECT_TARGET roc::hipblaslt
     )
+endif()
+
+if("rocblas" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
+   add_subdirectory_with_message(
+       COMPONENT rocblas
+       PREFIX_PATH projects
+       EXPECT_TARGET roc::rocblas
+   )
 endif()
 
 if("rocprim" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
@@ -145,21 +169,6 @@ if("rocrand" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
     )
 endif()
 
-#if("tensile" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
-#    add_subdirectory_with_message(
-#        COMPONENT tensile
-#        PREFIX_PATH shared
-#        EXPECT_TARGET tensile-host
-#    )
-#endif()
-#
-#if("rocblas" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)
-#    add_subdirectory_with_message(
-#        COMPONENT rocblas
-#        PREFIX_PATH projects
-#        EXPECT_TARGET rocblas
-#    )
-#endif()
 
 # --- Projects not yet configured for superbuild ---
 if("rocsparse" IN_LIST ROCM_LIBS_ENABLE_COMPONENTS)

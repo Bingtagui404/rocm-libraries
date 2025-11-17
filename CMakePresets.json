@@ -8,7 +8,7 @@
     "configurePresets": [
         {
             "name": "default:release",
-            "description": "Configure release build with installation to /opt/rocm",
+            "displayName": "Configure release build with installation to /opt/rocm",
             "toolchainFile": "${sourceDir}/cmake/toolchains/linux-amdclang.cmake",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
@@ -48,7 +48,7 @@
             "name": "rocblas",
             "inherits": ["default:release"],
             "cacheVariables": {
-                "ROCM_LIBS_ENABLE_COMPONENTS": "rocblas"
+                "ROCM_LIBS_ENABLE_COMPONENTS": "mxdatagenerator;rocroller;origami;tensile;hipblas-common;hipblaslt;rocblas"
             }
         },
         {

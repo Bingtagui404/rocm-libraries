@@ -73,8 +73,6 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   endif()
 endif()
 
-option(ROCBLAS_ENABLE_SUPERBUILD "Build as ROCm BLAS subproject." OFF)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile commands" FORCE)
 
 option(ROCBLAS_ENABLE_CLIENT "Build rocBLAS clients." OFF)
@@ -186,7 +184,7 @@ target_compile_options(rocblas-warnings INTERFACE -Wno-unused-result -Wno-c++17-
 find_package(hip REQUIRED)
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
-  if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+  if(NOT ROCM_LIBS_SUPERBUILD)
     find_package(hipblaslt 1.0.0 REQUIRED)
   endif()
   rocm_package_add_dependencies(DEPENDS "hipblaslt >= 1.0.0")
@@ -198,7 +196,7 @@ endif()
 
 if(ROCBLAS_ENABLE_HOST)
   if(ROCBLAS_ENABLE_TENSILE)
-    if(NOT ROCBLAS_ENABLE_SUPERBUILD)
+    if(NOT ROCM_LIBS_SUPERBUILD)
       if(NOT EXISTS "${ROCBLAS_TENSILE_SUBDIR_PATH}")
         message(FATAL_ERROR
           "Tensile subdirectory not found at: ${ROCBLAS_TENSILE_SUBDIR_PATH}\n"
