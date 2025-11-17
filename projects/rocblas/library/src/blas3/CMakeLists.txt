@@ -22,6 +22,7 @@ target_sources(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gemm.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gemm_batched.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_gemm_strided_batched.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/gemm_templates.cpp"
         
         # HEMM
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_hemm.cpp"
@@ -86,11 +87,3 @@ target_sources(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_trtri_strided_batched.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_trtri_kernels.cpp"
 )
-
-# Add Tensile sources if enabled
-if(ROCBLAS_ENABLE_TENSILE)
-    target_sources(rocblas
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/gemm_templates.cpp"
-    )
-endif()
