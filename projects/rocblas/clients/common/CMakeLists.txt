@@ -60,6 +60,7 @@ endif()
 
 if(ROCBLAS_ENABLE_ASAN)
     target_compile_definitions(rocblas-clients-common PRIVATE ASAN_BUILD)
+    rocblas_target_configure_sanitizers(rocblas-clients-common PRIVATE)
 endif()
 
 if(ROCBLAS_ENABLE_BLIS)

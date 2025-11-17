@@ -77,6 +77,9 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
 
     if(ROCBLAS_ENABLE_TENSILE)
         target_sources(rocblas-gemm-host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tensile_host.cpp")
+        if(ROCBLAS_ENABLE_ASAN)
+            rocblas_target_configure_sanitizers(rocblas-gemm-host PRIVATE)
+        endif()
     endif()
 
     if(ROCBLAS_ENABLE_HIPBLASLT)

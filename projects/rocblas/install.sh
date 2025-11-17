@@ -299,6 +299,8 @@ rocBLAS dependency & installation helper script. Invokes rmake.py for build step
 
     --cmake_install                  Install minimum cmake version if required.
 
+    --config-only                    Configure the build but do not compile (generates compile_commands.json).
+
     -d, --dependencies               Build and install external dependencies.
                                      Dependencies are to be installed in /usr/local. This should be done only once.
 
@@ -328,6 +330,7 @@ build_clients=false
 build_dir=$(readlink -m ./build)
 build_release=true
 build_release_debug=false
+config_only=false
 install_dependencies=false
 install_package=false
 rmake_invoked=false
@@ -342,7 +345,7 @@ update_cmake=false
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-  GETOPT_PARSE=$(getopt --name "${0}" --longoptions build_dir:,cleanup,clients,clients,clients-only,cmake_install,debug,dependencies,help,install,no-msgpack,relwithdebinfo,rmake_invoked --options :cdghik -- "$@")
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions build_dir:,cleanup,clients,clients,clients-only,cmake_install,config-only,debug,dependencies,help,install,no-msgpack,relwithdebinfo,rmake_invoked --options :cdghik -- "$@")
 else
   echo "Need a new version of getopt"
   exit 1
@@ -377,6 +380,9 @@ while true; do
         shift ;;
     --clients-only)
         build_clients=true
+        shift ;;
+    --config-only)
+        config_only=true
         shift ;;
     --build_dir)
         #use readlink rather than realpath for CentOS 6.10 support

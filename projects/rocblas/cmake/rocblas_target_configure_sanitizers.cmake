@@ -3,6 +3,7 @@
 
 function(rocblas_target_configure_sanitizers rocblas_target visibility)
     # Add asan flags to target
+    target_compile_definitions(${rocblas_target} ${visibility} ASAN_BUILD)
     target_compile_options(${rocblas_target}
         ${visibility}
             -fsanitize=address

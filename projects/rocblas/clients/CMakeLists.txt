@@ -99,6 +99,10 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
         )
     endif()
 
+    if(ROCBLAS_ENABLE_ASAN)
+        rocblas_target_configure_sanitizers(rocblas-testing-common PRIVATE)
+    endif()
+
     target_sources(rocblas-testing-common
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/common/cblas_interface.cpp"

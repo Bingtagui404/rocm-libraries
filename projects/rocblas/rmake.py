@@ -85,6 +85,9 @@ def parse_args():
     general_opts.add_argument(      '--cmake_install', required=False, default=False, action='store_true',
                         help='Linux only: Handled by install.sh')
 
+    general_opts.add_argument(      '--config-only', dest='config_only', required=False, default=False, action='store_true',
+                        help='Configure the build but do not compile (generates compile_commands.json).')
+
     experimental_opts.add_argument(      '--codecoverage', required=False, default=False, action='store_true',
                         help='Code coverage build. Requires Debug (-g|--debug) or RelWithDebInfo mode (-k|--relwithdebinfo), (optional, default: False)')
 
@@ -378,7 +381,7 @@ def config_cmd():
     if args.cmake_args:
         cmake_options.append(args.cmake_args)
 
-    cmake_base_options = f"-DROCM_PATH={rocm_path} -DCMAKE_PREFIX_PATH:PATH={rocm_path}"
+    cmake_base_options = f'-DROCM_PATH={rocm_path} -DCMAKE_PREFIX_PATH:PATH="{rocm_path};{rocm_path}/llvm/lib/cmake"'
     cmake_options.append(cmake_base_options)
 
     # packaging options
@@ -604,10 +607,13 @@ def main():
     if run_cmd(exe, opts):
         fatal("Configuration failed. Not continuing.")
 
-    # make
-    exe, opts = make_cmd()
-    if run_cmd(exe, opts):
-        fatal("Build failed. Not continuing.")
+    # make (skip if config-only mode)
+    if not args.config_only:
+        exe, opts = make_cmd()
+        if run_cmd(exe, opts):
+            fatal("Build failed. Not continuing.")
+    else:
+        print("Config-only mode: Skipping build step. compile_commands.json should be generated.")
 
     # Linux install and cleanup not supported from rmake yet
 

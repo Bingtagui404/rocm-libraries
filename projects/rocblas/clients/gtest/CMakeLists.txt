@@ -156,3 +156,7 @@ add_custom_target(rocblas-test-data ALL
 )
 
 add_dependencies(rocblas-test rocblas-test-data)
+
+if(ROCBLAS_ENABLE_ASAN)
+    rocblas_target_configure_sanitizers(rocblas-test PRIVATE)
+endif()

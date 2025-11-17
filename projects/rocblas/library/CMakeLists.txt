@@ -11,6 +11,11 @@ target_link_libraries(rocblas64
         rocblas::warnings
 )
 
+# Link Tensile to propagate includes/defines (needed for ILP64 GEMM sources)
+if(ROCBLAS_ENABLE_TENSILE)
+    target_link_libraries(rocblas64 PRIVATE roc::tensile-host)
+endif()
+
 target_include_directories(rocblas64
     PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas"
@@ -116,6 +121,7 @@ add_library(roc::rocblas ALIAS rocblas)
 if(ROCBLAS_ENABLE_ASAN)
     rocblas_target_configure_sanitizers(rocblas PRIVATE)
     rocblas_target_configure_sanitizers(rocblas64 PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-helper PRIVATE)
 endif()
 
 target_link_libraries(rocblas
@@ -126,6 +132,11 @@ target_link_libraries(rocblas
         rocblas::helper
         rocblas::warnings
 )
+
+# Link Tensile directly to propagate includes/defines (OBJECT library doesn't propagate)
+if(ROCBLAS_ENABLE_TENSILE)
+    target_link_libraries(rocblas PRIVATE roc::tensile-host)
+endif()
 
 target_include_directories(rocblas
     PUBLIC
@@ -138,12 +149,19 @@ target_include_directories(rocblas
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/blas3/Tensile"
 )
 
 # FLAG: -Werror=vla catches variable-length array usage to prevent stack issues
 target_compile_options(rocblas
     PRIVATE
         --offload-compress
+        -Werror=vla
+)
+
+# FLAG: -Werror=vla catches variable-length array usage to prevent stack issues
+target_compile_options(rocblas64
+    PRIVATE
         -Werror=vla
 )
 

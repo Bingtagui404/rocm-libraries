@@ -158,3 +158,34 @@ if(ROCBLAS_ENABLE_FORTRAN)
 
     target_sources(rocblas-example-fortran-gemv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/example_fortran_gemv.f90")
 endif()
+
+# Apply ASAN configuration to all sample executables
+if(ROCBLAS_ENABLE_ASAN)
+    rocblas_target_configure_sanitizers(rocblas-example-c-dgeam PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-sscal PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-scal-template PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-scal-multiple-strided-batch PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-solver PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-hip-complex-her2 PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-gemv-graph-capture PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-header-check PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-sgemm PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-sgemm-strided-batched PRIVATE)
+    rocblas_target_configure_sanitizers(rocblas-example-sgemm-multiple-strided-batch PRIVATE)
+    
+    if(TARGET rocblas-example-user-driven-tuning)
+        rocblas_target_configure_sanitizers(rocblas-example-user-driven-tuning PRIVATE)
+    endif()
+    
+    if(TARGET rocblas-example-fortran-axpy)
+        rocblas_target_configure_sanitizers(rocblas-example-fortran-axpy PRIVATE)
+    endif()
+    
+    if(TARGET rocblas-example-fortran-scal)
+        rocblas_target_configure_sanitizers(rocblas-example-fortran-scal PRIVATE)
+    endif()
+    
+    if(TARGET rocblas-example-fortran-gemv)
+        rocblas_target_configure_sanitizers(rocblas-example-fortran-gemv PRIVATE)
+    endif()
+endif()

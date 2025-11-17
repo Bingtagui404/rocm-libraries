@@ -134,6 +134,31 @@ if(DEFINED SKIP_LIBRARY)
 endif()
 
 # ==============================================================================
+# Legacy conditional option disabling (DEPRECATED - to be removed)
+# ==============================================================================
+# The legacy build system auto-disabled incompatible options. We preserve this
+# behavior temporarily for backward compatibility, but users should explicitly
+# set options in their build commands.
+# ==============================================================================
+
+if(ROCBLAS_ENABLE_ASAN)
+    message(DEPRECATION 
+      "LEGACY BUILD BEHAVIOR: Auto-disabling ROCBLAS_ENABLE_FORTRAN (incompatible with ASAN).\n"
+      "This behavior is DEPRECATED and will be removed in a future release.\n"
+      "Please explicitly set: -DROCBLAS_ENABLE_FORTRAN=OFF")
+    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (ASAN enabled)" FORCE)
+endif()
+
+# Same for coverage
+if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
+    message(DEPRECATION 
+      "LEGACY BUILD BEHAVIOR: Auto-disabling ROCBLAS_ENABLE_FORTRAN (incompatible with coverage).\n"
+      "This behavior is DEPRECATED and will be removed in a future release.\n"
+      "Please explicitly set: -DROCBLAS_ENABLE_FORTRAN=OFF")
+    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (coverage enabled)" FORCE)
+endif()
+
+# ==============================================================================
 # Infer ROCBLAS_ENABLE_CLIENT from child options
 # ==============================================================================
 

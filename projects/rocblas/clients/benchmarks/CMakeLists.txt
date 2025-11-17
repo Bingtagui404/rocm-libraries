@@ -73,6 +73,14 @@ if(ROCBLAS_ENABLE_TENSILE)
             "${CMAKE_CURRENT_SOURCE_DIR}/gemm_tune/gemm_tune_client.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/gemm_tune/gemm_tuners.cpp"
     )
+
+    if(ROCBLAS_ENABLE_ASAN)
+        rocblas_target_configure_sanitizers(rocblas-gemm-tune PRIVATE)
+    endif()
+endif()
+
+if(ROCBLAS_ENABLE_ASAN)
+    rocblas_target_configure_sanitizers(rocblas-bench PRIVATE)
 endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)

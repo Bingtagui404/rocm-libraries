@@ -3,6 +3,12 @@
 
 cmake_minimum_required(VERSION 3.25.2)
 
+# BUILD_DIR is passed by install.sh wrapper script but not used by CMake
+# (build directory is determined by -B flag). Mark as used to suppress warning.
+if(DEFINED BUILD_DIR)
+    set(ROCBLAS_BUILD_DIR_METADATA "${BUILD_DIR}" CACHE INTERNAL "Build directory metadata from install script")
+endif()
+
 # CMP0135: Set the timestamps of extracted contents to the time of extraction.
 # This policy ensures that extracted archive contents have consistent timestamps,
 # which is important for reproducible builds and proper dependency tracking.
@@ -52,7 +58,9 @@ if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")
   rocblas_get_base_architectures(GPU_TARGETS)
 else()
   # Validate and expand GPU targets (e.g., gfx90a → gfx90a:xnack+;gfx90a:xnack-)
-  rocblas_validate_gpu_targets("${GPU_TARGETS}" GPU_TARGETS)
+  rocblas_validate_gpu_targets("${GPU_TARGETS}" GPU_TARGETS_EXPANDED)
+  # Update cache variable with expanded targets so Tensile receives correct values
+  set(GPU_TARGETS "${GPU_TARGETS_EXPANDED}" CACHE STRING "AMD GFX targets to cross-compile" FORCE)
 endif()
 
 message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
@@ -67,7 +75,7 @@ endif()
 
 option(ROCBLAS_ENABLE_SUPERBUILD "Build as ROCm BLAS subproject." OFF)
 
-option(CMAKE_EXPORT_COMPILE_COMMANDS "Export compile_commands.json for clang tooling support" ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile commands" FORCE)
 
 option(ROCBLAS_ENABLE_CLIENT "Build rocBLAS clients." OFF)
 option(ROCBLAS_ENABLE_TENSILE "Build Tensile GEMM device libraries." ON)
@@ -98,7 +106,7 @@ option(ROCBLAS_BUILD_TESTING "Build test client; master switch." OFF)
 option(ROCBLAS_ENABLE_COVERAGE "Build tests with coverage enabled." OFF)
 set(ROCBLAS_COVERAGE_GTEST_FILTER "*quick*:*pre_checkin*:*ILP64*-*known_bug*" CACHE STRING "GTest filter for coverage tests.")
 
-option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." OFF)
+option(ROCBLAS_ENABLE_BLIS "Enable BLIS support." ON)
 option(ROCBLAS_ENABLE_MARKER "Enable rocTracer marker support." ON)
 option(ROCBLAS_ENABLE_OPENMP "Enable OpenMP for parallel reference implementations in clients." ON)
 option(ROCBLAS_ENABLE_THREADS "Enable threading support in clients." ON)
@@ -106,16 +114,6 @@ option(ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled." OFF)
 option(ROCBLAS_ENABLE_THEROCK "Use find_package to pull in 1st party deps." OFF)
 
 option(CMAKE_VERBOSE_MAKEFILE "Enable verbose output from Makefile builds." ON)
-
-if(ROCBLAS_ENABLE_FORTRAN AND ROCBLAS_ENABLE_ASAN)
-  message(FATAL_ERROR "Cannot enable fortran clients and address sanitizers.")
-endif()
-
-if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
-  if(ROCBLAS_ENABLE_FORTRAN)
-    message(FATAL_ERROR "Cannot enable fortran clients and code coverage.")
-  endif()
-endif()
 
 if(ROCBLAS_ENABLE_FORTRAN)
   enable_language(Fortran)
@@ -141,15 +139,6 @@ mark_as_advanced(
 # =============================================================================
 # Validate and handle incompatible build option combinations
 # =============================================================================
-# NOTE: This is a transitional implementation to avoid breaking existing CI pipelines.
-# The reference build silently disabled Fortran when ASAN or coverage was enabled.
-# We match that behavior here but add warnings to alert users.
-#
-# TODO: Once CI systems are updated to explicitly set -DROCBLAS_ENABLE_FORTRAN=OFF
-#       in coverage/ASAN builds, change the WARNING messages below to FATAL_ERROR
-#       for better user experience and to enforce build invariants explicitly.
-#       This will prevent silent configuration changes and make build requirements clear.
-# =============================================================================
 
 # Address sanitizer configuration
 if(ROCBLAS_ENABLE_ASAN)
@@ -161,16 +150,12 @@ if(ROCBLAS_ENABLE_ASAN)
       "Or disable ASAN: -DROCBLAS_ENABLE_ASAN=OFF")
   endif()
   
-  # ASAN incompatible with Fortran linking
-  # TODO: Change to FATAL_ERROR once CI updated (preferred behavior)
+  # ASAN incompatible with Fortran linking (matches reference build)
   if(ROCBLAS_ENABLE_FORTRAN)
-    message(WARNING 
-      "================================================================\n"
-      "Address sanitizer is incompatible with Fortran clients.\n"
-      "Automatically disabling Fortran clients (ROCBLAS_ENABLE_FORTRAN=OFF).\n"
-      "This matches reference build behavior to avoid breaking CI pipelines.\n"
-      "================================================================")
-    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (incompatible with ASAN)" FORCE)
+    message(FATAL_ERROR 
+      "Cannot enable Fortran clients and address sanitizer.\n"
+      "Please set: -DROCBLAS_ENABLE_FORTRAN=OFF\n"
+      "Or disable ASAN: -DROCBLAS_ENABLE_ASAN=OFF")
   endif()
 endif()
 
@@ -184,16 +169,12 @@ if(ROCBLAS_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
       "Or disable coverage: -DROCBLAS_ENABLE_COVERAGE=OFF")
   endif()
   
-  # Coverage incompatible with Fortran linking
-  # TODO: Change to FATAL_ERROR once CI updated (preferred behavior)
+  # Coverage incompatible with Fortran linking (matches reference build)
   if(ROCBLAS_ENABLE_FORTRAN)
-    message(WARNING 
-      "================================================================\n"
-      "Code coverage is incompatible with Fortran clients.\n"
-      "Automatically disabling Fortran clients (ROCBLAS_ENABLE_FORTRAN=OFF).\n"
-      "This matches reference build behavior to avoid breaking CI pipelines.\n"
-      "================================================================")
-    set(ROCBLAS_ENABLE_FORTRAN OFF CACHE BOOL "Fortran disabled (incompatible with coverage)" FORCE)
+    message(FATAL_ERROR 
+      "Cannot enable Fortran clients and code coverage.\n"
+      "Please set: -DROCBLAS_ENABLE_FORTRAN=OFF\n"
+      "Or disable coverage: -DROCBLAS_ENABLE_COVERAGE=OFF")
   endif()
 endif()
 
