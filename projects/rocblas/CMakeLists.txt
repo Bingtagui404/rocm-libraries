@@ -215,6 +215,7 @@ if(ROCBLAS_ENABLE_HOST)
         endif()
         add_subdirectory("${ROCBLAS_TENSILE_SUBDIR_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/_tensile" EXCLUDE_FROM_ALL)
       endblock()
+    endif()
   endif()
 
   add_subdirectory(library)

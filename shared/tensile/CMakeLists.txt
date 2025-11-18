@@ -118,6 +118,11 @@ if(TENSILE_ENABLE_HOST)
     target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
   endif()
 
+  if(TENSILE_ENABLE_ASAN)
+      target_compile_options(tensile-host PRIVATE -fsanitize=address -shared-libasan)
+      target_link_options(tensile-host PRIVATE -fsanitize=address -shared-libasan -fuse-ld=lld)
+  endif()
+
   if(TENSILE_ENABLE_MSGPACK)
     find_package(msgpack-cxx CONFIG)
     if(msgpack-cxx_FOUND)
