@@ -28,7 +28,7 @@ set(BASE_ARCHITECTURES "")
 # All supported architectures including xnack variants - used for validation of GPU_TARGETS
 set(SUPPORTED_ARCHITECTURES "")
 
-if(NOT BUILD_ADDRESS_SANITIZER)
+if(NOT TENSILE_ENABLE_ASAN)
     list(APPEND BASE_ARCHITECTURES
         "gfx803"
         "gfx900"

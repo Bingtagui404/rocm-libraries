@@ -103,6 +103,8 @@ shim_mapping(Tensile_GENERATE_PACKAGE TENSILE_GENERATE_PACKAGE "Generate Tensile
 shim_mapping(Tensile_KEEP_BUILD_TMP TENSILE_KEEP_BUILD_TMP "Keep temporary build files")
 shim_mapping(Tensile_VERBOSE TENSILE_VERBOSITY "Verbosity level" STRING)
 shim_mapping(Tensile_NO_ENUMERATE TENSILE_NO_ENUMERATE "Disable GPU enumeration")
+shim_mapping(BUILD_ADDRESS_SANITIZER TENSILE_ENABLE_ASAN "Enable address sanitizer")
+shim_mapping(BUILD_CODE_COVERAGE TENSILE_ENABLE_COVERAGE "Enable code coverage")
 
 # Map Tensile_LIBRARY_FORMAT → TENSILE_ENABLE_MSGPACK/TENSILE_ENABLE_LLVM
 if(DEFINED Tensile_LIBRARY_FORMAT)

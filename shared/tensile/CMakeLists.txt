@@ -28,6 +28,8 @@ option(TENSILE_ENABLE_MSGPACK "Enable MessagePack support" ON)
 option(TENSILE_ENABLE_LLVM "Use llvm yaml library" OFF)
 option(TENSILE_ENABLE_OPENMP "Enable openmp support" ON)
 cmake_dependent_option(TENSILE_ENABLE_ROCM_SMI "Use rocm_smi." ON "NOT WIN32" OFF)
+option(TENSILE_ENABLE_ASAN "Enable address sanitizer" OFF)
+option(TENSILE_ENABLE_COVERAGE "Enable code coverage" OFF)
 
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
@@ -70,8 +72,26 @@ if(TENSILE_ENABLE_OPENMP)
   endif()
 endif()
 
-tensile_find_python(Development)
-tensile_configure_bundled_python_command("${CMAKE_BINARY_DIR}/lib" "")
+# Detect ASAN runtime library for LD_PRELOAD (needed for Python processes)
+if(TENSILE_ENABLE_ASAN AND NOT WIN32)
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} --print-file-name=libclang_rt.asan-x86_64.so
+        OUTPUT_VARIABLE TENSILE_ASAN_LIB_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+    )
+    # If ASAN_LIB_PATH is libclang_rt.asan-x86_64.so
+    # rather than /path/to/libclang_rt.asan-x86_64.so then
+    # we failed to locate it and HAS_PARENT_PATH is false.
+    cmake_path(HAS_PARENT_PATH TENSILE_ASAN_LIB_PATH result)
+    if(NOT result)
+        message(FATAL_ERROR "Failed to locate libclang_rt.asan-x86_64.so ")
+    endif()
+    # Disable a few asan options to get builds going but these should be addressed
+    set(asan_opts "LD_PRELOAD=${TENSILE_ASAN_LIB_PATH}" "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0")
+endif()
+tensile_find_python(Development.Module)
+tensile_configure_bundled_python_command("${CMAKE_BINARY_DIR}/lib" "${asan_options}")
 
 if(TENSILE_ENABLE_HOST)
   if(TENSILE_BUILD_SHARED_LIBS)
