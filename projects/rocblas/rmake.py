@@ -381,8 +381,8 @@ def config_cmd():
     if args.cmake_args:
         cmake_options.append(args.cmake_args)
 
-    cmake_base_options = f'-DROCM_PATH={rocm_path} -DCMAKE_PREFIX_PATH:PATH="{rocm_path};{rocm_path}/llvm/lib/cmake"'
-    cmake_options.append(cmake_base_options)
+    cmake_options.append(f"-DROCM_PATH={rocm_path}")
+    cmake_options.append(f'-DCMAKE_PREFIX_PATH:PATH="{rocm_path};{rocm_path}/llvm/lib/cmake"')
 
     # packaging options
     cmake_pack_options = f"-DCPACK_SET_DESTDIR=OFF"
