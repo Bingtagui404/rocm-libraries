@@ -24,3 +24,13 @@ cmake --preset rocblas -D CMAKE_Fortran_COMPILER=gfortran
 ```bash
 cmake --preset rocblas -D ROCBLAS_ENABLE_FORTRAN=OFF
 ```
+
+### Runtime code object lookup needs `ROCBLAS_TENSILE_LIBPATH`
+
+Since rocblas clients conduct runtime lookup of tensile code objects, and the superbuild build-tree doesn't match the standalone build-tree, running rocblas clients requires `ROCBLAS_TENSILE_LIBPATH` to be set to point at the tensile library code objects.
+
+**Example command** for running rocblas tests
+```bash
+export ROCBLAS_TENSILE_LIBPATH=$(pwd)/build/shared/tensile/Tensile/library
+./build/projects/rocblas/clients/staging/rocblas-test --gtest_filter=*pre_checkin*
+```
