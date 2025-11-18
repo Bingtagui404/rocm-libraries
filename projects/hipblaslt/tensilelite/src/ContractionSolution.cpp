@@ -1002,8 +1002,8 @@ namespace TensileLite
                                                                          origami_config,
                                                                          skgrid,
                                                                          false);
-                    defaultWGMXCC = bestWGM.first;
-                    defaultWGM = bestWGM.second;
+                    defaultWGMXCC = std::get<0>(bestWGM);
+                    defaultWGM = std::get<1>(bestWGM);
 
                     // Add to cache only if dynamically calculated.
                     paramsCache.add(std::make_pair(defaultWGM, defaultWGMXCC), problem);
@@ -3123,7 +3123,7 @@ namespace TensileLite
         else if (problem.d().totalAllocatedElements() > problem.d().totalLogicalElements())
         {
             // If LDD > M, fall back to tree reduction
-            reductionStrat = ReductionType::Tree;
+            reductionStrat = origami::reduction_t::tree;
         }
         else if(pAMDGPU->skDynamicGrid > 0)
         {
