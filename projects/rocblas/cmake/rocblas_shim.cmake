@@ -23,6 +23,7 @@
 # BUILD_CODE_COVERAGE       → ROCBLAS_ENABLE_COVERAGE
 # BUILD_VERBOSE             → CMAKE_VERBOSE_MAKEFILE
 # SKIP_LIBRARY              → ROCBLAS_ENABLE_HOST (inverted: SKIP_LIBRARY=ON → ROCBLAS_ENABLE_HOST=OFF)
+# LINK_BLIS                 → ROCBLAS_ENABLE_BLIS
 #
 # Modern Options (no legacy equivalent):
 # --------------------------------------
@@ -105,6 +106,7 @@ shim_mapping(BUILD_WITH_HIPBLASLT ROCBLAS_ENABLE_HIPBLASLT "Build rocBLAS host l
 shim_mapping(AMDGPU_TARGETS GPU_TARGETS "AMD GFX targets to cross-compile" STRING)
 shim_mapping(BUILD_ADDRESS_SANITIZER ROCBLAS_ENABLE_ASAN "Build with address sanitizer enabled.")
 shim_mapping(BUILD_CODE_COVERAGE ROCBLAS_ENABLE_COVERAGE "Build tests with coverage enabled.")
+shim_mapping(LINK_BLIS ROCBLAS_ENABLE_BLIS "ENABLE BLIS cpu gemm library.")
 
 # Special case: BUILD_CLIENTS (only map if ON)
 if(DEFINED BUILD_CLIENTS AND BUILD_CLIENTS AND NOT DEFINED ROCBLAS_ENABLE_CLIENT)
