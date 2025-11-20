@@ -100,6 +100,7 @@ endif()
 
 if(ROCBLAS_ENABLE_HIPBLASLT)
     target_compile_definitions(rocblas-helper PRIVATE BUILD_WITH_HIPBLASLT)
+    target_link_libraries(rocblas-helper PRIVATE roc::hipblaslt)
 endif()
 
 set_target_properties(rocblas-helper

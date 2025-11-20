@@ -97,6 +97,7 @@ if(ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
             PRIVATE
                 BUILD_WITH_HIPBLASLT
         )
+        target_link_libraries(rocblas-testing-common PRIVATE roc::hipblaslt)
     endif()
 
     if(ROCBLAS_ENABLE_ASAN)
