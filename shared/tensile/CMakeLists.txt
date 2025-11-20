@@ -30,6 +30,9 @@ option(TENSILE_ENABLE_OPENMP "Enable openmp support" ON)
 cmake_dependent_option(TENSILE_ENABLE_ROCM_SMI "Use rocm_smi." ON "NOT WIN32" OFF)
 option(TENSILE_ENABLE_ASAN "Enable address sanitizer" OFF)
 option(TENSILE_ENABLE_COVERAGE "Enable code coverage" OFF)
+if(TENSILE_ENABLE_COVERAGE)
+  set(TENSILE_BUILD_SHARED_LIBS ON CACHE BOOL "Build shared library" FORCE)
+endif()
 
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
