@@ -11,7 +11,21 @@ target_link_libraries(rocblas-bench
         roc::rocblas
         rocblas::testing-common
         rocblas::warnings
+        $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
+        $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
 )
+
+if(ROCBLAS_ENABLE_BLIS)
+    target_link_libraries(rocblas-bench PRIVATE BLIS::BLIS)
+else()
+    target_link_libraries(rocblas-bench PRIVATE ${BLAS_LIBRARIES})
+    if(TARGET cblas)
+        target_link_libraries(rocblas-bench PRIVATE cblas)
+    endif()
+    if(BLAS_INCLUDE_DIRS)
+        target_include_directories(rocblas-bench SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS})
+    endif()
+endif()
 
 target_include_directories(rocblas-bench
     PRIVATE

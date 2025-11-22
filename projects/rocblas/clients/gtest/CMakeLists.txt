@@ -5,6 +5,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/clients/staging")
 
 add_executable(rocblas-test)
 
+if(ROCBLAS_ENABLE_BLIS)
+    target_link_libraries(rocblas-test PRIVATE BLIS::BLIS)
+else()
+    target_link_libraries(rocblas-test PRIVATE ${BLAS_LIBRARIES})
+    if(TARGET cblas)
+        target_link_libraries(rocblas-test PRIVATE cblas)
+    endif()
+    if(BLAS_INCLUDE_DIRS)
+        target_include_directories(rocblas-test SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS})
+    endif()
+endif()
+
 target_link_libraries(rocblas-test
     PRIVATE
         $<IF:$<TARGET_EXISTS:GTest::gtest>,GTest::gtest,GTest::GTest>
