@@ -132,7 +132,7 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
   )
 
   find_program(LLVM_PROFDATA llvm-profdata PATH_SUFFIXES llvm/bin REQUIRED)
-  find_program(LLVM_COV llvm-cov REQUIRED PATH_SUFFIXES llvm/bin)
+  find_program(LLVM_COV llvm-cov REQUIRED PATH_SUFFIXES llvm/bin REQUIRED)
 
   add_custom_target(
     coverage
