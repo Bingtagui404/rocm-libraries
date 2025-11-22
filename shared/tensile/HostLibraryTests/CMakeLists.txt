@@ -16,9 +16,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   find_package(hip REQUIRED)
 
   set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
-  set(TENSILE_BUILD_TESTING OFF)
   set(TENSILE_ENABLE_GEMM OFF)
   set(TENSILE_ENABLE_CLIENT ON)
+  set(TENSILE_BUILD_TESTING ON)
+  set(TENSILE_ENABLE_LLVM ON)
   add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
@@ -91,6 +92,16 @@ target_sources(tensile-tests
 )
 
 if(TENSILE_ENABLE_LLVM)
+  find_package(LLVM REQUIRED)
+  find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
+  
+  if(LLVMObjectYAML_LIBRARY)
+    target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
+  else()
+    target_link_libraries(tensile-tests PUBLIC LLVM)
+  endif()
+  target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
+  
   target_sources(tensile-tests
     PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/ContractionLibraryLoading_test.cpp"
