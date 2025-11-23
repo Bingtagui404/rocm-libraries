@@ -22,6 +22,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(TENSILE_BUILD_SHARED_LIBS "Build shared library" OFF)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
 option(TENSILE_ENABLE_HOST "Build host library" ON)
+option(TENSILE_ENABLE_HIP "Build HIP-specific tests" ON)
 option(TENSILE_ENABLE_GEMM "Build high-performance gemm libraries" ON)
 option(TENSILE_ENABLE_CLIENT "Build client app" OFF)
 option(TENSILE_ENABLE_MSGPACK "Enable MessagePack support" ON)
@@ -61,7 +62,7 @@ mark_as_advanced(
 find_package(hip REQUIRED)
 
 if(TENSILE_ENABLE_OPENMP)
-  find_package(OpenMP CONFIG)
+  find_package(OpenMP CONFIG HINTS llvm/lib/cmake)
   add_library(tensile-omp-shim INTERFACE)
   add_library(tensile::omp-shim ALIAS tensile-omp-shim)
   if(OpenMP_FOUND)
@@ -120,8 +121,9 @@ if(TENSILE_ENABLE_HOST)
 
   if(NOT TENSILE_BUILD_SHARED_LIBS)
     set_target_properties(tensile-host PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-    target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
   endif()
+
+  target_compile_definitions(tensile-host PRIVATE TENSILE_STATIC_ONLY)
 
   if(TENSILE_ENABLE_ASAN)
       target_compile_options(tensile-host PRIVATE -fsanitize=address -shared-libasan)

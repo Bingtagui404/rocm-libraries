@@ -17,6 +17,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
   set(TENSILE_ENABLE_GEMM OFF)
+  set(TENSILE_ENABLE_HIP ON)
   set(TENSILE_ENABLE_CLIENT ON)
   set(TENSILE_BUILD_TESTING ON)
   set(TENSILE_ENABLE_LLVM ON)
@@ -118,6 +119,7 @@ endif()
 
 if(TENSILE_ENABLE_HIP)
   add_subdirectory(hip)
+  target_link_libraries(tensile-tests PRIVATE test-gemm-kernels)
 endif()
 
 gtest_discover_tests(tensile-tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
@@ -142,8 +144,16 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
       "--gtest_filter=-*Extended*:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/504:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/505:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/506:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/507:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/508:HipSolutionAdapter/RunGEMMKernelTestHip.TestAllSolutions/509"
   )
 
-  find_program(LLVM_PROFDATA llvm-profdata PATH_SUFFIXES llvm/bin REQUIRED)
-  find_program(LLVM_COV llvm-cov REQUIRED PATH_SUFFIXES llvm/bin REQUIRED)
+  find_program(LLVM_PROFDATA llvm-profdata
+    PATHS ENV ROCM_PATH /opt/rocm
+    PATH_SUFFIXES llvm/bin
+    NO_DEFAULT_PATH
+    REQUIRED)
+  find_program(LLVM_COV llvm-cov
+    PATHS ENV ROCM_PATH /opt/rocm
+    PATH_SUFFIXES llvm/bin
+    NO_DEFAULT_PATH
+    REQUIRED)
 
   add_custom_target(
     coverage
