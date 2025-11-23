@@ -119,7 +119,16 @@ endif()
 
 if(TENSILE_ENABLE_HIP)
   add_subdirectory(hip)
-  target_link_libraries(tensile-tests PRIVATE test-gemm-kernels)
+  target_link_libraries(tensile-tests
+    PRIVATE
+      -Xlinker --whole-archive
+      test-gemm-kernels
+      -Xlinker --no-whole-archive
+      hip::device
+  )
+  foreach(arch IN LISTS GPU_TARGETS)
+    target_link_libraries(tensile-tests PRIVATE "--offload-arch=${arch}")
+  endforeach()
 endif()
 
 gtest_discover_tests(tensile-tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
