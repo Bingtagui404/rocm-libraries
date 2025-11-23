@@ -35,8 +35,6 @@ if(TENSILE_ENABLE_COVERAGE)
   set(TENSILE_BUILD_SHARED_LIBS ON CACHE BOOL "Build shared library" FORCE)
 endif()
 
-message("COV: ${TENSILE_ENABLE_COVERAGE}")
-
 set(GPU_TARGETS "" CACHE STRING "AMD GFX targets to cross-compile")
 
 if(NOT GPU_TARGETS OR GPU_TARGETS STREQUAL "all")
