@@ -72,7 +72,7 @@ target_compile_definitions(test_kernels_lite
 )
 
 add_library(test_kernels_lite2 STATIC
-  "${TENSILE_TEST_DATA_DIR}/test_kernels_lite/library/test_kernels_lite_2.cpp")
+  "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_2/library/test_kernels_lite_2.cpp")
 target_link_libraries(test_kernels_lite2 PRIVATE tensile-host hip::device)
 target_compile_definitions(test_kernels_lite2
   PRIVATE
@@ -81,7 +81,7 @@ target_compile_definitions(test_kernels_lite2
 )
 
 add_library(test_kernels_lite_mixed STATIC
-  "${TENSILE_TEST_DATA_DIR}/test_kernels_lite/library/test_kernels_lite_mixed.cpp")
+  "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_mixed/library/test_kernels_lite_mixed.cpp")
 target_link_libraries(test_kernels_lite_mixed PRIVATE tensile-host hip::device)
 target_compile_definitions(test_kernels_lite_mixed
   PRIVATE

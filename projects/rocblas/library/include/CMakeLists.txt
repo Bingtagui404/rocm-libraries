@@ -54,4 +54,3 @@ add_dependencies(rocblas rocblas_proto_templates)
 
 # generate rocblas_device_malloc.hpp header for device memory allocation
 configure_file("${ROCBLAS_LIBRARY_SOURCE_DIR}/include/rocblas_device_malloc.hpp" "${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas_device_malloc.hpp")
-
