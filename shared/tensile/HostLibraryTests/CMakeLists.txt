@@ -55,6 +55,7 @@ target_compile_definitions(tensile-tests
     BOOST_ALL_NO_LIB
     BOOST_ERROR_CODE_HEADER_ONLY
     BOOST_FILESYSTEM_DYN_LINK
+    __HIP_HCC_COMPAT_MODE__=1
 )
 
 set(TENSILE_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
@@ -158,6 +159,7 @@ if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
     PATH_SUFFIXES llvm/bin
     NO_DEFAULT_PATH
     REQUIRED)
+
   find_program(LLVM_COV llvm-cov
     PATHS ENV ROCM_PATH /opt/rocm
     PATH_SUFFIXES llvm/bin
