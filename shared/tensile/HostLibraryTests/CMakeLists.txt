@@ -123,7 +123,10 @@ if(TENSILE_ENABLE_HIP)
   target_link_libraries(tensile-tests
     PRIVATE
       -Xlinker --whole-archive
-      test-gemm-kernels
+      test_kernels_lite
+      test_kernels_lite2
+      test_kernels_lite_lite
+      test_tile_aware_selection
       -Xlinker --no-whole-archive
       hip::device
   )
