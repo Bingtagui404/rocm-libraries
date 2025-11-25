@@ -122,14 +122,17 @@ if(TENSILE_ENABLE_HIP)
   add_subdirectory(hip)
   target_link_libraries(tensile-tests
     PRIVATE
-      -Xlinker --whole-archive
+      -Xlinker --whole-archive)
+  target_link_libraries(tensile-tests
+    PRIVATE
+      hip::host
       test_kernels_lite
       test_kernels_lite2
       test_kernels_lite_mixed
-      test_tile_aware_selection
-      -Xlinker --no-whole-archive
-      hip::device
-  )
+      test_tile_aware_selection)
+  target_link_libraries(tensile-tests
+    PRIVATE
+      -Xlinker --no-whole-archive)
   foreach(arch IN LISTS GPU_TARGETS)
     target_link_libraries(tensile-tests PRIVATE "--offload-arch=${arch}")
   endforeach()
