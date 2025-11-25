@@ -94,3 +94,23 @@ add_subdirectory(blas2)
 add_subdirectory(blas3)
 add_subdirectory(blas_ex)
 add_subdirectory(src64)
+
+# generate rocblas_device_malloc.hpp header for device memory allocation
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas_device_malloc.hpp" "${PROJECT_BINARY_DIR}/include/rocblas/rocblas_device_malloc.hpp")
+
+set(ROCBLAS_PROTO_TEMPLATES "${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-exported-proto.hpp")
+
+add_custom_command(OUTPUT ${ROCBLAS_PROTO_TEMPLATES}
+  COMMAND ${Python3_EXECUTABLE} 
+    "${CMAKE_CURRENT_SOURCE_DIR}/template-proto.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/blas3/Tensile/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/blas3/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/blas2/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/blas1/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src64/blas3/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src64/blas2/"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src64/blas1/" > ${ROCBLAS_PROTO_TEMPLATES}
+  COMMENT "Generating prototypes from ${CMAKE_CURRENT_SOURCE_DIR}."
+)
+add_custom_target(rocblas_proto_templates ALL DEPENDS ${ROCBLAS_PROTO_TEMPLATES})
