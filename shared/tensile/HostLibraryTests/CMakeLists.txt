@@ -21,6 +21,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(TENSILE_ENABLE_CLIENT ON)
   set(TENSILE_BUILD_TESTING ON)
   set(TENSILE_ENABLE_LLVM ON)
+  set(TENSILE_BUILD_SHARED_LIBS OFF)
   add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
@@ -126,6 +127,7 @@ if(TENSILE_ENABLE_HIP)
   target_link_libraries(tensile-tests
     PRIVATE
       hip::host
+      roc::tensile-host
       test_kernels_lite
       test_kernels_lite2
       test_kernels_lite_mixed
