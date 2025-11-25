@@ -4,11 +4,11 @@
 # Configure generated headers
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas-version.h.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas-version.h"
+    "${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-version.h"
 )
 
 generate_export_header(rocblas
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas-export.h"
+    EXPORT_FILE_NAME "${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-export.h"
     BASE_NAME rocblas
 )
 
@@ -42,8 +42,26 @@ target_sources(rocblas
         "${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas-macros.h"
 )
 
-set(ROCBLAS_PROTO_TEMPLATES "${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas-exported-proto.hpp")
 set(ROCBLAS_LIBRARY_SOURCE_DIR "${PROJECT_SOURCE_DIR}/library/src")
+
+# generate rocblas_device_malloc.hpp header for device memory allocation
+# this file probably belongs in this directory.
+configure_file("${ROCBLAS_LIBRARY_SOURCE_DIR}/include/rocblas_device_malloc.hpp" "${PROJECT_BINARY_DIR}/include/rocblas/rocblas_device_malloc.hpp")
+
+file( GLOB rocblas_prototype_inputs
+  LIST_DIRECTORIES OFF
+  CONFIGURE_DEPENDS
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/include/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas3/Tensile/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas3/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas2/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas1/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/src64/blas2/*.hpp"
+  "${ROCBLAS_LIBRARY_SOURCE_DIR}/src64/blas1/*.hpp"
+)
+
+set(ROCBLAS_PROTO_TEMPLATES "${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-exported-proto.hpp")
+
 add_custom_command(OUTPUT ${ROCBLAS_PROTO_TEMPLATES}
   COMMAND ${Python3_EXECUTABLE} "${ROCBLAS_LIBRARY_SOURCE_DIR}/template-proto.py" ${CMAKE_CURRENT_SOURCE_DIR} "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas3/Tensile" "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas3" "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas2" "${ROCBLAS_LIBRARY_SOURCE_DIR}/blas1" "${ROCBLAS_LIBRARY_SOURCE_DIR}/src64/blas3" "${ROCBLAS_LIBRARY_SOURCE_DIR}/src64/blas2" "${ROCBLAS_LIBRARY_SOURCE_DIR}/src64/blas1" > ${ROCBLAS_PROTO_TEMPLATES}
   COMMENT "Generating prototypes from ${ROCBLAS_LIBRARY_SOURCE_DIR}."
@@ -51,6 +69,3 @@ add_custom_command(OUTPUT ${ROCBLAS_PROTO_TEMPLATES}
 )
 add_custom_target(rocblas_proto_templates ALL DEPENDS ${ROCBLAS_PROTO_TEMPLATES})
 add_dependencies(rocblas rocblas_proto_templates)
-
-# generate rocblas_device_malloc.hpp header for device memory allocation
-configure_file("${ROCBLAS_LIBRARY_SOURCE_DIR}/include/rocblas_device_malloc.hpp" "${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas_device_malloc.hpp")
