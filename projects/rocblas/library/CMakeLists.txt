@@ -18,8 +18,8 @@ endif()
 
 target_include_directories(rocblas64
     PRIVATE
-        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas"
-        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal"
+        "${PROJECT_BINARY_DIR}/include/rocblas"
+        "${PROJECT_BINARY_DIR}/include/rocblas/internal"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/internal"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -68,8 +68,8 @@ target_link_libraries(rocblas-helper
 
 target_include_directories(rocblas-helper
     PRIVATE
-        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas"
-        "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal"
+        "${PROJECT_BINARY_DIR}/include/rocblas"
+        "${PROJECT_BINARY_DIR}/include/rocblas/internal"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/internal"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
@@ -144,6 +144,9 @@ target_include_directories(rocblas
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/rocblas>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/rocblas/internal>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/internal>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas>
@@ -223,6 +226,6 @@ add_subdirectory(include)
 add_subdirectory(src)
 
 # TODO: Fix source code to use consistent include paths, then remove these configure_file calls
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/internal/rocblas-beta.h" "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas/internal" COPYONLY)
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas.h" "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas" COPYONLY)
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/include/rocblas_device_malloc.hpp" "${CMAKE_CURRENT_BINARY_DIR}/include/rocblas" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/internal/rocblas-beta.h" "${PROJECT_BINARY_DIR}/include/rocblas/internal" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/rocblas.h" "${PROJECT_BINARY_DIR}/include/rocblas" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/include/rocblas_device_malloc.hpp" "${PROJECT_BINARY_DIR}/include/rocblas" COPYONLY)

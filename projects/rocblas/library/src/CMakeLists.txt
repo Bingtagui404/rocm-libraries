@@ -28,9 +28,9 @@ if(ROCBLAS_ENABLE_TENSILE OR ROCBLAS_ENABLE_HIPBLASLT)
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${PROJECT_BINARY_DIR}/library/include"
-            "${PROJECT_BINARY_DIR}/library/include/rocblas"
-            "${PROJECT_BINARY_DIR}/library/include/rocblas/internal"
+            "${PROJECT_BINARY_DIR}/include"
+            "${PROJECT_BINARY_DIR}/include/rocblas"
+            "${PROJECT_BINARY_DIR}/include/rocblas/internal"
             "${PROJECT_SOURCE_DIR}/library/include"
             "${PROJECT_SOURCE_DIR}/library/include/internal"
     )

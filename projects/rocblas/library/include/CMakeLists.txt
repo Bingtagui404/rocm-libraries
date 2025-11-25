@@ -22,8 +22,8 @@ target_sources(rocblas
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas-types.h>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas_bfloat16.h>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal/rocblas_xfloat32.h>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas-export.h>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rocblas/internal/rocblas-version.h>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-export.h>
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/rocblas/internal/rocblas-version.h>
         
         # Install interface
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/rocblas/rocblas.h>
