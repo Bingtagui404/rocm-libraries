@@ -124,6 +124,30 @@ namespace AliasDataFlowTagsTest
             CHECK(multiplyAddNodes.size() == addNodesBefore.size() - addNodesAfter.size());
         }
 
-        SECTION("Apply graph transform, no constant propagation") {}
+        SECTION("Apply graph transform, no constant propagation")
+        {
+            // Collect the Multiply and Add nodes before FuseExpressions
+            auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
+            auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
+
+            // Apply FuseExpressions
+            graph = transform<FuseExpressions>(graph);
+
+            // Collect the Multiply and Add nodes after FuseExpressions
+            auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
+            auto addNodesAfter      = getAssignNodes<Expression::Add>(graph);
+
+            // We should have fewer Multiply and Add nodes after FuseExpressions than we did before
+            CHECK(multiplyNodesAfter.size() < multiplyNodesBefore.size());
+            CHECK(addNodesAfter.size() < addNodesBefore.size());
+
+            // Collect the MultiplyAdd nodes
+            auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
+
+            // The number of MultiplyAdd nodes should equal the decrease in the number of both Multiply and Add nodes
+            CHECK(multiplyAddNodes.size()
+                  == multiplyNodesBefore.size() - multiplyNodesAfter.size());
+            CHECK(multiplyAddNodes.size() == addNodesBefore.size() - addNodesAfter.size());
+        }
     }
 }
