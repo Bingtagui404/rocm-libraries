@@ -26,7 +26,7 @@ set(tcl_command
     --cxx-compiler=amdclang++ --cmake-cxx-compiler="${CMAKE_CXX_COMPILER}" --jobs=8
 )
 
-set(lite_command ${tcl_command} --embed-library=test_kernels_lite --embed-library-key=kernels-lite
+set(lite_command ${tcl_command} --embed-library=test_kernels_lite --embed-library-key=kernels_lite
                  "${TENSILE_CONFIG_DIR}/lite_configs" "${TENSILE_TEST_DATA_DIR}/test_kernels_lite" HIP)
 
 add_custom_command(
@@ -64,7 +64,7 @@ add_custom_command(
 
 add_library(test_kernels_lite STATIC
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite/library/test_kernels_lite.cpp")
-target_link_libraries(test_kernels_lite PRIVATE tensile-host hip::device)
+target_link_libraries(test_kernels_lite PRIVATE roc::tensile-host hip::device)
 target_compile_definitions(test_kernels_lite
   PRIVATE
     __HIP_HCC_COMPAT_MODE__=1
@@ -73,7 +73,7 @@ target_compile_definitions(test_kernels_lite
 
 add_library(test_kernels_lite2 STATIC
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_2/library/test_kernels_lite_2.cpp")
-target_link_libraries(test_kernels_lite2 PRIVATE tensile-host hip::device)
+target_link_libraries(test_kernels_lite2 PRIVATE roc::tensile-host hip::device)
 target_compile_definitions(test_kernels_lite2
   PRIVATE
     __HIP_HCC_COMPAT_MODE__=1
@@ -82,7 +82,7 @@ target_compile_definitions(test_kernels_lite2
 
 add_library(test_kernels_lite_mixed STATIC
   "${TENSILE_TEST_DATA_DIR}/test_kernels_lite_mixed/library/test_kernels_lite_mixed.cpp")
-target_link_libraries(test_kernels_lite_mixed PRIVATE tensile-host hip::device)
+target_link_libraries(test_kernels_lite_mixed PRIVATE roc::tensile-host hip::device)
 target_compile_definitions(test_kernels_lite_mixed
   PRIVATE
     __HIP_HCC_COMPAT_MODE__=1
@@ -91,7 +91,7 @@ target_compile_definitions(test_kernels_lite_mixed
 
 add_library(test_tile_aware_selection STATIC
   "${TENSILE_TEST_DATA_DIR}/test_tile_aware_selection/library/test_tile_aware_selection.cpp")
-target_link_libraries(test_tile_aware_selection PRIVATE tensile-host hip::device)
+target_link_libraries(test_tile_aware_selection PRIVATE roc::tensile-host hip::device)
 target_compile_definitions(test_tile_aware_selection
   PRIVATE
     __HIP_HCC_COMPAT_MODE__=1
