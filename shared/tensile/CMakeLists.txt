@@ -256,3 +256,7 @@ install(
   DESTINATION "${TENSILE_INSTALL_CONFIGDIR}"
   COMPONENT devel
 )
+
+if(TENSILE_ENABLE_COVERAGE OR BUILD_CODE_COVERAGE)
+  include(tensile_coverage)
+endif()
