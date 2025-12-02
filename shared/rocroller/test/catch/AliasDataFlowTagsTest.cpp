@@ -38,7 +38,6 @@
 #include "common/SourceMatcher.hpp"
 #include <common/CommonGraphs.hpp>
 #include <common/Utilities.hpp>
-#include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
 #include <rocRoller/KernelGraph/Transforms/AliasDataFlowTags_detail.hpp>
 #include <rocRoller/KernelGraph/Transforms/All.hpp>
 #include <rocRoller/Utilities/Settings_fwd.hpp>
