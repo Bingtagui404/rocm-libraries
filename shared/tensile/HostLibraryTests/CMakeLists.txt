@@ -16,12 +16,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   find_package(hip REQUIRED)
 
   set(_TENSILE_HOSTLIBRARYTESTS_INCLUDED TRUE)
-  set(TENSILE_ENABLE_GEMM OFF)
-  set(TENSILE_ENABLE_HIP ON)
-  set(TENSILE_ENABLE_CLIENT ON)
-  set(TENSILE_BUILD_TESTING ON)
-  set(TENSILE_ENABLE_LLVM ON)
-  set(TENSILE_BUILD_SHARED_LIBS OFF)
+  option(TENSILE_BUILD_TESTING "Build host library tests" ON)
+  option(TENSILE_ENABLE_GEMM "Build high-performance gemm libraries" OFF)
+  option(TENSILE_ENABLE_CLIENT "Build client app" ON)
+  option(TENSILE_ENABLE_LLVM "Use llvm yaml library" ON)
+
   add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
