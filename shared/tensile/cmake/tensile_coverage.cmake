@@ -42,12 +42,20 @@ if(TENSILE_BUILD_TESTING OR BUILD_TESTING)
       ${LLVM_PROFDATA} merge -sparse "${coverage_dir}/profraw/tensile-host-coverage_*.profraw"
       -o "${coverage_dir}/tensile-host.profdata"
     COMMAND
+      ls -al "${coverage_dir}/*"
+    COMMAND
       ${LLVM_COV} report -object $<TARGET_FILE:tensile-host>
       -instr-profile="${coverage_dir}/tensile-host.profdata"
+    COMMAND
+      ls -al "${coverage_dir}/*"
     COMMAND
       ${LLVM_COV} show -object $<TARGET_FILE:tensile-host>
       -instr-profile="${coverage_dir}/tensile-host.profdata" -format=html
       -output-dir="${coverage_dir}"
+    COMMAND
+      ls -al "${coverage_dir}/*"
+    COMMAND
+      tree "${coverage_dir}"
     COMMENT
       "Generating tensile-host coverage... HTML report in ${coverage_dir}/index.html"
   )
