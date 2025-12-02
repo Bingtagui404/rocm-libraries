@@ -116,7 +116,7 @@ if(TENSILE_ENABLE_HOST)
 
   target_compile_definitions(tensile-host PUBLIC TENSILE_USE_HIP __HIP_HCC_COMPAT_MODE__=1)
 
-  if(NOT TENSILE_BUILD_SHARED_LIBS)
+  if(TENSILE_BUILD_SHARED_LIBS)
     set_target_properties(tensile-host PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
   endif()
 
