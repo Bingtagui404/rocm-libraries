@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
   set(_STANDALONE TRUE)
   set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "No dev warnings")
-  
+
   if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
     cmake_policy(SET CMP0012 NEW)
@@ -25,7 +25,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." "${CMAKE_BINARY_DIR}/parent_build")
 endif()
 
-enable_testing()
+if(TESNILE_ENABLE_CTEST)
+  enable_testing()
+endif()
+
 find_package(hip REQUIRED)
 find_package(Threads REQUIRED)
 find_package(GTest REQUIRED)
@@ -37,7 +40,6 @@ target_link_libraries(tensile-tests
     Boost::filesystem
     GTest::gtest
     hip::device
-    roc::tensile-host
 )
 if(TENSILE_ENABLE_OPENMP)
   target_link_libraries(tensile-tests PRIVATE tensile::omp-shim)
@@ -97,14 +99,14 @@ target_sources(tensile-tests
 if(TENSILE_ENABLE_LLVM)
   find_package(LLVM REQUIRED)
   find_library(LLVMObjectYAML_LIBRARY NAMES LLVMObjectYAML PATHS ${LLVM_LIBRARY_DIR})
-  
+
   if(LLVMObjectYAML_LIBRARY)
     target_link_libraries(tensile-tests PUBLIC LLVMObjectYAML)
   else()
     target_link_libraries(tensile-tests PUBLIC LLVM)
   endif()
   target_include_directories(tensile-tests PUBLIC ${LLVM_INCLUDE_DIRS})
-  
+
   target_sources(tensile-tests
     PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/ContractionLibraryLoading_test.cpp"
@@ -139,6 +141,8 @@ if(TENSILE_ENABLE_HIP)
     target_link_libraries(tensile-tests PRIVATE "--offload-arch=${arch}")
   endforeach()
 endif()
+
+target_compile_definitions(tensile-tests PRIVATE TENSILE_STATIC_ONLY)
 
 gtest_discover_tests(tensile-tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR} TIMEOUT 60)
 

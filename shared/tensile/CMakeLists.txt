@@ -19,8 +19,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "" FORCE)
 option(TENSILE_BUILD_SHARED_LIBS "Build shared library" OFF)
 option(TENSILE_BUILD_TESTING "Build host library tests" OFF)
+option(TENSILE_ENABLE_CTEST "Enable CTest driver" OFF)
 option(TENSILE_ENABLE_HOST "Build host library" ON)
 option(TENSILE_ENABLE_HIP "Build HIP-specific tests" ON)
 option(TENSILE_ENABLE_GEMM "Build high-performance gemm libraries" ON)
@@ -199,11 +201,13 @@ if(TENSILE_ENABLE_CLIENT)
       BOOST_ALL_NO_LIB
       BOOST_PROGRAM_OPTIONS_DYN_LINK
       __HIP_HCC_COMPAT_MODE__=1
+      TENSILE_STATIC_ONLY
   )
 
   add_executable(tensile-client)
   target_link_libraries(tensile-client PRIVATE tensile::client-lib roc::tensile-host hip::device)
   target_include_directories(tensile-client PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/client/include")
+  target_compile_definitions(tensile-client PRIVATE TENSILE_STATIC_ONLY)
 
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/Tensile/Source/client")
 endif()
