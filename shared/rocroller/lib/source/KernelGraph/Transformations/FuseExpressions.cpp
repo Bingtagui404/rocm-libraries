@@ -26,6 +26,7 @@
 
 #include <optional>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -34,10 +35,46 @@
 #include <rocRoller/KernelGraph/KernelGraph.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
+#include <rocRoller/Utilities/Error.hpp>
 
 namespace rocRoller::KernelGraph
 {
     using namespace ControlGraph;
+
+    /**
+     * If a DataFlowTag is:
+     * 1. written to only once
+     * 2. read only once within that same body parent
+     *
+     * then those two control nodes comprise a candidate for FuseExpressions.
+     */
+    std::vector<std::tuple<int, int>> findCandidates(KernelGraph const& kgraph)
+    {
+        using RW = ControlFlowRWTracer::ReadWrite;
+
+        std::vector<std::tuple<int, int>> candidates;
+
+        auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
+
+        // Create a map to hold all reads and writes under each body parent
+        std::unordered_map<int, std::vector<int>> parents;
+        for(auto record : trace)
+        {
+            // record: struct { int control, int coordinate, ReadWrite rw }
+            if(record.rw != RW::Count)
+            {
+                auto parent = bodyParents(record.control, kgraph).take(1).only();
+                AssertFatal(
+                    parent.has_value(), "Node has no body parent", ShowValue(record.control));
+
+                parents[*parent].push_back(record.control);
+            }
+        }
+
+        // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
+
+        return candidates;
+    }
 
     /**
      * @brief Look for {Assign Multiply(., .)} --Sequence--> {Assign Add(., .)}.

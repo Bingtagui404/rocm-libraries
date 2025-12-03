@@ -40,6 +40,10 @@ namespace rocRoller
         {
         public:
             KernelGraph apply(KernelGraph const& original) override;
+
+            std::vector<std::pair<Expression::DataFlowTag, Expression::DataFlowTag>>
+                findCandidates(KernelGraph const& kgraph);
+
             std::string name() const override
             {
                 return "FuseExpressions";
