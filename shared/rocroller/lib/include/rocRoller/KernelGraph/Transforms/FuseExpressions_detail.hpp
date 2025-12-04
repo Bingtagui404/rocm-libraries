@@ -2,7 +2,7 @@
  *
  * MIT License
  *
- * Copyright 2024-2025 AMD ROCm(TM) Software
+ * Copyright 2025 AMD ROCm(TM) Software
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,25 +25,23 @@
  *******************************************************************************/
 
 #pragma once
-#include <rocRoller/KernelGraph/Transforms/GraphTransform.hpp>
+
+#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 
 namespace rocRoller
 {
     namespace KernelGraph
     {
-        /**
-         * @brief Performs the expression fusion transformation.
-         *
-         * Fuses neighbouring expressions where possible.
-         */
-        class FuseExpressions : public GraphTransform
+        namespace FuseExpressionsDetail
         {
-        public:
-            KernelGraph apply(KernelGraph const& original) override;
-            std::string name() const override
-            {
-                return "FuseExpressions";
-            }
-        };
+            /**
+             * If a DataFlowTag is:
+             * 1. written to only once
+             * 2. read only once within that same body parent
+             *
+             * then those two control nodes comprise a candidate for FuseExpressions.
+             */
+            std::vector<std::tuple<int, int>> findFuseCandidates(KernelGraph const& kgraph);
+        }
     }
 }

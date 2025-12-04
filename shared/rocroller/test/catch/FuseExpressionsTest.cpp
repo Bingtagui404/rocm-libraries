@@ -33,8 +33,9 @@
 #include <common/Utilities.hpp>
 #include <rocRoller/Expression.hpp>
 #include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
-#include <rocRoller/KernelGraph/Transforms/AliasDataFlowTags_detail.hpp>
 #include <rocRoller/KernelGraph/Transforms/All.hpp>
+#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
+#include <rocRoller/KernelGraph/Transforms/FuseExpressions_detail.hpp>
 #include <rocRoller/Utilities/Settings_fwd.hpp>
 #include <variant>
 
@@ -100,7 +101,7 @@ namespace AliasDataFlowTagsTest
         {
             graph = transform<ConstantPropagation>(graph);
 
-            auto candidates = findCandidates(graph); // TODO: Temporary!
+            auto candidates = FuseExpressionsDetail::findFuseCandidates(graph); // TODO: Temporary!
 
             // Collect the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);

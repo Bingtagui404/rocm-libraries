@@ -34,6 +34,7 @@
 #include <rocRoller/KernelGraph/ControlToCoordinateMapper.hpp>
 #include <rocRoller/KernelGraph/KernelGraph.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
+#include <rocRoller/KernelGraph/Transforms/FuseExpressions_detail.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
 #include <rocRoller/Utilities/Error.hpp>
 
@@ -41,55 +42,51 @@ namespace rocRoller::KernelGraph
 {
     using namespace ControlGraph;
 
-    /**
-     * If a DataFlowTag is:
-     * 1. written to only once
-     * 2. read only once within that same body parent
-     *
-     * then those two control nodes comprise a candidate for FuseExpressions.
-     */
-    std::vector<std::tuple<int, int>> findCandidates(KernelGraph const& kgraph)
+    namespace FuseExpressionsDetail
     {
-        using RW = ControlFlowRWTracer::ReadWrite;
-
-        std::vector<std::tuple<int, int>> candidates;
-
-        auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
-
-        // Create a map to hold all reads and writes under each body parent
-        std::unordered_map<int, std::vector<int>> parents;
-        for(auto record : trace)
+        std::vector<std::tuple<int, int>> findFuseCandidates(KernelGraph const& kgraph)
         {
-            // record: struct { int control, int coordinate, ReadWrite rw }
-            if(record.rw != RW::Count)
-            {
-                auto parent = bodyParents(record.control, kgraph).take(1).only();
-                AssertFatal(
-                    parent.has_value(), "Node has no body parent", ShowValue(record.control));
+            using RW = ControlFlowRWTracer::ReadWrite;
 
-                parents[*parent].push_back(record.control);
-            }
-        }
+            std::vector<std::tuple<int, int>> candidates;
 
-        // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
-        bool fails = false;
-        for(const auto& [key, val] : parents)
-        {
-            for(auto node : val)
+            auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
+
+            // Create a map to hold all reads and writes under each body parent
+            std::unordered_map<int, std::vector<int>> parents;
+            for(auto record : trace)
             {
-                if(parents.find(node) == parents.end())
+                // record: struct { int control, int coordinate, ReadWrite rw }
+                if(record.rw != RW::Count)
                 {
-                    fails = true;
-                    std::cout << "Node " << node << " is also a parent :(";
+                    auto parent = bodyParents(record.control, kgraph).take(1).only();
+                    AssertFatal(
+                        parent.has_value(), "Node has no body parent", ShowValue(record.control));
+
+                    parents[*parent].push_back(record.control);
                 }
             }
-        }
-        if(!fails)
-        {
-            std::cout << "None of the nodes are also parents!";
-        }
 
-        return candidates;
+            // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
+            bool fails = false;
+            for(const auto& [key, val] : parents)
+            {
+                for(auto node : val)
+                {
+                    if(parents.find(node) == parents.end())
+                    {
+                        fails = true;
+                        std::cout << "Node " << node << " is also a parent :(";
+                    }
+                }
+            }
+            if(!fails)
+            {
+                std::cout << "None of the nodes are also parents!";
+            }
+
+            return candidates;
+        }
     }
 
     /**
