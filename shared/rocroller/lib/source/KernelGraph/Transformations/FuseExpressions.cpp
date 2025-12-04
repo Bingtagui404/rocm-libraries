@@ -72,6 +72,22 @@ namespace rocRoller::KernelGraph
         }
 
         // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
+        bool fails = false;
+        for(const auto& [key, val] : parents)
+        {
+            for(auto node : val)
+            {
+                if(parents.find(node) == parents.end())
+                {
+                    fails = true;
+                    std::cout << "Node " << node << " is also a parent :(";
+                }
+            }
+        }
+        if(!fails)
+        {
+            std::cout << "None of the nodes are also parents!";
+        }
 
         return candidates;
     }

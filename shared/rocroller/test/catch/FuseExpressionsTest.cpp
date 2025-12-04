@@ -100,6 +100,8 @@ namespace AliasDataFlowTagsTest
         {
             graph = transform<ConstantPropagation>(graph);
 
+            auto candidates = findCandidates(graph); // TODO: Temporary!
+
             // Collect the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
             auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
