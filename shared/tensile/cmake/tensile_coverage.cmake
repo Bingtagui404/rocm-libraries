@@ -5,8 +5,6 @@ message(STATUS "Code coverage for tensile-host is ENABLED.")
 
 target_compile_options(tensile-host PRIVATE -fprofile-instr-generate -fcoverage-mapping)
 target_link_options(tensile-host PUBLIC -fprofile-instr-generate)
-target_compile_options(tensile-client-lib PRIVATE -fprofile-instr-generate -fcoverage-mapping)
-target_link_options(tensile-client-lib PUBLIC -fprofile-instr-generate)
 
 if(TENSILE_BUILD_TESTING OR BUILD_TESTING)
 
