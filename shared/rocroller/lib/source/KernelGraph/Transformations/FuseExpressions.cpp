@@ -53,7 +53,7 @@ namespace rocRoller::KernelGraph
             auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
 
             // Create a map to hold all reads and writes under each body parent
-            std::unordered_map<int, std::vector<int>> parents;
+            std::unordered_map<int, std::vector<ControlFlowRWTracer::ReadWriteRecord>> parents;
             for(auto record : trace)
             {
                 // record: struct { int control, int coordinate, ReadWrite rw }
@@ -63,26 +63,50 @@ namespace rocRoller::KernelGraph
                     AssertFatal(
                         parent.has_value(), "Node has no body parent", ShowValue(record.control));
 
-                    parents[*parent].push_back(record.control);
+                    parents[*parent].push_back(record);
                 }
             }
 
             // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
-            bool fails = false;
             for(const auto& [key, val] : parents)
             {
-                for(auto node : val)
+                std::unordered_map<int, std::vector<int>> tags;
+                std::unordered_map<int, int>              numReads;
+                std::unordered_map<int, int>              numWrites;
+                for(auto record : val)
                 {
-                    if(parents.find(node) == parents.end())
+                    auto node = kgraph.control.getNode<Assign>(record.control);
+                    auto tag  = std::get<Expression::DataFlowTag>(*node.expression);
+                    tags[tag.tag].push_back(record.control);
+
+                    if(record.rw == RW::READ)
                     {
-                        fails = true;
-                        std::cout << "Node " << node << " is also a parent :(";
+                        numReads[tag.tag]++;
+                    }
+                    else
+                    {
+                        numWrites[tag.tag]++;
                     }
                 }
-            }
-            if(!fails)
-            {
-                std::cout << "None of the nodes are also parents!";
+
+                for(const auto& [tag, nodes] : tags)
+                {
+                    if(numReads[tag] == 1 && numWrites[tag] == 1)
+                    {
+                        // Candidate found!
+                        // There should be exactly two control nodes associated with this tag,
+                        // since it was written to exactly once and read from exactly once
+                        AssertFatal(nodes.size() == 2,
+                                    ShowValue(tag),
+                                    ShowValue(nodes),
+                                    "There should be exactly two control nodes associated with "
+                                    "this DataFlowTag");
+                        std::cout << "Candidate found! Tag " << tag
+                                  << " can be deleted and control nodes " << nodes[0] << " and "
+                                  << nodes[1] << " can be combined.\n";
+                        candidates.push_back({nodes[0], nodes[1]});
+                    }
+                }
             }
 
             return candidates;

@@ -96,13 +96,16 @@ namespace AliasDataFlowTagsTest
         graph = transform<LowerTile>(graph, params, context.get());
         graph = transform<LowerTensorContraction>(graph, params, context.get());
         graph = transform<Simplify>(graph);
+        auto graphBeforeConstantPropagation = graph;
+        graph                               = transform<ConstantPropagation>(graph);
+
+        SECTION("Find candidates")
+        {
+            auto candidates = FuseExpressionsDetail::findFuseCandidates(graph);
+        }
 
         SECTION("Apply graph transform with constant propagation")
         {
-            graph = transform<ConstantPropagation>(graph);
-
-            auto candidates = FuseExpressionsDetail::findFuseCandidates(graph); // TODO: Temporary!
-
             // Collect the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
             auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
@@ -129,6 +132,8 @@ namespace AliasDataFlowTagsTest
 
         SECTION("Apply graph transform, no constant propagation")
         {
+            graph = graphBeforeConstantPropagation;
+
             // Collect the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
             auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
