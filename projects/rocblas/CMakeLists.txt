@@ -169,6 +169,8 @@ if(ROCBLAS_ENABLE_HOST)
         set(BUILD_SHARED_LIBS OFF)
         set(TENSILE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build Tensile as static library" FORCE)
         set(TENSILE_NO_ENUMERATE ON CACHE BOOL "Disable enumerating GPU targets for Tensile builds" FORCE)
+        # Static tensile-host links into shared librocblas.so, so needs PIC
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
         # Propagate ASAN setting to Tensile (coverage is independent)
         if(ROCBLAS_ENABLE_ASAN)
           set(TENSILE_ENABLE_ASAN ON CACHE BOOL "Enable address sanitizer" FORCE)
