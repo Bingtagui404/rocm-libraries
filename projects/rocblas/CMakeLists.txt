@@ -42,7 +42,7 @@ include(rocblas_supported_architectures)
 include(query_git_hash)
 include(fetch_rocm_cmake)
 
-rocm_setup_version(VERSION "5.2.0")
+rocm_setup_version(VERSION "5.3.0")
 
 if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_ENABLE_BENCHMARKS OR ROCBLAS_ENABLE_SAMPLES)
   if(NOT DEFINED ROCBLAS_ENABLE_CLIENT OR NOT ROCBLAS_ENABLE_CLIENT)
@@ -303,7 +303,7 @@ if(ROCBLAS_ENABLE_HOST)
     DEPENDS PACKAGE hip
     NAMESPACE roc::
   )
-  set(rocblas_SOVERSION 5.2)
+  set(rocblas_SOVERSION 5.3)
   rocm_set_soversion(rocblas ${rocblas_SOVERSION})
 endif()
 
