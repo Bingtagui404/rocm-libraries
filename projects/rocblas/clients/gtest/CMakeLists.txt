@@ -27,6 +27,10 @@ target_link_libraries(rocblas-test
         rocblas::warnings
 )
 
+if(ROCBLAS_ENABLE_THREADS)
+    target_link_libraries(rocblas-test PRIVATE Threads::Threads)
+endif()
+
 target_include_directories(rocblas-test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/clients/common"

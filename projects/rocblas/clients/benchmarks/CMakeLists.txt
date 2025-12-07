@@ -15,6 +15,10 @@ target_link_libraries(rocblas-bench
         $<IF:$<TARGET_EXISTS:GTest::gtest_main>,GTest::gtest_main,GTest::Main>
 )
 
+if(ROCBLAS_ENABLE_THREADS)
+    target_link_libraries(rocblas-bench PRIVATE Threads::Threads)
+endif()
+
 if(ROCBLAS_ENABLE_BLIS)
     target_link_libraries(rocblas-bench PRIVATE BLIS::BLIS)
 else()
@@ -63,6 +67,10 @@ if(ROCBLAS_ENABLE_TENSILE)
             rocblas::testing-common
             rocblas::warnings
     )
+
+    if(ROCBLAS_ENABLE_THREADS)
+        target_link_libraries(rocblas-gemm-tune PRIVATE Threads::Threads)
+    endif()
 
     target_include_directories(rocblas-gemm-tune
         PRIVATE

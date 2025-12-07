@@ -74,6 +74,7 @@ endif()
 target_sources(rocblas-clients-common
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/argument_model.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/client_utility.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/frequency_monitor.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/host_alloc.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/rocblas_arguments.cpp"

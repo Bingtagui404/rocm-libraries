@@ -10,7 +10,7 @@ target_link_libraries(rocblas-samples-common
     INTERFACE
         hip::device
         roc::rocblas
-        rocblas::testing-common
+        rocblas::clients-common
         rocblas::warnings
 )
 
@@ -77,8 +77,11 @@ target_link_libraries(rocblas-example-header-check
         hip::device
         hip::host
         roc::rocblas
-        Threads::Threads
 )
+
+if(ROCBLAS_ENABLE_THREADS)
+    target_link_libraries(rocblas-example-header-check PRIVATE Threads::Threads)
+endif()
 
 # Uses C++11 to verify header compatibility with older C++ standard
 set_target_properties(rocblas-example-header-check PROPERTIES CXX_STANDARD 11)
@@ -117,8 +120,11 @@ if(ROCBLAS_ENABLE_FORTRAN)
             hip::amdhip64
             roc::rocblas
             rocblas-fortran-client
-            Threads::Threads
     )
+
+    if(ROCBLAS_ENABLE_THREADS)
+        target_link_libraries(rocblas-example-fortran-axpy PRIVATE Threads::Threads)
+    endif()
 
     target_compile_definitions(rocblas-example-fortran-axpy PRIVATE ROCBLAS_INTERNAL_API)
 
@@ -133,8 +139,11 @@ if(ROCBLAS_ENABLE_FORTRAN)
             hip::amdhip64
             roc::rocblas
             rocblas-fortran-client
-            Threads::Threads
     )
+
+    if(ROCBLAS_ENABLE_THREADS)
+        target_link_libraries(rocblas-example-fortran-scal PRIVATE Threads::Threads)
+    endif()
 
     target_compile_definitions(rocblas-example-fortran-scal PRIVATE ROCBLAS_INTERNAL_API)
 
@@ -149,8 +158,11 @@ if(ROCBLAS_ENABLE_FORTRAN)
             hip::amdhip64
             roc::rocblas
             rocblas-fortran-client
-            Threads::Threads
     )
+
+    if(ROCBLAS_ENABLE_THREADS)
+        target_link_libraries(rocblas-example-fortran-gemv PRIVATE Threads::Threads)
+    endif()
 
     target_compile_definitions(rocblas-example-fortran-gemv PRIVATE ROCBLAS_INTERNAL_API)
 

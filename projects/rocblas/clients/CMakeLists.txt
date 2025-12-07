@@ -160,3 +160,20 @@ if(NOT ROCBLAS_ENABLE_FORTRAN)
   target_compile_definitions(rocblas-clients-common PRIVATE CLIENTS_NO_FORTRAN)
   # need to add others to the list that may require this
 endif()
+
+# Install rules for test support files
+if(ROCBLAS_BUILD_TESTING OR BUILD_TESTING)
+  rocm_install(
+    FILES
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_smoke.yaml"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_extras.yaml"
+      "${PROJECT_BINARY_DIR}/clients/staging/rocblas_rtest.xml"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT tests
+  )
+  rocm_install(
+    PROGRAMS "${PROJECT_BINARY_DIR}/clients/staging/rocblas_rtest.py"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT tests
+  )
+endif()
