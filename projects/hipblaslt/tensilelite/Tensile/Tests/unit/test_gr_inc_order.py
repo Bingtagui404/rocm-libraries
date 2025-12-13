@@ -28,8 +28,8 @@ from Tensile.Components.CMSValidator import verify_gr_inc_order
 from cms_validation_base import CMSValidationTestBase
 
 class TestGRIncOrder(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_gr_inc_order(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_gr_inc_order(timeline, sched, kernel_dict, codePathIdx)
 
     def setUp(self):
         super().setUp()
@@ -43,7 +43,7 @@ class TestGRIncOrder(CMSValidationTestBase):
         self.kernel["SwapGlobalReadOrder"] = 0
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRIncA": [[1, 1, 2, 2, 3, 3, 4, 5, 5]],
             "GRA": [[11, 11]],
             "GRB": [[12, 12]],
@@ -83,7 +83,7 @@ class TestGRIncOrder(CMSValidationTestBase):
         self.kernel["SwapGlobalReadOrder"] = 1
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRIncB": [[1, 1, 2, 2, 3, 3, 4, 5, 5]],
             "GRA": [[11, 11]],
             "GRB": [[12, 12]],

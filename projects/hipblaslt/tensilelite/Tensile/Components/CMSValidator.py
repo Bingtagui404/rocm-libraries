@@ -217,7 +217,7 @@ def verify_global_reads_not_too_early_single_code_path(
     return True, ""
 
 
-def verify_global_reads_not_too_early(scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
+def verify_global_reads_not_too_early(timeline: 'Timeline', scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
     """
     We require the sequence of instructions to be of the form for a single code path:
 
@@ -595,7 +595,7 @@ class Timeline:
             kernel:                     The kernel to add to the timeline.
             num_iterations:             Number of iterations to consider for cross-iteration effects (default 2).
         """
-        
+
         available_keys = schedule_info.optSchedule.keys()
         has_lr1s = "LRA1" in available_keys or "LRB1" in available_keys
         has_lr3s = "LRA3" in available_keys or "LRB3" in available_keys
@@ -1813,7 +1813,7 @@ class GRIncData:
     intervals: list[tuple[int, int]]
     insts: list[int]
 
-def verify_scc_overlap(scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
+def verify_scc_overlap(timeline: 'Timeline', scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure we don't overlap scalar instructions modifying SCC for a single code path.
     This can happen:
@@ -1903,7 +1903,7 @@ def verify_scc_overlap(scheduleInfo, context: dict, code_path: int) -> tuple[boo
     return True, ""
 
 
-def verify_gr_inc_order(scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
+def verify_gr_inc_order(timeline: 'Timeline', scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure GRInc A and B are done before GR A & B for a single code path.
     When using `SwapGlobalReadOrder=True`, one should check GRIncB is done before GRA (and GRIncA before GRB)
@@ -1926,16 +1926,11 @@ def verify_gr_inc_order(scheduleInfo, context: dict, code_path: int) -> tuple[bo
 
     return True, ""
 
-def verify_grs_finish_before_lrs(schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
+def verify_grs_finish_before_lrs(timeline: 'Timeline', schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure that the GlobalReads issued in the previous iteration are guaranteed to be complete before the first corresponding LR1/3 of this iteration.
     """
-    relevant_names = ["GRA", "GRB", "LRA1", "LRB1", "LRA3", "LRB3", "SYNC"]
-    kernel = context["kernel"]
-    timeline = Timeline(relevant_names, code_path, schedule_info, kernel)
-    
-    # Apply standalone functions to populate timeline fields
-    set_gr_needed_by_from_lrs(timeline, kernel["SwapGlobalReadOrder"])
+    set_gr_needed_by_from_lrs(timeline, context["kernel"]["SwapGlobalReadOrder"])
     apply_swaits(timeline)
     apply_barriers(timeline)
 
@@ -2047,7 +2042,7 @@ def verify_packs_start_and_end_at_correct_indices(schedule_info: 'ScheduleInfo',
     return True, ""
 
 
-def verify_correct_number_of_instructions(schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
+def verify_correct_number_of_instructions(timeline: 'Timeline', schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
     """
     Verify that the number of instructions in the schedule is correct for a single code path.
     """
@@ -2067,7 +2062,7 @@ def verify_correct_number_of_instructions(schedule_info: 'ScheduleInfo', context
     return True, ""
 
 
-def verify_ascending_order(scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
+def verify_ascending_order(timeline: 'Timeline', scheduleInfo, context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure that all sequences of scheduleInfo.optSchedule are non-decreasing for a single code path.
 
@@ -2143,8 +2138,12 @@ def isValid(scheduleInfo: 'ScheduleInfo', context: dict) -> tuple[bool, str]:
     ]
 
     for code_path in range(scheduleInfo.numCodePaths):
+        kernel = context.get("kernel")
+        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "SYNC"]
+        timeline = Timeline(relevant_names, code_path, scheduleInfo, kernel)
+        
         for rule in rules:
-            status, message = rule(scheduleInfo, context, code_path)
+            status, message = rule(timeline, scheduleInfo, context, code_path)
             if not status:
                 return False, f"Code path {code_path}: {message}"
 

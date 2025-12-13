@@ -30,8 +30,8 @@ from cms_validation_base import CMSValidationTestBase
 from Tensile.Common import IsaVersion
 
 class TestValidateLRsCompleteBeforeVMFMA(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_lrs_finished_before_vmfma(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_lrs_finished_before_vmfma(timeline, sched, kernel_dict, codePathIdx)
 
     def test_simple_LR0(self):
         """

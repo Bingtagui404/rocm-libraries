@@ -28,8 +28,8 @@ from Tensile.Components.CMSValidator import verify_scc_overlap
 from cms_validation_base import CMSValidationTestBase
 
 class TestValidateSCCOverlap(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_scc_overlap(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_scc_overlap(timeline, sched, kernel_dict, codePathIdx)
 
     def setUp(self):
         super().setUp()
@@ -44,7 +44,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 1
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRIncA": [[0, 0, 1, 1, 2, 2, 3, 3, 4]],
             "GRIncB": [[5, 5, 6, 6, 7, 7, 8, 8, 9]],
             "GRA": [[10, 11]],
@@ -73,7 +73,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 1
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRA": [[16, 17]],
             "GRIncA": [[0, 0, 1,
                         2, 3,
@@ -118,7 +118,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 1
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRIncA": [[0, 0, 1,
                         2, 3,
                         4, 5,
@@ -158,7 +158,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 0
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             "GRIncA": [[0, 0, 1,
                         2, 3,
                         4]],
@@ -198,7 +198,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 0
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             'LWSA': [[31]],
             "GRIncA": [[0, 0, 1,
                         2, 3,
@@ -235,7 +235,7 @@ class TestValidateSCCOverlap(CMSValidationTestBase):
         self.kernel["Use64bShadowLimit"] = 0
         assert self.num_vmfma == 32
         optSchedule = {
-            "SYNC": [0],
+            "SYNC": [[0]],
             'LWSA': [[31]],
             "GRIncA": [[0, 0, 1,
                         3, 4,

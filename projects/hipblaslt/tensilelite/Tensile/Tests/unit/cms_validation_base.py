@@ -27,6 +27,7 @@ from typing import Any, Optional
 import unittest
 
 from test_CustomSchedule import create_base_kernel, ScheduleInfo
+from Tensile.Components.CMSValidator import Timeline, set_gr_needed_by_from_lr1s, apply_swaits, apply_barriers
 
 
 class CMSValidationTestBase(unittest.TestCase):
@@ -34,13 +35,14 @@ class CMSValidationTestBase(unittest.TestCase):
     Base class for CMS validation tests that provides common setup and helper methods.
     """
     @abstractmethod
-    def validation_function(self, sched, kernel_dict, codePathIdx):
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
         """
         Method that must be implemented by subclasses.
         NOTE: Don't use abstractmethod. Pytest will fail if this method is abstract since it tries instantiating this class.
         Should call the appropriate validation function with the provided arguments.
         
         Args:
+            timeline: Timeline object for the code path
             sched: ScheduleInfo object to validate
             kernel_dict: Dictionary containing kernel configuration
             codePathIdx: Code path index to validate
@@ -103,7 +105,10 @@ class CMSValidationTestBase(unittest.TestCase):
         
         sched = ScheduleInfo(numCodePaths, self.num_vmfma, optSchedule, syncCode, nglshift, nllshift, nllZeroDscnt, mfmaReorder, snopCode)
 
-        status, message = self.validation_function(sched, {"kernel": self.kernel}, codePathIdx)
+        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "SYNC"]
+        timeline = Timeline(relevant_names, codePathIdx, sched, self.kernel)
+
+        status, message = self.validation_function(timeline, sched, {"kernel": self.kernel}, codePathIdx)
         
         if expected_message is None:
             assert status, f"Schedule should have passed validation but did not. {message}"

@@ -26,8 +26,8 @@ from Tensile.Components.CMSValidator import verify_grs_finish_before_lrs, verify
 from cms_validation_base import CMSValidationTestBase
 
 class TestValidateNgl(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_grs_finish_before_lrs(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_grs_finish_before_lrs(timeline, sched, kernel_dict, codePathIdx)
 
     def make_simple_schedule_and_sync(self) -> tuple[dict[str, list[list[int]]], list[SWaitCnt | SBarrier]]:
         """
