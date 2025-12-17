@@ -2110,6 +2110,8 @@ def isValid(scheduleInfo: 'ScheduleInfo', context: dict) -> tuple[bool, str]:
     Note 2: if False is returned, this is not proof that the schedule
     is invalid. It may be a false positive.
     """
+    # TODO: Validate numbers of instructions and numvmfma first so that the rest of the code can depend on it.
+    
     # Case where there was an explicit request to skip validation.
     if scheduleInfo.isValidationDisabled():
         mt0 = context.get("kernel", {}).get("MacroTile0", "?")
