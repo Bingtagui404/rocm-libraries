@@ -70,13 +70,22 @@ namespace rocRoller::KernelGraph
             // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
             for(const auto& [key, val] : parents)
             {
+                // Maps DataFlowTags to all of the control nodes that read from or write to them
                 std::unordered_map<int, std::vector<int>> tags;
-                std::unordered_map<int, int>              numReads;
-                std::unordered_map<int, int>              numWrites;
+                // Maps DataFlowTags to the number of reads associated with them
+                std::unordered_map<int, int> numReads;
+                // Maps DataFlowTags to the number of writes associated with them
+                std::unordered_map<int, int> numWrites;
                 for(auto record : val)
                 {
                     auto node = kgraph.control.getNode<Assign>(record.control);
-                    auto tag  = std::get<Expression::DataFlowTag>(*node.expression);
+
+                    if(!std::holds_alternative<Expression::DataFlowTag>(*node.expression))
+                    {
+                        Log::debug("Node {} has no DataFlowTag associated with it", record.control);
+                        continue;
+                    }
+                    auto tag = std::get<Expression::DataFlowTag>(*node.expression);
                     tags[tag.tag].push_back(record.control);
 
                     if(record.rw == RW::READ)
