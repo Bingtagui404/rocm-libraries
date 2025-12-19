@@ -85,6 +85,7 @@ namespace rocRoller::KernelGraph
                         Log::debug("Node {} has no DataFlowTag associated with it", record.control);
                         continue;
                     }
+                    // TODO: Still getting "wrong index for variant" error
                     auto tag = std::get<Expression::DataFlowTag>(*node.expression);
                     tags[tag.tag].push_back(record.control);
 
