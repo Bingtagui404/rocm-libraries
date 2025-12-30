@@ -20,6 +20,7 @@
 
 #include "../../shared/accuracy_test.h"
 #include "../../shared/array_validator.h"
+#include <chrono>
 #include <gtest/gtest.h>
 
 #include <random>
@@ -104,7 +105,12 @@ TEST_P(valid_length_stride, direct_comparison)
         std::cout << "\n";
     }
 
+    auto start    = std::chrono::high_resolution_clock::now();
     auto test_val = array_valid(length, stride, verbose);
+    auto end      = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Execution time: " << duration.count() << " us" << std::endl;
+
     if(verbose)
     {
         std::cout << "test value is:      " << (test_val ? "valid" : "invalid") << "\n";
