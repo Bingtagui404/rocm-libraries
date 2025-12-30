@@ -100,9 +100,9 @@ struct AnyImplementation
                       "Implementation must be stateless");
         static_assert(std::is_base_of<Interface, Implementation>{},
                       "Not derived class of the interface");
-        copy = +[](const Storage& src, Storage& dst, Interface** interface) {
+        copy = +[](const Storage& src, Storage& dst, Interface** interface_) {
             new(std::addressof(dst)) Implementation(*StorageCast<const Implementation>(src));
-            *interface = static_cast<Interface*>(StorageCast<Implementation>(dst));
+            *interface_ = static_cast<Interface*>(StorageCast<Implementation>(dst));
         };
 
         new(std::addressof(buffer)) Implementation(impl);

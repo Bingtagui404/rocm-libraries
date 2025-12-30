@@ -906,7 +906,7 @@ if(HAS_LIB_STD_FILESYSTEM)
     target_link_libraries(MIOpen PRIVATE stdc++fs)
 endif()
 
-find_package(zstd)
+find_package(zstd QUIET)
 if(zstd_FOUND)
     target_link_libraries(MIOpen PRIVATE $<IF:$<TARGET_EXISTS:zstd::libzstd_shared>,zstd::libzstd_shared,zstd::libzstd_static>)
 endif()
@@ -984,8 +984,8 @@ endif()
 ############################################################
 # MIOpen depends on OpenCL
 if( MIOPEN_BACKEND STREQUAL "OpenCL")
-    MESSAGE( STATUS "MIOpen linking OpenCL: ${OPENCL_INCLUDE_DIRS}" )
-    target_include_directories(MIOpen SYSTEM PUBLIC ${OPENCL_INCLUDE_DIRS} )
+    message( STATUS "MIOpen linking OpenCL: ${OPENCL_INCLUDE_DIRS}" )
+    target_include_directories( MIOpen SYSTEM PUBLIC ${OPENCL_INCLUDE_DIRS} )
     target_link_libraries( MIOpen PUBLIC ${OPENCL_LIBRARIES} )
     list(APPEND PACKAGE_DEPENDS PACKAGE OpenCL)
 elseif(MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN_BACKEND STREQUAL "HIP")
@@ -1044,45 +1044,10 @@ endif()
 target_link_libraries(MIOpen PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(MIOpen INTERFACE $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
 
-target_internal_library(MIOpen
-    Boost::filesystem
-)
-list(APPEND PACKAGE_STATIC_DEPENDS PACKAGE Boost COMPONENTS filesystem)
-if(NOT WIN32 AND NOT APPLE)
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/lib.def "
-MIOPEN_${MIOPEN_BACKEND}_1
-{
-global:
-    miopen*;
-    extern \"C++\" {
-        miopen::*;
-    };
-local:
-    *boost*;
-    extern \"C++\" {
-        std::*;
-    };
-};
-")
-    target_link_libraries(MIOpen PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_BINARY_DIR}/lib.def")
-    target_link_libraries(MIOpen PRIVATE "-Wl,--exclude-libs,ALL")
-    # set_target_properties(MIOpen PROPERTIES CXX_VISIBILITY_PRESET hidden)
-    set_target_properties(MIOpen PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-endif()
-#######################################
 if(MIOPEN_ENABLE_SQLITE)
     # MIOpen depends on SQLite
     target_link_libraries(MIOpen PRIVATE SQLite::SQLite3)
     target_link_libraries(MIOpen INTERFACE  $<BUILD_INTERFACE:SQLite::SQLite3>)
-endif()
-############################################################
-# MIOpen depends on librt for Boost.Interprocess
-if(NOT WIN32 AND NOT APPLE)
-    find_library(LIBRT rt)
-    if(LIBRT)
-        message(STATUS "Librt: " ${LIBRT})
-        target_internal_library(MIOpen ${LIBRT})
-    endif()
 endif()
 
 if(MIOPEN_USE_ROCTRACER)

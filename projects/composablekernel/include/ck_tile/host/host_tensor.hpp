@@ -371,7 +371,7 @@ struct HostTensor
         return ret;
     }
 
-    HostTensor()                  = delete;
+    HostTensor()                  = default;
     HostTensor(const HostTensor&) = default;
     HostTensor(HostTensor&&)      = default;
 

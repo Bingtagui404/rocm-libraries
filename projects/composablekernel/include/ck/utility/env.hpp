@@ -86,8 +86,11 @@ struct EnvVar
 
     explicit EnvVar(const char* const name, const T& def_val)
     {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
         // NOLINTNEXTLINE (concurrency-mt-unsafe)
         const char* vp = std::getenv(name);
+        #pragma clang diagnostic pop
         if(vp != nullptr) // a value was provided
         {
             is_unset = false;

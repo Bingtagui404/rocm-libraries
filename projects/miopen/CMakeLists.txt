@@ -23,7 +23,7 @@
 # SOFTWARE.
 #
 ################################################################################
-cmake_minimum_required( VERSION 3.15 )
+cmake_minimum_required(VERSION 3.15)
 
 if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
@@ -128,9 +128,6 @@ if(MIOPEN_INCBIN)
     enable_language(ASM)
 endif()
 
-option(MIOPEN_WORKAROUND_USE_BOOST_FILESYSTEM "Workaround: Use boost::filesystem instead of std::filesystem" OFF)
-message(STATUS "MIOPEN_WORKAROUND_USE_BOOST_FILESYSTEM ${MIOPEN_WORKAROUND_USE_BOOST_FILESYSTEM}")
-
 # Strip symbols for release
 if(MIOPEN_STRIP_SYMBOLS AND NOT WIN32 AND NOT APPLE)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -s")
@@ -158,19 +155,14 @@ else()
     set(MIOPEN_DEFAULT_BACKEND "OpenCL")
 endif()
 
-if(NOT WIN32 AND NOT MIOPEN_WORKAROUND_USE_BOOST_FILESYSTEM)
-    include(CheckCXXLinkerFlag)
-    check_cxx_linker_flag(-lstdc++fs HAS_LIB_STD_FILESYSTEM)
-endif()
-
-list(APPEND CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/llvm ${CMAKE_INSTALL_PREFIX}/hip /opt/rocm /opt/rocm/llvm /opt/rocm/hip)
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/llvm ${CMAKE_INSTALL_PREFIX}/hip)
 
 option(ENABLE_HIP_WORKAROUNDS Off)
 set(MIOPEN_INSTALL_CXX_HEADERS Off CACHE BOOL "Install MIOpen's C++ header interface")
 
 set_var_to_condition(MIOPEN_OFFLINE_COMPILER_PATHS_V2_DEFAULT FALSE)
 option(MIOPEN_OFFLINE_COMPILER_PATHS_V2 "Use rocm-core to find offline GPU compiler" ${MIOPEN_OFFLINE_COMPILER_PATHS_V2_DEFAULT})
-message( STATUS "MIOPEN_OFFLINE_COMPILER_PATHS_V2: ${MIOPEN_OFFLINE_COMPILER_PATHS_V2}" )
+message(STATUS "MIOPEN_OFFLINE_COMPILER_PATHS_V2: ${MIOPEN_OFFLINE_COMPILER_PATHS_V2}")
 
 # Embedded Build Configuration
 set(MIOPEN_EMBED_DB "" CACHE STRING "Semi-colon separated list of architecture to embed on-disk DBs in the binary. Example gfx906_60;gfx900_56")
@@ -407,7 +399,7 @@ else()
         message(FATAL_ERROR "HIPRTC cannot be used without HIP backend")
     endif()
 endif()
-message( STATUS "${MIOPEN_BACKEND} backend selected." )
+message(STATUS "${MIOPEN_BACKEND} backend selected.")
 
 # look for and register clang-offload-bundler
 if(MIOPEN_HIP_COMPILER MATCHES ".*clang\\+\\+.*")
@@ -494,10 +486,6 @@ if(MIOPEN_USE_HIPRTC)
     message(STATUS "Build with hiprtc ${hiprtc_VERSION} ${hiprtc_DIR}")
 endif()
 
-option(Boost_USE_STATIC_LIBS "Use boost static libraries" ON)
-add_definitions(-DBOOST_ALL_NO_LIB=1)
-find_package(Boost REQUIRED COMPONENTS filesystem CONFIG)
-
 find_path(HALF_INCLUDE_DIR half/half.hpp)
 message(STATUS "HALF_INCLUDE_DIR: ${HALF_INCLUDE_DIR}")
 
@@ -505,7 +493,7 @@ option( MIOPEN_DEBUG_FIND_DB_CACHING "Use system find-db caching" ON)
 
 if(WIN32)
     set( DATA_INSTALL_DIR bin )
-    set( DATABASE_INSTALL_DIR ${DATA_INSTALL_DIR})
+    set( DATABASE_INSTALL_DIR ${DATA_INSTALL_DIR} )
 else()
     set( MIOPEN_INSTALL_DIR miopen)
     set( DATA_INSTALL_DIR ${CMAKE_INSTALL_DATADIR}/${MIOPEN_INSTALL_DIR} )
@@ -553,8 +541,8 @@ if(NOT WIN32 AND MIOPEN_USE_ROCTRACER)
     find_path(ROCTRACER_INCLUDE_DIR "roctracer/roctx.h")
     find_library(rocTracer roctx64)
     if(rocTracer AND ROCTRACER_INCLUDE_DIR)
-        MESSAGE(STATUS "Build with rocTracer: " ${rocTracer})
-        MESSAGE(STATUS "rocTracer include directory: " ${ROCTRACER_INCLUDE_DIR})
+        message(STATUS "Build with rocTracer: " ${rocTracer})
+        message(STATUS "rocTracer include directory: " ${ROCTRACER_INCLUDE_DIR})
         set(MIOPEN_PACKAGE_REQS "${MIOPEN_PACKAGE_REQS}, roctracer")
     else()
         message(WARNING "rocTracer cannot be found! Build without rocTracer")

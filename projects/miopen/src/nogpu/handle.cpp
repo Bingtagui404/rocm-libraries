@@ -39,7 +39,6 @@
 
 #if !MIOPEN_ENABLE_SQLITE_KERN_CACHE
 #include <miopen/write_file.hpp>
-#include <boost/filesystem/operations.hpp>
 #endif
 
 #include <miopen/filesystem.hpp>
@@ -208,7 +207,7 @@ Program Handle::LoadProgram(const fs::path& program_name,
                            program_name,
                            params);
 #else
-        auto path = miopen::GetCachePath(false) / boost::filesystem::unique_path().string();
+        auto path = miopen::GetCachePath(false) / fs::temp_directory_path();
         if(p.IsCodeObjectInMemory())
             miopen::WriteFile(p.GetCodeObjectBlob(), path);
         else

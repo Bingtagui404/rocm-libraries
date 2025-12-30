@@ -28,11 +28,10 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <cstring>
+#include <type_traits>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <miopen/errors.hpp>
 

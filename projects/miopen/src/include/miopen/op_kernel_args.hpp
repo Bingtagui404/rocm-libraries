@@ -4,14 +4,13 @@
 #ifndef MIOPEN_GUARD_MLOPEN_OP_KERNEL_ARGS_HPP
 #define MIOPEN_GUARD_MLOPEN_OP_KERNEL_ARGS_HPP
 
+#include <algorithm>
 #include <type_traits>
-#include <cstdint>
+#include <vector>
 #include <half/half.hpp>
-#include <boost/container/small_vector.hpp>
 
 struct OpKernelArg
 {
-
     OpKernelArg(char val, size_t sz) : buffer(sz) { std::fill(buffer.begin(), buffer.end(), val); }
 
     template <typename T>
@@ -23,15 +22,14 @@ struct OpKernelArg
     }
 
     template <typename T>
-    OpKernelArg(T* arg) // NOLINT
-        : buffer(sizeof(T*))
+    OpKernelArg(T* arg) : buffer(sizeof(T*))
     {
         *(reinterpret_cast<T**>(buffer.data())) = arg;
         is_ptr                                  = true;
     }
 
     std::size_t size() const { return buffer.size(); };
-    boost::container::small_vector<char, 8> buffer;
+    std::vector<char> buffer;
     bool is_ptr = false;
 };
 

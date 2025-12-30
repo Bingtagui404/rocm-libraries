@@ -31,6 +31,7 @@
 #include <cassert>
 #include <iostream>
 #include <random>
+#include <cstring>
 
 MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_DEBUG_DRIVER_PRNG_SEED, 12345678)
 

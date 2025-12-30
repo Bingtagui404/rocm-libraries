@@ -5,8 +5,8 @@
 #define MIOPEN_GUARD_MLOPEN_TMP_DIR_HPP
 
 #include <string_view>
-#include <miopen/filesystem.hpp>
 #include <miopen/config.hpp>
+#include <miopen/filesystem.hpp>
 
 namespace miopen {
 

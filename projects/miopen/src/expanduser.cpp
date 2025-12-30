@@ -30,10 +30,6 @@
 #include <miopen/logger.hpp>
 
 #include <string>
-#ifdef _WIN32
-#include <optional>
-#include <boost/algorithm/string/replace.hpp>
-#endif
 
 #ifdef __linux__
 #include <miopen/stringutils.hpp>
@@ -46,7 +42,6 @@
 // Please refer to the Lustre project's documentation or source code for details.
 #ifndef LL_SUPER_MAGIC
 #define LL_SUPER_MAGIC 0x0BD00BD0 // LUSTRE
-
 #endif
 #ifndef CEPH_SUPER_MAGIC
 #define CEPH_SUPER_MAGIC 0x00c36400
@@ -204,7 +199,9 @@ fs::path ExpandUser(const fs::path& path)
     return {ReplaceString(path.string(), "~", home_dir)};
 }
 
-#else
+#else // WIN32
+
+#include <optional>
 
 namespace {
 std::optional<std::pair<std::string::size_type, std::string>> ReplaceVariable(
@@ -249,6 +246,6 @@ fs::path ExpandUser(const fs::path& path)
 
 bool IsNetworkedFilesystem(const fs::path&) { return false; }
 
-#endif
+#endif // __linux__
 
 } // namespace miopen

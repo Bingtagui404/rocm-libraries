@@ -50,11 +50,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef MLO_INTERNAL_H_
 #define MLO_INTERNAL_H_
 
-// Header Files
-#ifndef NOMINMAX
-#define NOMINMAX // stupid windows.h confused with min() macros in std namespace
-#endif
-
 #include <miopen/config.hpp>
 
 #if MIOPEN_BACKEND_OPENCL
@@ -83,26 +78,27 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <mach/mach_time.h> // for mach_absolute_time() and friends
 #endif
 
-#include <iomanip>
-#include <cstdio>
-#include <cstdlib>
 #include <cassert>
 #include <cmath>
+#include <ctime>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cstdint>
+
 #include <map>
+#include <tuple>
 #include <string>
 #include <limits>
-#include <algorithm> // std::find  and std::min std::maxx
-
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <ctime>
-#include <cstring>
 #include <vector>
 #include <numeric>
-#include <cstdint>
-#include <tuple>
 #include <numbers>
+#include <algorithm>
+
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <sstream>
 
 inline int mloLg2(int v)
 {

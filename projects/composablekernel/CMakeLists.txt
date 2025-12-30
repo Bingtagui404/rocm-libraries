@@ -178,7 +178,7 @@ execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD OUTPUT_VARIABLE COMMI
 configure_file(include/ck/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/ck/version.h)
 
 set(ROCM_SYMLINK_LIBS OFF)
-find_package(ROCM REQUIRED PATHS /opt/rocm)
+find_package(ROCmCMakeBuildTools)
 
 include(ROCMInstallTargets)
 include(ROCMPackageConfigHelpers)
@@ -191,7 +191,7 @@ include(TargetFlags)
 
 rocm_setup_version(VERSION ${version})
 
-list(APPEND CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/llvm ${CMAKE_INSTALL_PREFIX}/hip /opt/rocm /opt/rocm/llvm /opt/rocm/hip "$ENV{ROCM_PATH}" "$ENV{HIP_PATH}")
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/llvm ${CMAKE_INSTALL_PREFIX}/hip "$ENV{ROCM_PATH}" "$ENV{HIP_PATH}")
 
 message(STATUS "GPU_TARGETS= ${GPU_TARGETS}")
 message(STATUS "GPU_ARCHS= ${GPU_ARCHS}")
@@ -379,7 +379,6 @@ elseif(CK_PARALLEL_COMPILE_JOBS)
   message(WARNING "Job pooling is only available with Ninja generators.")
 endif()
 
-
 option(USE_BITINT_EXTENSION_INT4 "Whether to enable clang's BitInt extension to provide int4 data type." OFF)
 option(ENABLE_ASM_DUMP "Whether to enable assembly dump for kernels." OFF)
 option(ENABLE_JSON_DUMP "Whether to enable json dump for examples." OFF)
@@ -485,7 +484,6 @@ set(CK_TIDY_CHECKS -modernize-use-override -readability-non-const-parameter)
 elseif(CK_BACKEND STREQUAL "HIP" OR CK_BACKEND STREQUAL "HIPNOGPU")
 set(CK_TIDY_ERRORS ALL)
 endif()
-
 
 if(ENABLE_CLANG_CPP_CHECKS)
     include(ClangTidy)
@@ -658,8 +656,6 @@ if(NOT MIOPEN_REQ_LIBS_ONLY)
     add_custom_target(regression COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR} -L "REGRESSION_TEST" USES_TERMINAL)
 endif()
 
-
-
 file(GLOB_RECURSE INSTANCE_FILES "${PROJECT_SOURCE_DIR}/*/device_*_instance.cpp")
 file(GLOB dir_list RELATIVE ${PROJECT_SOURCE_DIR}/library/src/tensor_operation_instance/gpu ${PROJECT_SOURCE_DIR}/library/src/tensor_operation_instance/gpu/*)
 set(CK_DEVICE_INSTANCES)
@@ -704,7 +700,6 @@ ENDFOREACH()
 
 add_custom_target(instances DEPENDS utility;${CK_DEVICE_INSTANCES}  SOURCES ${INSTANCE_FILES})
 
-option(MIOPEN_REQ_LIBS_ONLY "Build only the MIOpen required libraries" OFF)
 option(DISABLE_OFFLOAD_COMPRESS "Disable offload compress compiler flag when building instances" OFF)
 option(BUILD_MHA_LIB "Build the static library for flash attention" OFF)
 

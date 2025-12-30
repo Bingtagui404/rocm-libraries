@@ -39,10 +39,9 @@
 #include <miopen/lock_file.hpp>
 #include <miopen/env.hpp>
 
-#include <boost/core/explicit_operator_bool.hpp>
 #include "sqlite3.h"
-#include <mutex>
 
+#include <mutex>
 #include <string>
 #include <optional>
 #include <unordered_map>
@@ -235,7 +234,7 @@ public:
                 if(!fs::create_directories(directory))
                     MIOPEN_LOG_W("Unable to create a directory: " << directory);
                 else
-                    fs::permissions(directory, FS_ENUM_PERMS_ALL);
+                    fs::permissions(directory, fs::perms::all);
             }
         }
         sql = SQLite{filename_, is_system};
@@ -534,7 +533,7 @@ public:
     }
 
     /// Updates record under key PROBLEM_CONFIG with data ID:VALUES in database.
-    /// Returns updated record or boost::none if insertion failed
+    /// Returns updated record or std::nullopt if insertion failed
     template <class T, class V>
     inline std::optional<DbRecord>
     UpdateUnsafe(const T& problem_config, const std::string& id, const V& values)

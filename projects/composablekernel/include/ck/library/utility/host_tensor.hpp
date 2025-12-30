@@ -762,7 +762,7 @@ struct Tensor
         return ret;
     }
 
-    Tensor()              = delete;
+    Tensor()              = default;
     Tensor(const Tensor&) = default;
     Tensor(Tensor&&)      = default;
 

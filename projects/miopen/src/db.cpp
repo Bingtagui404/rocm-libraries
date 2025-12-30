@@ -30,8 +30,6 @@
 #include <miopen/logger.hpp>
 #include <miopen/filesystem.hpp>
 
-#include <boost/date_time/posix_time/posix_time_types.hpp>
-
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -66,7 +64,7 @@ PlainTextDb::PlainTextDb(DbKinds db_kind_, const fs::path& filename_, bool is_sy
             if(!fs::create_directories(directory))
                 MIOPEN_LOG_W("Unable to create a directory: " << directory);
             else
-                fs::permissions(directory, FS_ENUM_PERMS_ALL);
+                fs::permissions(directory, fs::perms::all);
         }
     }
 }
@@ -249,7 +247,7 @@ bool PlainTextDb::FlushUnsafe(const DbRecord& record, const RecordPositions* pos
             record.WriteContents(file);
         }
 
-        fs::permissions(filename, FS_ENUM_PERMS_ALL);
+        fs::permissions(filename, fs::perms::all);
     }
     else
     {
@@ -286,7 +284,7 @@ bool PlainTextDb::FlushUnsafe(const DbRecord& record, const RecordPositions* pos
         // rename atomically deletes and replaces filename
         fs::rename(temp_name, filename);
         /// \todo What if rename fails? Thou shalt not loose the original file.
-        fs::permissions(filename, FS_ENUM_PERMS_ALL);
+        fs::permissions(filename, fs::perms::all);
         while(fs::exists(temp_name))
         {
             MIOPEN_LOG_I2("Waiting for rename ");

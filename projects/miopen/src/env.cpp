@@ -26,10 +26,6 @@
 
 #include <miopen/env.hpp>
 
-#ifndef _WIN32
-#include <cstdlib>
-#endif
-
 #include <optional>
 #include <string>
 #include <string_view>
@@ -37,6 +33,8 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#else
+#include <cstdlib>
 #endif
 
 namespace miopen::env {
