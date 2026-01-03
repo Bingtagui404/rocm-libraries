@@ -46,6 +46,10 @@ int log_rtc_fd      = -1;
 int log_tuning_fd   = -1;
 int log_graph_fd    = -1;
 
+// flag tracking if rocfft_cleanup needs to be called before
+// (re-)executing rocfft_setup's body
+static bool rocfft_cleanup_needed = false;
+
 /**
  *  @brief Logging function
  *
@@ -83,6 +87,13 @@ static void open_log_stream(const char* environment_variable_name, int& log_fd)
 rocfft_status rocfft_setup()
 try
 {
+    if(rocfft_cleanup_needed)
+    {
+        auto tmp = rocfft_cleanup();
+        if(tmp != rocfft_status_success)
+            return tmp;
+    }
+
     rocfft_ostream::setup();
     RTCCache::single = std::make_unique<RTCCache>();
 
@@ -143,6 +154,7 @@ try
     TuningBenchmarker::GetSingleton().Setup();
 
     log_trace(__func__);
+    rocfft_cleanup_needed = true;
     return rocfft_status_success;
 }
 catch(...)
@@ -154,6 +166,8 @@ catch(...)
 rocfft_status rocfft_cleanup()
 try
 {
+    if(!rocfft_cleanup_needed)
+        return rocfft_status_success;
     // Logging is potentially unsafe if we're in the middle of static
     // deinitialization, as log structures might have already been
     // cleaned up.
@@ -211,7 +225,7 @@ try
 
     // stop all log worker threads
     rocfft_ostream::cleanup();
-
+    rocfft_cleanup_needed = false;
     return rocfft_status_success;
 }
 catch(...)
