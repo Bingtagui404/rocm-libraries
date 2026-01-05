@@ -159,9 +159,7 @@ using namespace bad_fusion_plan;
 
 TEST(GPU_FusionPlan_FP16, GoodFusionPlan)
 {
-#if !MIOPEN_USE_COMPOSABLEKERNEL
-    GTEST_SKIP() << "Test requires CK";
-#endif
+#if MIOPEN_USE_COMPOSABLEKERNEL
     GPU_FusionPlan_FP16<miopen::solver::fusion::ConvCKIgemmFwdBiasActivFused, half_float::half> obj(
         miopenTensorNHWC, miopenActivationRELU);
     if(obj.Skip())
@@ -170,13 +168,14 @@ TEST(GPU_FusionPlan_FP16, GoodFusionPlan)
     obj.AddBias();
     obj.AddActiv();
     ASSERT_TRUE(obj.Applicability());
+#else
+    GTEST_SKIP() << "Test requires CK";
+#endif
 }
 
 TEST(GPU_FusionPlan_FP16, BadOrderFusionPlan)
 {
-#if !MIOPEN_USE_COMPOSABLEKERNEL
-    GTEST_SKIP() << "Test requires CK";
-#endif
+#if MIOPEN_USE_COMPOSABLEKERNEL
     GPU_FusionPlan_FP16<miopen::solver::fusion::ConvCKIgemmFwdBiasActivFused, half_float::half> obj(
         miopenTensorNHWC, miopenActivationRELU);
     if(obj.Skip())
@@ -185,6 +184,9 @@ TEST(GPU_FusionPlan_FP16, BadOrderFusionPlan)
     obj.AddConv();
     obj.AddActiv();
     ASSERT_FALSE(obj.Applicability());
+#else
+    GTEST_SKIP() << "Test requires CK";
+#endif
 }
 
 TEST(GPU_FusionPlan_FP16, BadLayoutFusionPlan)
