@@ -78,24 +78,39 @@ namespace rocRoller::KernelGraph
                 std::unordered_map<int, int> numWrites;
                 for(auto record : val)
                 {
-                    auto node = kgraph.control.getNode<Assign>(record.control);
-
-                    if(!std::holds_alternative<Expression::DataFlowTag>(*node.expression))
+                    if(record.rw == RW::WRITE)
                     {
-                        Log::debug("Node {} has no DataFlowTag associated with it", record.control);
-                        continue;
+                        // DataFlowTag representing the destination of this assign
+                        auto destTag = record.coordinate;
+
+                        Log::debug("findFuseCandidates: found destination tag {}", destTag);
+
+                        // Add destination tag to tags and increment the number of writes to this tag
+                        tags[destTag].push_back(record.control);
+                        numWrites[destTag]++;
+
+                        // On the other hand, this is the control node representing the assignment of an expression to the destination tag
+                        auto node = kgraph.control.getNode<Assign>(record.control);
+
+                        // TODO: For each tag contained in this expression, add them to tags, and increment the number of reads of it
+                        // Visitor function, returns an unordered_set look at ExpressionHasDFTagVisitor for an example
+                        // auto expressionTags = getDataFlowTagsInExpression(node.expression);
+                        // for (auto sourceTag : expressionTags) {
+                        //     tags[sourceTag].push_back(record.control);
+                        //     numReads[sourceTag]++;
+                        // }
                     }
-                    // TODO: Still getting "wrong index for variant" error
-                    auto tag = std::get<Expression::DataFlowTag>(*node.expression);
-                    tags[tag.tag].push_back(record.control);
-
-                    if(record.rw == RW::READ)
+                    else if(record.rw == RW::READ)
                     {
-                        numReads[tag.tag]++;
+                        // TODO: Figure out what you do in the READ case
+                    }
+                    else if(record.rw == RW::READWRITE)
+                    {
+                        // TODO: Figure out what you do in the READWRITE case
                     }
                     else
                     {
-                        numWrites[tag.tag]++;
+                        Throw<FatalError>("Invalid value for ControlFlowRWTracer::ReadWrite");
                     }
                 }
 
