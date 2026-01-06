@@ -214,6 +214,23 @@ def runPerformanceCommand (platform, project)
     withSSH(platform){
         sshBlock ->
         def rrperfSuite = platform.jenkinsLabel.contains('gfx12') ? "all_gfx120X" : "all"
+        
+        // Clone gemmaiperf repository for database insertion
+        withCredentials([
+            sshUserPrivateKey(credentialsId: "github-gemmaiperf-ssh-key", 
+                            keyFileVariable: "GEMMAIPERF_KEY", 
+                            usernameVariable: "KEY_USER", 
+                            passphraseVariable: "PASSPHRASE")
+        ]){
+            platform.runCommand(this, """#!/usr/bin/env bash
+                set -ex
+                cd ${project.paths.project_build_prefix}/
+                eval `ssh-agent`
+                echo "\$PASSPHRASE" | ssh-add \$GEMMAIPERF_KEY
+                [ -d gemmaiperf ] && rm -rf gemmaiperf
+                git clone git@github.com:ROCm/gemmaiperf.git
+            """)
+        }
 
         if (env.CHANGE_ID)
         {
@@ -234,6 +251,7 @@ def runPerformanceCommand (platform, project)
                         --suite ${rrperfSuite} \\
                         --clonedir "./performance_build_${platform.gpu}" \\
                         --rundir "./performance_${platform.gpu}" \\
+                        --dump_csv \\
                         --plot_median --normalize \\
                         --x_value "commit" \\
                         --no-fail=remotes/origin/${env.CHANGE_TARGET} \\
@@ -256,7 +274,8 @@ def runPerformanceCommand (platform, project)
                     mkdir -p performance_build_${platform.gpu}
                     ./scripts/rrperf autoperf \\
                         --suite ${rrperfSuite} \\
-                        --rundir "./performance_build_${platform.gpu}/performance_${platform.gpu}"
+                        --rundir "./performance_build_${platform.gpu}/performance_${platform.gpu}" \\
+                        --dump_csv
                     cat ./performance_build_${platform.gpu}/performance_${platform.gpu}/**/*.log >> performance_${platform.gpu}_logs.txt
 
                     #Get Master Results
@@ -324,7 +343,66 @@ def runPerformanceCommand (platform, project)
                     """
             platform.runCommand(this, command)
 
+            // Database insertion for PR builds
+            def dbInsertCommand = """#!/usr/bin/env bash
+                set -ex
+                cd ${project.paths.project_build_prefix}/
+                
+                # Find CSV file location
+                CSV_FILE=""
+                if masterCompare; then
+                    # When comparing with master, CSV might be in different locations
+                    for dir in ./performance_build_${platform.gpu}/performance_${platform.gpu}/*; do
+                        if [ -f "\$dir/${rrperfSuite}.csv" ]; then
+                            CSV_FILE="\$dir/${rrperfSuite}.csv"
+                            break
+                        fi
+                    done
+                else
+                    # When not comparing, CSV should be in the main performance directory
+                    CSV_FILE="./performance_build_${platform.gpu}/performance_${platform.gpu}/${rrperfSuite}.csv"
+                fi
+                
+                if [ -n "\$CSV_FILE" ] && [ -f "\$CSV_FILE" ]; then
+                    DB_LABEL="rocroller_perf_ci_pr${env.CHANGE_ID}"
+                    
+                    # Try to insert into database, but don't fail if it doesn't work
+                    set +e
+                    python gemmaiperf/db_insert.py \\
+                        --db_host \$DB_HOST \\
+                        --db_port \$DB_PORT \\
+                        --db_name gemm_perf \\
+                        --db_user \$DB_USER \\
+                        --db_pass \$DB_PASS \\
+                        --db_label \$DB_LABEL \\
+                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..."
+                    set -e
+                    
+                    # Archive the CSV file
+                    cp \$CSV_FILE performance_${platform.gpu}_${rrperfSuite}.csv
+                else
+                    echo "Warning: CSV file not found for database insertion"
+                fi
+            """
+            
+            // Run database insertion with credentials
+            withCredentials([
+                string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
+                string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
+                string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
+                string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+            ]) {
+                platform.runCommand(this, dbInsertCommand)
+            }
+
             platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_archive.zip")
+            
+            // Archive CSV file if it exists
+            try {
+                platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_${rrperfSuite}.csv")
+            } catch (Exception e) {
+                echo "No CSV file to archive: ${e.message}"
+            }
 
             publishHTML([allowMissing: false,
                         alwaysLinkToLastBuild: false,
@@ -427,7 +505,8 @@ def runPerformanceCommand (platform, project)
                         export ROCROLLER_BUILD_DIR="\$(pwd)/build"
                         ./scripts/rrperf run \\
                             --suite ${rrperfSuite} \\
-                            --rundir "./performance_${platform.gpu}"
+                            --rundir "./performance_${platform.gpu}" \\
+                            --dump_csv
                         cat ./performance_${platform.gpu}/**/*.log >> performance_${platform.gpu}_logs.txt
 
                         if [ -f archive/*/*/performance_${platform.gpu}_last.zip ]; then
@@ -471,9 +550,56 @@ def runPerformanceCommand (platform, project)
                         rm -rf performance_build*/**/**/_deps
                     """
             platform.runCommand(this, command)
+            
+            // Database insertion for develop branch
+            def dbInsertCommand = """#!/usr/bin/env bash
+                set -ex
+                cd ${project.paths.project_build_prefix}/
+                
+                # Find CSV file
+                CSV_FILE="./performance_${platform.gpu}/${rrperfSuite}.csv"
+                
+                if [ -f "\$CSV_FILE" ]; then
+                    DB_LABEL="rocroller_perf_ci_develop"
+                    
+                    # Try to insert into database, but don't fail if it doesn't work
+                    set +e
+                    python gemmaiperf/db_insert.py \\
+                        --db_host \$DB_HOST \\
+                        --db_port \$DB_PORT \\
+                        --db_name gemm_perf \\
+                        --db_user \$DB_USER \\
+                        --db_pass \$DB_PASS \\
+                        --db_label \$DB_LABEL \\
+                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..."
+                    set -e
+                    
+                    # Archive the CSV file
+                    cp \$CSV_FILE performance_${platform.gpu}_${rrperfSuite}.csv
+                else
+                    echo "Warning: CSV file not found for database insertion"
+                fi
+            """
+            
+            // Run database insertion with credentials
+            withCredentials([
+                string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
+                string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
+                string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
+                string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+            ]) {
+                platform.runCommand(this, dbInsertCommand)
+            }
 
             platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_archive.zip")
             platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_last.zip")
+            
+            // Archive CSV file if it exists
+            try {
+                platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_${rrperfSuite}.csv")
+            } catch (Exception e) {
+                echo "No CSV file to archive: ${e.message}"
+            }
 
             publishHTML([allowMissing: false,
                         alwaysLinkToLastBuild: false,
