@@ -34,6 +34,16 @@ namespace rocRoller
     {
         namespace FuseExpressionsDetail
         {
+            struct Candidate
+            {
+                int  tag;
+                int  writingNode;
+                int  readingNode;
+                bool deleteTag = false;
+
+                bool operator==(const Candidate& rhs) const = default;
+            };
+
             /**
              * If a DataFlowTag is:
              * 1. written to only once
@@ -41,7 +51,7 @@ namespace rocRoller
              *
              * then those two control nodes comprise a candidate for FuseExpressions.
              */
-            std::vector<std::tuple<int, int, int>> findFuseCandidates(KernelGraph const& kgraph);
+            std::vector<Candidate> findFuseCandidates(KernelGraph const& kgraph);
         }
     }
 }

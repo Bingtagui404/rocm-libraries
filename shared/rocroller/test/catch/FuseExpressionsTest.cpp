@@ -29,6 +29,7 @@
 #include "SimpleTest.hpp"
 #include "TestContext.hpp"
 #include "common/SourceMatcher.hpp"
+#include "rocRoller/Utilities/Logging.hpp"
 #include <common/CommonGraphs.hpp>
 #include <common/Utilities.hpp>
 #include <rocRoller/Expression.hpp>
@@ -41,7 +42,7 @@
 
 using namespace rocRoller;
 
-namespace AliasDataFlowTagsTest
+namespace FuseExpressionsTest
 {
     // Helper function to get all assign nodes of a particular expression type from the graph
     template <typename ExpressionType>
@@ -68,6 +69,7 @@ namespace AliasDataFlowTagsTest
         using namespace rocRoller::KernelGraph;
         using namespace rocRoller::KernelGraph::CoordinateGraph;
         using namespace rocRoller::KernelGraph::ControlGraph;
+        using namespace rocRoller::KernelGraph::FuseExpressionsDetail;
 
         auto context = TestContext::ForDefaultTarget();
 
@@ -102,60 +104,60 @@ namespace AliasDataFlowTagsTest
         SECTION("Find candidates")
         {
             auto candidates = FuseExpressionsDetail::findFuseCandidates(graph);
+            CHECK(candidates.size() == 2);
+
+            Candidate expectedCandidate1 = {
+                /* tag */ 293, /* writingNode */ 184, /* readingNode */ 185, /* deleteTag */ true};
+            Candidate expectedCandidate2 = {
+                /* tag */ 295, /* writingNode */ 188, /* readingNode */ 185, /* deleteTag */ true};
+            CHECK(candidates[0] == expectedCandidate1);
+            CHECK(candidates[1] == expectedCandidate2);
         }
 
         SECTION("Apply graph transform with constant propagation")
         {
-            // Collect the Multiply and Add nodes before FuseExpressions
+            // Count the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-            auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
+            CHECK(multiplyNodesBefore.size() == 3);
+            auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
+            CHECK(addNodesBefore.size() == 8);
 
             // Apply FuseExpressions
             graph = transform<FuseExpressions>(graph);
 
-            // Collect the Multiply and Add nodes after FuseExpressions
+            // Count the Multiply and Add nodes after FuseExpressions
             auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-            auto addNodesAfter      = getAssignNodes<Expression::Add>(graph);
+            CHECK(multiplyNodesAfter.size() == 1);
+            auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
+            CHECK(addNodesAfter.size() == 7);
 
-            // We should have fewer Multiply and Add nodes after FuseExpressions than we did before
-            CHECK(multiplyNodesAfter.size() < multiplyNodesBefore.size());
-            CHECK(addNodesAfter.size() < addNodesBefore.size());
-
-            // Collect the MultiplyAdd nodes
+            // Count the MultiplyAdd nodes after FuseExpressions
             auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-
-            // The number of MultiplyAdd nodes should equal the decrease in the number of both Multiply and Add nodes
-            CHECK(multiplyAddNodes.size()
-                  == multiplyNodesBefore.size() - multiplyNodesAfter.size());
-            CHECK(multiplyAddNodes.size() == addNodesBefore.size() - addNodesAfter.size());
+            CHECK(multiplyAddNodes.size() == 1);
         }
 
         SECTION("Apply graph transform, no constant propagation")
         {
             graph = graphBeforeConstantPropagation;
 
-            // Collect the Multiply and Add nodes before FuseExpressions
+            // Count the Multiply and Add nodes before FuseExpressions
             auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-            auto addNodesBefore      = getAssignNodes<Expression::Add>(graph);
+            CHECK(multiplyNodesBefore.size() == 2);
+            auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
+            CHECK(addNodesBefore.size() == 6);
 
             // Apply FuseExpressions
             graph = transform<FuseExpressions>(graph);
 
-            // Collect the Multiply and Add nodes after FuseExpressions
+            // Count the Multiply and Add nodes after FuseExpressions
             auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-            auto addNodesAfter      = getAssignNodes<Expression::Add>(graph);
+            CHECK(multiplyNodesAfter.size() == 0);
+            auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
+            CHECK(addNodesAfter.size() == 5);
 
-            // We should have fewer Multiply and Add nodes after FuseExpressions than we did before
-            CHECK(multiplyNodesAfter.size() < multiplyNodesBefore.size());
-            CHECK(addNodesAfter.size() < addNodesBefore.size());
-
-            // Collect the MultiplyAdd nodes
+            // Count the MultiplyAdd nodes after FuseExpressions
             auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-
-            // The number of MultiplyAdd nodes should equal the decrease in the number of both Multiply and Add nodes
-            CHECK(multiplyAddNodes.size()
-                  == multiplyNodesBefore.size() - multiplyNodesAfter.size());
-            CHECK(multiplyAddNodes.size() == addNodesBefore.size() - addNodesAfter.size());
+            CHECK(multiplyAddNodes.size() == 1);
         }
     }
 }

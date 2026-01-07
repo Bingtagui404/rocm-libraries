@@ -24,6 +24,7 @@
  *
  *******************************************************************************/
 
+#include "rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp"
 #include <optional>
 #include <tuple>
 #include <unordered_map>
@@ -44,11 +45,12 @@ namespace rocRoller::KernelGraph
 
     namespace FuseExpressionsDetail
     {
-        std::vector<std::tuple<int, int, int>> findFuseCandidates(KernelGraph const& kgraph)
+        std::vector<Candidate> findFuseCandidates(KernelGraph const& kgraph)
         {
-            using RW = ControlFlowRWTracer::ReadWrite;
+            using RW     = ControlFlowRWTracer::ReadWrite;
+            using Record = ControlFlowRWTracer::ReadWriteRecord;
 
-            std::vector<std::tuple<int, int, int>> candidates;
+            std::vector<Candidate> candidates;
 
             auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
 
@@ -70,55 +72,130 @@ namespace rocRoller::KernelGraph
             // For each parent, loop through reads and writes to find any data tags that are written to and read from exactly once
             for(const auto& [key, val] : parents)
             {
-                // Maps DataFlowTags to all of the control nodes that read from or write to them
-                std::unordered_map<int, std::vector<int>> tags;
-                // Maps DataFlowTags to the number of reads associated with them
-                std::unordered_map<int, int> numReads;
-                // Maps DataFlowTags to the number of writes associated with them
-                std::unordered_map<int, int> numWrites;
+                // Maps DataFlowTags to the sequence of reads and writes that involve it within a single body parent
+                std::unordered_map<int, std::vector<Record>> sequences;
+
+                // Sort the trace by tag
                 for(auto record : val)
                 {
-                    if(record.rw == RW::WRITE || record.rw == RW::READWRITE)
+                    if(kgraph.control.get<Assign>(record.control).has_value())
                     {
-                        // DataFlowTag representing the destination of this write
-                        auto destTag = record.coordinate;
-
-                        Log::debug("findFuseCandidates: found destination tag {}", destTag);
-
-                        // Add destination tag to tags and increment the number of writes to this tag
-                        tags[destTag].push_back(record.control);
-                        numWrites[destTag]++;
-                    }
-                    if(record.rw == RW::READ || record.rw == RW::READWRITE)
-                    {
-                        // DataFlowTag representing the source of this read
-                        auto sourceTag = record.coordinate;
-
-                        Log::debug("findFuseCandidates: found source tag {}", sourceTag);
-
-                        // Add source tag to tags and increment the number of reads to this tag
-                        tags[sourceTag].push_back(record.control);
-                        numReads[sourceTag]++;
+                        // Add this record to the sequence corresponding to its tag
+                        sequences[record.coordinate].push_back(record);
                     }
                 }
 
-                for(const auto& [tag, nodes] : tags)
+                // For each tag, follow its sequence of reads and writes to find candidates
+                for(const auto& [tag, sequence] : sequences)
                 {
-                    if(numReads[tag] == 1 && numWrites[tag] == 1)
+                    std::cout << "TAG " << tag << ":" << std::endl;
+                    std::optional<int>       writingNode    = {};
+                    std::optional<int>       readingNode    = {};
+                    std::optional<Candidate> maybeCandidate = {};
+                    for(const auto& record : sequence)
                     {
-                        // Candidate found!
-                        // There should be exactly two control nodes associated with this tag,
-                        // since it was written to exactly once and read from exactly once
-                        AssertFatal(nodes.size() == 2,
-                                    ShowValue(tag),
-                                    ShowValue(nodes),
-                                    "There should be exactly two control nodes associated with "
-                                    "this DataFlowTag");
-                        std::cout << "Candidate found! Tag " << tag
-                                  << " can be deleted and control nodes " << nodes[0] << " and "
-                                  << nodes[1] << " can be combined.\n";
-                        candidates.push_back({tag, nodes[0], nodes[1]});
+                        auto node = record.control;
+
+                        if(record.rw == RW::WRITE)
+                        {
+                            // If we have already written to and then read from this tag once each (indicating a possible candidate, see READ case),
+                            // we have found a candidate!! We can save it as such and then start over with a new write
+                            if(writingNode.has_value() && readingNode.has_value()
+                               && maybeCandidate.has_value())
+                            {
+                                Candidate candidate = maybeCandidate.value();
+                                std::cout << "Candidate found! Tag " << candidate.tag
+                                          << " is written to by node " << candidate.writingNode
+                                          << " and then read from by node " << candidate.readingNode
+                                          << std::endl;
+
+                                candidates.push_back(candidate);
+
+                                readingNode = {};
+                                candidate   = {};
+                            }
+
+                            // A write wipes the slate clean
+                            writingNode    = node;
+                            readingNode    = {};
+                            maybeCandidate = {};
+                            std::cout << "WRITE by node " << node << std::endl;
+                        }
+                        else if(record.rw == RW::READ)
+                        {
+                            std::cout << "READ by  node " << node << std::endl;
+
+                            // If this tag has been written to but hasn't been read from yet, it may be a candidate for fusing
+                            if(writingNode.has_value() && !readingNode.has_value())
+                            {
+                                maybeCandidate = {tag, writingNode.value(), node};
+                            }
+                            // Otherwise:
+                            // - This tag may have been written to in an enclosing scope, or
+                            // - This tag has already been read from
+                            // In either case, this is not a candidate for fusing
+                            else
+                            {
+                                maybeCandidate = {};
+                            }
+
+                            readingNode = node;
+                        }
+                        else if(record.rw == RW::READWRITE)
+                        {
+                            // A READWRITE consists of a read followed by a write, in that order
+                            // Thus, we will treat it as if it were split into two separate operations.
+                            std::cout << "READWRITE, splitting into two separate operations:\n";
+
+                            // READ
+                            std::cout << "READ by  node " << node << std::endl;
+                            // If this tag has been written to but hasn't already been read from,
+                            // and we know it is about to be written to again,
+                            // we know that it's a candidate!
+                            if(writingNode.has_value() && !readingNode.has_value())
+                            {
+                                Candidate candidate = {tag, writingNode.value(), node};
+                                std::cout << "Candidate found! Tag " << candidate.tag
+                                          << " is written to by node " << candidate.writingNode
+                                          << " and then read from by node " << candidate.readingNode
+                                          << std::endl;
+
+                                candidates.push_back(candidate);
+
+                                readingNode = {};
+                                candidate   = {};
+                            }
+
+                            // WRITE
+                            writingNode    = node;
+                            readingNode    = {};
+                            maybeCandidate = {};
+                            std::cout << "WRITE by node " << node << std::endl;
+                        }
+                        else
+                        {
+                            Throw<FatalError>(
+                                "Invalid value for ControlFlowRWTracer::ReadWrite: {}", record.rw);
+                        }
                     }
+
+                    // We've now finished iterating through all of the reads and writes of this tag in this body parent
+                    // If we have a potential candidate, we can save it!
+                    if(maybeCandidate.has_value())
+                    {
+                        Candidate candidate = maybeCandidate.value();
+                        std::cout << "Candidate found! Tag " << candidate.tag
+                                  << " is written to by node " << candidate.writingNode
+                                  << " and then read from by node " << candidate.readingNode
+                                  << ", tag can be deleted" << std::endl;
+
+                        // Since we know that there won't be any more writes to this tag,
+                        // we can delete this tag once we fuse our two expressions together
+                        candidate.deleteTag = true;
+
+                        candidates.push_back(candidate);
+                    }
+                    std::cout << std::endl;
                 }
             }
 
