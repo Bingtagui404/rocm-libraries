@@ -44,11 +44,11 @@ namespace rocRoller::KernelGraph
 
     namespace FuseExpressionsDetail
     {
-        std::vector<std::tuple<int, int>> findFuseCandidates(KernelGraph const& kgraph)
+        std::vector<std::tuple<int, int, int>> findFuseCandidates(KernelGraph const& kgraph)
         {
             using RW = ControlFlowRWTracer::ReadWrite;
 
-            std::vector<std::tuple<int, int>> candidates;
+            std::vector<std::tuple<int, int, int>> candidates;
 
             auto trace = ControlFlowRWTracer(kgraph).coordinatesReadWrite();
 
@@ -78,9 +78,9 @@ namespace rocRoller::KernelGraph
                 std::unordered_map<int, int> numWrites;
                 for(auto record : val)
                 {
-                    if(record.rw == RW::WRITE)
+                    if(record.rw == RW::WRITE || record.rw == RW::READWRITE)
                     {
-                        // DataFlowTag representing the destination of this assign
+                        // DataFlowTag representing the destination of this write
                         auto destTag = record.coordinate;
 
                         Log::debug("findFuseCandidates: found destination tag {}", destTag);
@@ -88,29 +88,17 @@ namespace rocRoller::KernelGraph
                         // Add destination tag to tags and increment the number of writes to this tag
                         tags[destTag].push_back(record.control);
                         numWrites[destTag]++;
+                    }
+                    if(record.rw == RW::READ || record.rw == RW::READWRITE)
+                    {
+                        // DataFlowTag representing the source of this read
+                        auto sourceTag = record.coordinate;
 
-                        // On the other hand, this is the control node representing the assignment of an expression to the destination tag
-                        auto node = kgraph.control.getNode<Assign>(record.control);
+                        Log::debug("findFuseCandidates: found source tag {}", sourceTag);
 
-                        // TODO: For each tag contained in this expression, add them to tags, and increment the number of reads of it
-                        // Visitor function, returns an unordered_set look at ExpressionHasDFTagVisitor for an example
-                        // auto expressionTags = getDataFlowTagsInExpression(node.expression);
-                        // for (auto sourceTag : expressionTags) {
-                        //     tags[sourceTag].push_back(record.control);
-                        //     numReads[sourceTag]++;
-                        // }
-                    }
-                    else if(record.rw == RW::READ)
-                    {
-                        // TODO: Figure out what you do in the READ case
-                    }
-                    else if(record.rw == RW::READWRITE)
-                    {
-                        // TODO: Figure out what you do in the READWRITE case
-                    }
-                    else
-                    {
-                        Throw<FatalError>("Invalid value for ControlFlowRWTracer::ReadWrite");
+                        // Add source tag to tags and increment the number of reads to this tag
+                        tags[sourceTag].push_back(record.control);
+                        numReads[sourceTag]++;
                     }
                 }
 
@@ -129,7 +117,7 @@ namespace rocRoller::KernelGraph
                         std::cout << "Candidate found! Tag " << tag
                                   << " can be deleted and control nodes " << nodes[0] << " and "
                                   << nodes[1] << " can be combined.\n";
-                        candidates.push_back({nodes[0], nodes[1]});
+                        candidates.push_back({tag, nodes[0], nodes[1]});
                     }
                 }
             }

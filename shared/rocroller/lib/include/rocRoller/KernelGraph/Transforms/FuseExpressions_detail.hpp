@@ -41,7 +41,7 @@ namespace rocRoller
              *
              * then those two control nodes comprise a candidate for FuseExpressions.
              */
-            std::vector<std::tuple<int, int>> findFuseCandidates(KernelGraph const& kgraph);
+            std::vector<std::tuple<int, int, int>> findFuseCandidates(KernelGraph const& kgraph);
         }
     }
 }
