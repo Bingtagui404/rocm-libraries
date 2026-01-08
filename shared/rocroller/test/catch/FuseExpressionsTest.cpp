@@ -107,9 +107,9 @@ namespace FuseExpressionsTest
             CHECK(candidates.size() == 2);
 
             Candidate expectedCandidate1 = {
-                /* tag */ 293, /* writingNode */ 184, /* readingNode */ 185, /* deleteTag */ true};
+                /* tag */ 295, /* writingNode */ 184, /* readingNode */ 185, /* deleteTag */ true};
             Candidate expectedCandidate2 = {
-                /* tag */ 295, /* writingNode */ 188, /* readingNode */ 185, /* deleteTag */ true};
+                /* tag */ 293, /* writingNode */ 188, /* readingNode */ 185, /* deleteTag */ true};
             CHECK(candidates[0] == expectedCandidate1);
             CHECK(candidates[1] == expectedCandidate2);
         }

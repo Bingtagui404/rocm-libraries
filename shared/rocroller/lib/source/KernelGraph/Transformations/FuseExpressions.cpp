@@ -89,9 +89,9 @@ namespace rocRoller::KernelGraph
                 for(const auto& [tag, sequence] : sequences)
                 {
                     std::cout << "TAG " << tag << ":" << std::endl;
-                    std::optional<int>       writingNode    = {};
-                    std::optional<int>       readingNode    = {};
-                    std::optional<Candidate> maybeCandidate = {};
+                    std::optional<int>       writingNode    = std::nullopt;
+                    std::optional<int>       readingNode    = std::nullopt;
+                    std::optional<Candidate> maybeCandidate = std::nullopt;
                     for(const auto& record : sequence)
                     {
                         auto node = record.control;
@@ -111,14 +111,14 @@ namespace rocRoller::KernelGraph
 
                                 candidates.push_back(candidate);
 
-                                readingNode = {};
-                                candidate   = {};
+                                readingNode    = std::nullopt;
+                                maybeCandidate = std::nullopt;
                             }
 
                             // A write wipes the slate clean
                             writingNode    = node;
-                            readingNode    = {};
-                            maybeCandidate = {};
+                            readingNode    = std::nullopt;
+                            maybeCandidate = std::nullopt;
                             std::cout << "WRITE by node " << node << std::endl;
                         }
                         else if(record.rw == RW::READ)
@@ -136,7 +136,7 @@ namespace rocRoller::KernelGraph
                             // In either case, this is not a candidate for fusing
                             else
                             {
-                                maybeCandidate = {};
+                                maybeCandidate = std::nullopt;
                             }
 
                             readingNode = node;
@@ -162,14 +162,14 @@ namespace rocRoller::KernelGraph
 
                                 candidates.push_back(candidate);
 
-                                readingNode = {};
-                                candidate   = {};
+                                readingNode    = std::nullopt;
+                                maybeCandidate = std::nullopt;
                             }
 
                             // WRITE
                             writingNode    = node;
-                            readingNode    = {};
-                            maybeCandidate = {};
+                            readingNode    = std::nullopt;
+                            maybeCandidate = std::nullopt;
                             std::cout << "WRITE by node " << node << std::endl;
                         }
                         else
