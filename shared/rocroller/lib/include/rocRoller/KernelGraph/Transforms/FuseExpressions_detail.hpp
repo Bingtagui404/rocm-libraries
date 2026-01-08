@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include "rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp"
+#include "rocRoller/KernelGraph/KernelGraph.hpp"
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 
 namespace rocRoller
@@ -43,6 +45,15 @@ namespace rocRoller
 
                 bool operator==(const Candidate& rhs) const = default;
             };
+
+            /**
+             * @brief sort output from ControlFlowRWTracer by body parent
+             *
+             * @return Mapping from parent nodes to read-write records underneath them
+             */
+            std::unordered_map<int, std::vector<ControlFlowRWTracer::ReadWriteRecord>>
+                sortRecordsByBodyParent(KernelGraph const&         kgraph,
+                                        ControlFlowRWTracer const& tracer);
 
             /**
              * If a DataFlowTag is:
