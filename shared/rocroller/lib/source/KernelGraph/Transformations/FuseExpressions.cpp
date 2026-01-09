@@ -24,7 +24,10 @@
  *
  *******************************************************************************/
 
+#include "rocRoller/Expression_fwd.hpp"
 #include "rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp"
+#include "rocRoller/KernelGraph/CoordinateGraph/Transformer.hpp"
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <unordered_map>
@@ -45,6 +48,109 @@ namespace rocRoller::KernelGraph
 
     namespace FuseExpressionsDetail
     {
+        /**
+         * @brief Visitor to replace a DataFlowTag with a given expression
+         *
+         * This visitor traverses an expression tree, and if it finds a DataFlowTag that matches the given tag,
+         * it replaces it with the given expression.
+         */
+        struct DataFlowTagReplacerVisitor
+        {
+            bool                      replacementDone = false;
+            int                       tag;
+            Expression::ExpressionPtr exprToReplace;
+
+            Expression::ExpressionPtr operator()(Expression::DataFlowTag const& expr)
+            {
+                if(expr.tag == tag)
+                {
+                    if(replacementDone)
+                    {
+                        Throw<FatalError>("More than one DataFlowTag matching given tag");
+                    }
+                    else
+                    {
+                        replacementDone = true;
+                        return exprToReplace;
+                    }
+                }
+                return std::make_shared<Expression::Expression>(expr);
+            }
+
+            Expression::ExpressionPtr operator()(Expression::ScaledMatrixMultiply const& expr)
+            {
+                Expression::ScaledMatrixMultiply copy = expr;
+                copy.matA                             = call(expr.matA);
+                copy.matB                             = call(expr.matB);
+                copy.matC                             = call(expr.matC);
+                copy.scaleA                           = call(expr.scaleA);
+                copy.scaleB                           = call(expr.scaleB);
+
+                return std::make_shared<Expression::Expression>(copy);
+            }
+
+            template <Expression::CNary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr)
+            {
+                Expr copy = expr;
+                std::ranges::for_each(copy.operands, [&](auto& op) { op = call(op); });
+                return std::make_shared<Expression::Expression>(std::move(copy));
+            }
+
+            template <Expression::CTernary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr)
+            {
+                Expr copy = expr;
+                copy.lhs  = call(expr.lhs);
+                copy.r1hs = call(expr.r1hs);
+                copy.r2hs = call(expr.r2hs);
+
+                return std::make_shared<Expression::Expression>(copy);
+            }
+
+            template <Expression::CBinary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr)
+            {
+                Expr copy = expr;
+                copy.lhs  = call(expr.lhs);
+                copy.rhs  = call(expr.rhs);
+
+                return std::make_shared<Expression::Expression>(copy);
+            }
+
+            template <Expression::CUnary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr)
+            {
+                Expr copy = expr;
+                copy.arg  = call(expr.arg);
+
+                return std::make_shared<Expression::Expression>(copy);
+            }
+
+            template <Expression::CValue Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr)
+            {
+                return std::make_shared<Expression::Expression>(expr);
+            }
+
+            Expression::ExpressionPtr call(Expression::ExpressionPtr const& expr)
+            {
+                if(!expr)
+                    return expr;
+                return std::visit(*this, *expr);
+            }
+        };
+
+        Expression::ExpressionPtr replaceDataFlowTag(Expression::ExpressionPtr const& expr,
+                                                     int                              tag,
+                                                     Expression::ExpressionPtr const& exprToReplace)
+        {
+            DataFlowTagReplacerVisitor visitor;
+            visitor.tag           = tag;
+            visitor.exprToReplace = exprToReplace;
+            return visitor.call(expr);
+        }
+
         using RW     = ControlFlowRWTracer::ReadWrite;
         using Record = ControlFlowRWTracer::ReadWriteRecord;
 
@@ -221,28 +327,38 @@ namespace rocRoller::KernelGraph
 
     KernelGraph FuseExpressions::apply(KernelGraph const& original)
     {
-        auto kgraph     = original;
-        auto candidates = FuseExpressionsDetail::findFuseCandidates(kgraph);
+        auto kgraph = original;
 
+        auto candidates = FuseExpressionsDetail::findFuseCandidates(kgraph);
         for(auto candidate : candidates)
         {
             auto tagToReplace = candidate.tag;
 
-            auto writingNode = candidate.writingNode;
-            auto originalExpression
-                = kgraph.control.getNode<Assign>(candidate.writingNode).expression;
+            auto writingNode  = candidate.writingNode;
+            auto originalExpr = kgraph.control.getNode<Assign>(candidate.writingNode).expression;
 
-            auto readingNode = candidate.readingNode;
-            auto readingExpression
-                = kgraph.control.getNode<Assign>(candidate.readingNode).expression;
+            auto readingNodeTag = candidate.readingNode;
+            auto readingNode    = kgraph.control.getNode<Assign>(readingNodeTag);
+            auto readingExpr    = readingNode.expression;
 
-            // Find DataFlowTag corresponding to tagToReplace in readingExpression and replace it with originalExpression
+            // Replace the DataFlowTag in readingExpr corresponding to tagToReplace with originalExpr
+            auto newExpr = FuseExpressionsDetail::replaceDataFlowTag(
+                readingExpr, tagToReplace, originalExpr);
+
+            // Replace the old expression with this new one
+            readingNode.expression = newExpr;
+            kgraph.control.setElement(readingNodeTag, readingNode);
 
             // Replace writing node with NOP
+            auto nop = kgraph.control.addElement(NOP());
+            replaceWith(kgraph, writingNode, nop, false);
+            purgeNodes(kgraph, {writingNode});
 
             // If necessary, delete tag
             if(candidate.deleteTag)
             {
+                auto coords = CoordinateGraph::Transformer(&kgraph.coordinates);
+                coords.removeCoordinate(tagToReplace);
             }
         }
 

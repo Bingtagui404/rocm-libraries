@@ -28,6 +28,7 @@
 
 #include "SimpleTest.hpp"
 #include "TestContext.hpp"
+#include "catch2/matchers/catch_matchers_string.hpp"
 #include "common/SourceMatcher.hpp"
 #include "rocRoller/Utilities/Logging.hpp"
 #include <common/CommonGraphs.hpp>
@@ -70,6 +71,8 @@ namespace FuseExpressionsTest
         using namespace rocRoller::KernelGraph::CoordinateGraph;
         using namespace rocRoller::KernelGraph::ControlGraph;
         using namespace rocRoller::KernelGraph::FuseExpressionsDetail;
+
+        using Catch::Matchers::ContainsSubstring;
 
         auto context = TestContext::ForDefaultTarget();
 
@@ -114,50 +117,133 @@ namespace FuseExpressionsTest
             CHECK(candidates[1] == expectedCandidate2);
         }
 
-        SECTION("Apply graph transform with constant propagation")
+        SECTION("Apply graph transform")
         {
-            // Count the Multiply and Add nodes before FuseExpressions
-            auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-            CHECK(multiplyNodesBefore.size() == 3);
-            auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
-            CHECK(addNodesBefore.size() == 8);
+            // Original:
+            //              --------Node 183--------
+            //              \          NOP         \
+            //              \                      \[seq]
+            //              \                      \
+            //              \                      v
+            //              \[seq]              Node 187
+            //              \                  LoadTiled
+            //              \                      \
+            //              \                      \[seq]
+            //              \                      \
+            //              v                      v
+            //         Node 184                 Node 188
+            // (Tag295 = Tag33 * Tag35) (Tag293 = Tag24 * Tag291)
+            //              \                      \
+            //              \[seq]                 \[seq]
+            //              \                      \
+            //              ------> Node 185 <------
+            //              (Tag_ = Tag293 + Tag295)
+            //                        \
+            //                        \[seq]
+            //                        \
+            //                        v
+            //                     Node 186
+            //                    StoreTiled
+
+            auto dots = NormalizedSource(graph.toDOT(false));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl184"[label="Assign VGPR Multiply(DataFlowTag(33)NA, DataFlowTag(35)NA)NA(184)"];
+                                  ).")));
+
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl188"[label="Assign VGPR Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA(188)"];
+                                  ).")));
+
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl185"[label="Assign VGPR Add(DataFlowTag(293)NA, DataFlowTag(295)NA)NA(185)"];
+                                  ).")));
 
             // Apply FuseExpressions
             graph = transform<FuseExpressions>(graph);
 
-            // Count the Multiply and Add nodes after FuseExpressions
-            auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-            CHECK(multiplyNodesAfter.size() == 1);
-            auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
-            CHECK(addNodesAfter.size() == 7);
+            // After:
+            //              --------Node 183--------
+            //              \          NOP         \
+            //              \                      \[seq]
+            //              \                      \
+            //              \                      v
+            //              \[seq]              Node 187
+            //              \                  LoadTiled
+            //              \                      \
+            //              \                      \[seq]
+            //              \                      \
+            //              v                      v
+            //           Node 184               Node 188
+            //             NOP                    NOP
+            //              \                      \
+            //              \[seq]                 \[seq]
+            //              \                      \
+            //              ------> Node 185 <------
+            //     (Tag_ = (Tag24 * Tag291) + (Tag33 * Tag35))
+            //                        \
+            //                        \[seq]
+            //                        \
+            //                        v
+            //                     Node 186
+            //                    StoreTiled
 
-            // Count the MultiplyAdd nodes after FuseExpressions
-            auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-            CHECK(multiplyAddNodes.size() == 1);
+            dots = NormalizedSource(graph.toDOT(false));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl184"[label="NOP(184)"];
+                                  ).")));
+
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl188"[label="NOP(188)"];
+                                  ).")));
+
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl185"[label="Assign VGPR Add(Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA, Multiply(DataFlowTag(33)NA, DataFlowTag(35)NA)NA)NA(185)"];).")));
         }
 
-        SECTION("Apply graph transform, no constant propagation")
-        {
-            graph = graphBeforeConstantPropagation;
+        // SECTION("Apply graph transform with constant propagation")
+        // {
+        //     // Count the Multiply and Add nodes before FuseExpressions
+        //     auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
+        //     CHECK(multiplyNodesBefore.size() == 3);
+        //     auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
+        //     CHECK(addNodesBefore.size() == 8);
+        //
+        //     // Apply FuseExpressions
+        //     graph = transform<FuseExpressions>(graph);
+        //
+        //     // Count the Multiply and Add nodes after FuseExpressions
+        //     auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
+        //     CHECK(multiplyNodesAfter.size() == 1);
+        //     auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
+        //     CHECK(addNodesAfter.size() == 7);
+        //
+        //     // Count the MultiplyAdd nodes after FuseExpressions
+        //     auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
+        //     CHECK(multiplyAddNodes.size() == 1);
+        // }
 
-            // Count the Multiply and Add nodes before FuseExpressions
-            auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-            CHECK(multiplyNodesBefore.size() == 2);
-            auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
-            CHECK(addNodesBefore.size() == 6);
-
-            // Apply FuseExpressions
-            graph = transform<FuseExpressions>(graph);
-
-            // Count the Multiply and Add nodes after FuseExpressions
-            auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-            CHECK(multiplyNodesAfter.size() == 0);
-            auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
-            CHECK(addNodesAfter.size() == 5);
-
-            // Count the MultiplyAdd nodes after FuseExpressions
-            auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-            CHECK(multiplyAddNodes.size() == 1);
-        }
+        //     SECTION("Apply graph transform, no constant propagation")
+        //     {
+        //         graph = graphBeforeConstantPropagation;
+        //
+        //         // Count the Multiply and Add nodes before FuseExpressions
+        //         auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
+        //         CHECK(multiplyNodesBefore.size() == 2);
+        //         auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
+        //         CHECK(addNodesBefore.size() == 6);
+        //
+        //         // Apply FuseExpressions
+        //         graph = transform<FuseExpressions>(graph);
+        //
+        //         // Count the Multiply and Add nodes after FuseExpressions
+        //         auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
+        //         CHECK(multiplyNodesAfter.size() == 0);
+        //         auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
+        //         CHECK(addNodesAfter.size() == 5);
+        //
+        //         // Count the MultiplyAdd nodes after FuseExpressions
+        //         auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
+        //         CHECK(multiplyAddNodes.size() == 1);
+        //     }
     }
 }

@@ -46,6 +46,15 @@ namespace rocRoller
                 bool operator==(const Candidate& rhs) const = default;
             };
 
+            /*
+             * @brief Find DataFlowTag matching given tag in expression and replace it with a new expression
+             * @return Pointer to new expression with replacement performed
+             */
+            Expression::ExpressionPtr
+                replaceDataFlowTag(Expression::ExpressionPtr const& expr,
+                                   int                              tag,
+                                   Expression::ExpressionPtr const& exprToReplaceWith);
+
             /**
              * @brief sort output from ControlFlowRWTracer by body parent
              *
