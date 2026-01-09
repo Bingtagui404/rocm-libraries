@@ -41,6 +41,8 @@ function( apply_omp_settings lib_target_ )
   endif()
 endfunction()
 
+# Search for AOCL 4.x BLIS library for the specified compiler (gcc or aocc)
+# Sets BLAS_LIBRARY and BLIS_INCLUDE_DIR in parent scope if found
 function(find_libblis compiler)
   file(GLOB DIRS "/opt/AMD/aocl/aocl-linux-${compiler}-*")
   list(SORT DIRS)
@@ -54,11 +56,237 @@ function(find_libblis compiler)
       if(EXISTS "${library_path}")
         set(BLAS_LIBRARY "${library_path}" PARENT_SCOPE)
         set(BLIS_INCLUDE_DIR "${dir}/${compiler}/include_ILP64" PARENT_SCOPE)
-        message(STATUS "Found BLIS at: ${library_path}")
+        string(TOUPPER ${compiler} compiler_upper)
+        message(STATUS "✓ Found AOCL 4.x BLIS library (${compiler_upper}, ILP64)")
+        message(STATUS "  Location: ${library_path}")
         return()
       endif()
     endif()
   endforeach()
+endfunction()
+
+# Helper: Search $HOME/aocl for AOCL 5.x libaocl libraries (static only)
+# Sets BLAS_LIBRARY and BLIS_INCLUDE_DIR in parent scope if found
+function(find_libaocl_in_home)
+  if(NOT DEFINED ENV{HOME})
+    return()
+  endif()
+
+  file(GLOB AOCL_DIRS "$ENV{HOME}/aocl/*/*") # e.g. $HOME/aocl/5.1.0/gcc
+  foreach(dir IN LISTS AOCL_DIRS)
+    foreach(libdir IN ITEMS lib lib64)
+      set(candidate "${dir}/${libdir}/libaocl.a")
+      if(EXISTS "${candidate}")
+        set(BLAS_LIBRARY "${candidate}" PARENT_SCOPE)
+        if(EXISTS "${dir}/include_ILP64")
+          set(BLIS_INCLUDE_DIR "${dir}/include_ILP64" PARENT_SCOPE)
+        elseif(EXISTS "${dir}/include")
+          set(BLIS_INCLUDE_DIR "${dir}/include" PARENT_SCOPE)
+        endif()
+        message(STATUS "✓ Found AOCL 5.x unified library (in $HOME/aocl/)")
+        message(STATUS "  Location: ${candidate}")
+        return()
+      endif()
+    endforeach()
+  endforeach()
+endfunction()
+
+# Helper: Search /opt/AMD/aocl for AOCL 5.x or 4.x libaocl libraries (static only)
+# Sets BLAS_LIBRARY and BLIS_INCLUDE_DIR in parent scope if found
+function(find_libaocl_in_opt_amd)
+  # First, try AOCL 5.x version-based directories (e.g., /opt/AMD/aocl/5.1.0/)
+  file(GLOB OPT_AOCL5_DIRS "/opt/AMD/aocl/[0-9]*")
+  list(SORT OPT_AOCL5_DIRS)
+  list(REVERSE OPT_AOCL5_DIRS) # Prefer newer versions
+  foreach(dir IN LISTS OPT_AOCL5_DIRS)
+    foreach(libdir IN ITEMS lib lib64)
+      set(candidate "${dir}/${libdir}/libaocl.a")
+      if(EXISTS "${candidate}")
+        set(BLAS_LIBRARY "${candidate}" PARENT_SCOPE)
+        if(EXISTS "${dir}/include_ILP64")
+          set(BLIS_INCLUDE_DIR "${dir}/include_ILP64" PARENT_SCOPE)
+        elseif(EXISTS "${dir}/include")
+          set(BLIS_INCLUDE_DIR "${dir}/include" PARENT_SCOPE)
+        endif()
+        message(STATUS "✓ Found AOCL 5.x unified library (in /opt/AMD/aocl/)")
+        message(STATUS "  Location: ${candidate}")
+        return()
+      endif()
+    endforeach()
+  endforeach()
+
+  # Second, try legacy AOCL 4.x aocl-linux-* directories (rare for libaocl)
+  file(GLOB OPT_AOCL_DIRS "/opt/AMD/aocl/aocl-linux-*")
+  list(SORT OPT_AOCL_DIRS)
+  list(REVERSE OPT_AOCL_DIRS) # Prefer newer versions
+  foreach(dir IN LISTS OPT_AOCL_DIRS)
+    foreach(libdir IN ITEMS lib lib64)
+      set(candidate "${dir}/${libdir}/libaocl.a")
+      if(EXISTS "${candidate}")
+        set(BLAS_LIBRARY "${candidate}" PARENT_SCOPE)
+        if(EXISTS "${dir}/include_ILP64")
+          set(BLIS_INCLUDE_DIR "${dir}/include_ILP64" PARENT_SCOPE)
+        elseif(EXISTS "${dir}/include")
+          set(BLIS_INCLUDE_DIR "${dir}/include" PARENT_SCOPE)
+        endif()
+        message(STATUS "✓ Found AOCL 4.x unified library (in /opt/AMD/aocl/)")
+        message(STATUS "  Location: ${candidate}")
+        return()
+      endif()
+    endforeach()
+  endforeach()
+endfunction()
+
+# Unified AOCL (libaocl) detection (static only)
+# Looks for libaocl.a and sets BLAS_LIBRARY and BLIS_INCLUDE_DIR in parent scope.
+function(find_libaocl)
+  # 1) Your build dependency layout (e.g., deps/aocl/install_package)
+  set(candidate "${BUILD_DIR}/deps/aocl/install_package/lib/libaocl.a")
+  if(EXISTS "${candidate}")
+    set(BLAS_LIBRARY "${candidate}" PARENT_SCOPE)
+    # Heuristic: AOCL unified "install_package" usually has a flat include folder
+    set(BLIS_INCLUDE_DIR "${BUILD_DIR}/deps/aocl/install_package/include" PARENT_SCOPE)
+    message(STATUS "✓ Found AOCL 5.x unified library")
+    message(STATUS "  Location: ${candidate}")
+    return()
+  endif()
+
+  # 2) Respect user override: AOCL_ROOT
+  if(DEFINED ENV{AOCL_ROOT})
+    foreach(libdir IN ITEMS lib lib64)
+      set(candidate "$ENV{AOCL_ROOT}/${libdir}/libaocl.a")
+      if(EXISTS "${candidate}")
+        set(BLAS_LIBRARY "${candidate}" PARENT_SCOPE)
+        # Prefer ILP64 includes if present, else generic include
+        if(EXISTS "$ENV{AOCL_ROOT}/include_ILP64")
+          set(BLIS_INCLUDE_DIR "$ENV{AOCL_ROOT}/include_ILP64" PARENT_SCOPE)
+        elseif(EXISTS "$ENV{AOCL_ROOT}/include")
+          set(BLIS_INCLUDE_DIR "$ENV{AOCL_ROOT}/include" PARENT_SCOPE)
+        endif()
+        message(STATUS "✓ Found AOCL 5.x unified library (via AOCL_ROOT environment variable)")
+        message(STATUS "  Location: ${candidate}")
+        return()
+      endif()
+    endforeach()
+  endif()
+
+  # 3) Default AOCL 5.x install location: $HOME/aocl/<version>/{aocc|gcc}/lib{,64}
+  find_libaocl_in_home()
+  if(BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    return()
+  endif()
+
+  # 4) System AOCL in /opt/AMD/aocl (searches 5.x then 4.x)
+  find_libaocl_in_opt_amd()
+  if(BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    return()
+  endif()
+endfunction()
+
+# Search for bundled BLIS libraries built by install.sh
+# Sets BLAS_LIBRARY, BLIS_INCLUDE_DIR, and WARN_NOT_ILP64_PREFERRED in parent scope
+function(find_bundled_blis)
+  if (EXISTS "${BUILD_DIR}/deps/amd-blis/lib/ILP64/libblis-mt.a") # 4.0 and 4.1.0
+    set(BLAS_LIBRARY "${BUILD_DIR}/deps/amd-blis/lib/ILP64/libblis-mt.a" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BUILD_DIR}/deps/amd-blis/include/ILP64" PARENT_SCOPE)
+    set(WARN_NOT_ILP64_PREFERRED true PARENT_SCOPE)
+    message(STATUS "✓ Found bundled AMD-BLIS (ILP64)")
+    message(STATUS "  Location: ${BUILD_DIR}/deps/amd-blis")
+  elseif (EXISTS "${BUILD_DIR}/deps/blis/lib/libblis.a")
+    set(BLAS_LIBRARY "${BUILD_DIR}/deps/blis/lib/libblis.a" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BUILD_DIR}/deps/blis/include/blis" PARENT_SCOPE)
+    set(WARN_NOT_ILP64_PREFERRED true PARENT_SCOPE)
+    message(STATUS "✓ Found bundled BLIS (downloaded by install.sh)")
+    message(STATUS "  Location: ${BUILD_DIR}/deps/blis")
+  elseif (EXISTS "/usr/local/lib/libblis.a")
+    set(BLAS_LIBRARY "/usr/local/lib/libblis.a" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "/usr/local/include/blis" PARENT_SCOPE)
+    message(STATUS "✓ Found system-installed BLIS")
+    message(STATUS "  Location: /usr/local/lib/libblis.a")
+  endif()
+endfunction()
+
+# Search for system cblas/OpenBLAS
+# Sets BLAS_LIBRARY and BLAS_INCLUDE_DIR in parent scope, or errors if not found
+function(find_system_cblas)
+  # Try to find BLAS library directly (most reliable across distros)
+  # pkg-config can be unreliable - sometimes it returns library names without paths
+  find_library(SYSTEM_BLAS_LIB 
+    NAMES openblas cblas blas
+    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
+  )
+  
+  if(SYSTEM_BLAS_LIB)
+    set(BLAS_LIBRARY "${SYSTEM_BLAS_LIB}" PARENT_SCOPE)
+    message(STATUS "✓ Found system BLAS library")
+    message(STATUS "  Location: ${SYSTEM_BLAS_LIB}")
+    
+    # Try to get include dirs from pkg-config if available
+    find_package(PkgConfig)
+    if(PKG_CONFIG_FOUND)
+      pkg_search_module(PKGBLAS cblas)
+      if(PKGBLAS_FOUND AND PKGBLAS_INCLUDE_DIRS)
+        set(BLAS_INCLUDE_DIR "${PKGBLAS_INCLUDE_DIRS}" PARENT_SCOPE)
+        message(STATUS "  Include: ${PKGBLAS_INCLUDE_DIRS} (via pkg-config)")
+      endif()
+    endif()
+  else()
+    message(FATAL_ERROR "Could not find any BLAS library (openblas, cblas, or blas)")
+  endif()
+endfunction()
+
+# Main BLAS library search orchestrator
+# Tries in order: AOCL unified -> AOCL-BLIS (gcc) -> AOCL-BLIS (aocc) -> bundled BLIS -> pkg-config cblas
+# Sets BLAS_LIBRARY, BLIS_INCLUDE_DIR, and WARN_NOT_ILP64_PREFERRED in parent scope
+function(setup_blas_library)
+  message(STATUS "=====================================")
+  message(STATUS "Searching for BLAS library (LINK_BLIS=ON)...")
+  set(BLAS_LIBRARY "" PARENT_SCOPE)
+  set(BLIS_INCLUDE_DIR "" PARENT_SCOPE)
+  set(WARN_NOT_ILP64_PREFERRED false PARENT_SCOPE)
+
+  # 1. Try AOCL unified library (libaocl)
+  find_libaocl()
+  if (BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    return()
+  endif()
+
+  # 2. Try AOCL-BLIS with GCC (preferred, ILP64)
+  find_libblis(gcc)
+  if (BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    return()
+  endif()
+
+  # 3. Try AOCL-BLIS with AOCC
+  find_libblis(aocc)
+  if (BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    set(WARN_NOT_ILP64_PREFERRED true PARENT_SCOPE)
+    return()
+  endif()
+
+  # 4. Try bundled builds or system BLIS
+  find_bundled_blis()
+  if (BLAS_LIBRARY)
+    set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+    set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
+    set(WARN_NOT_ILP64_PREFERRED "${WARN_NOT_ILP64_PREFERRED}" PARENT_SCOPE)
+    return()
+  endif()
+
+  # 5. Last resort: try pkg-config cblas
+  find_system_cblas()
+  set(BLAS_LIBRARY "${BLAS_LIBRARY}" PARENT_SCOPE)
+  set(BLIS_INCLUDE_DIR "${BLIS_INCLUDE_DIR}" PARENT_SCOPE)
 endfunction()
 
 # This has to be initialized before the project() command appears
@@ -76,6 +304,9 @@ if ( BUILD_FORTRAN_CLIENTS )
   set( fortran_language "Fortran" )
 endif()
 project( rocblas-clients LANGUAGES CXX C ${fortran_language} )
+
+# Note: BUILD_DIR is a custom variable passed by rmake.py (via -DBUILD_DIR=<build_path>)
+# to locate bundled dependencies. Use rmake.py or install.sh to build, not cmake directly.
 
 if ( BUILD_FORTRAN_CLIENTS )
   set(rocblas_f90_source_clients
@@ -154,44 +385,11 @@ endif( )
 if( BUILD_CLIENTS_BENCHMARKS OR BUILD_CLIENTS_TESTS)
   if ( NOT WIN32 )
     if (LINK_BLIS)
-      set(BLAS_LIBRARY)
-      set(BLIS_INCLUDE_DIR)
-      find_libblis(gcc)
-      if(NOT BLAS_LIBRARY)
-        find_libblis(aocc)
-        set(WARN_NOT_ILP64_PREFERRED true) # found via aocc
-      endif()
-      if(NOT BLAS_LIBRARY)
-        set(WARN_NOT_ILP64_PREFERRED false) # reset warning, not found via installed aocc
-        if(EXISTS      "${BUILD_DIR}/deps/amd-blis/lib/ILP64/libblis-mt.a") # 4.0 and 4.1.0
-          set( BLAS_LIBRARY ${BUILD_DIR}/deps/amd-blis/lib/ILP64/libblis-mt.a )
-          set( BLIS_INCLUDE_DIR ${BUILD_DIR}/deps/amd-blis/include/ILP64 )
-          set( WARN_NOT_ILP64_PREFERRED true )
-        elseif(EXISTS      "${BUILD_DIR}/deps/blis/lib/libblis.a")
-          set( BLAS_LIBRARY ${BUILD_DIR}/deps/blis/lib/libblis.a )
-          set( BLIS_INCLUDE_DIR ${BUILD_DIR}/deps/blis/include/blis )
-          set( WARN_NOT_ILP64_PREFERRED true )
-        elseif(EXISTS      "/usr/local/lib/libblis.a")
-          set( BLAS_LIBRARY /usr/local/lib/libblis.a )
-          set( BLIS_INCLUDE_DIR /usr/local/include/blis )
-        else()
-          find_package(PkgConfig)
-          if(NOT PKG_CONFIG_FOUND)
-            message( FATAL_ERROR "Could not find libblis and pkgconfig is not available" )
-          else()
-            pkg_search_module(PKGBLAS cblas)
-            if(PKGBLAS_FOUND)
-              set( BLAS_LIBRARY ${PKGBLAS_LIBRARIES} )
-              set( BLAS_INCLUDE_DIR ${PKGBLAS_INCLUDE_DIRS} )
-            else()
-              message( FATAL_ERROR "Could not find libblis and pkgconfig can not find any other implementation of cblas" )
-            endif()
-          endif()
-        endif()
-      endif()
+      setup_blas_library()
     else()
       find_package( BLAS REQUIRED )
       set( BLAS_LIBRARY "${BLAS_LIBRARIES}" )
+      message(STATUS "LINK_BLIS=OFF: Using CMake FindBLAS module")
     endif()
   else() # WIN32
     file(TO_CMAKE_PATH "C:/Program\ Files/AMD/AOCL-Windows/amd-blis/lib/ILP64/AOCL-LibBlis-Win-MT.lib" AOCL_BLAS_LIBRARY)
@@ -214,7 +412,25 @@ if( BUILD_CLIENTS_BENCHMARKS OR BUILD_CLIENTS_TESTS)
     endif()
   endif()
 
-  if ( DEFINED BLIS_INCLUDE_DIR )
+  # Print BLAS library configuration summary
+  message(STATUS "=====================================")
+  message(STATUS "BLAS Library Configuration Summary:")
+  message(STATUS "  BLAS_LIBRARY: ${BLAS_LIBRARY}")
+  if (DEFINED BLIS_INCLUDE_DIR AND BLIS_INCLUDE_DIR)
+    message(STATUS "  BLIS_INCLUDE_DIR: ${BLIS_INCLUDE_DIR}")
+  endif()
+  if (DEFINED BLAS_INCLUDE_DIR AND BLAS_INCLUDE_DIR)
+    message(STATUS "  BLAS_INCLUDE_DIR: ${BLAS_INCLUDE_DIR}")
+  endif()
+  if (WARN_NOT_ILP64_PREFERRED)
+    message(STATUS "  ILP64 Support: No (32-bit integers)")
+    message(WARNING "Using non-ILP64 BLAS library. Large matrix operations may overflow.")
+  else()
+    message(STATUS "  ILP64 Support: Yes (64-bit integers)")
+  endif()
+  message(STATUS "=====================================")
+
+  if ( BLIS_INCLUDE_DIR )
     set( BLIS_CPP ../common/blis_interface.cpp )
   endif()
 
@@ -252,33 +468,39 @@ set( ROCBLAS_COMMON "${PROJECT_BINARY_DIR}/staging/rocblas_common.yaml")
 add_custom_command( OUTPUT "${ROCBLAS_COMMON}"
                     COMMAND ${CMAKE_COMMAND} -E copy include/rocblas_common.yaml "${ROCBLAS_COMMON}"
                     DEPENDS include/rocblas_common.yaml
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" )
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    COMMENT "Copying rocblas_common.yaml to staging" )
 
 set( ROCBLAS_TEMPLATE "${PROJECT_BINARY_DIR}/staging/rocblas_template.yaml")
 add_custom_command( OUTPUT "${ROCBLAS_TEMPLATE}"
                     COMMAND ${CMAKE_COMMAND} -E copy include/rocblas_template.yaml "${ROCBLAS_TEMPLATE}"
                     DEPENDS include/rocblas_template.yaml
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" )
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    COMMENT "Copying rocblas_template.yaml to staging" )
 
 set( ROCBLAS_GENERAL_YAML "${PROJECT_BINARY_DIR}/staging/rocblas_general.yaml")
 add_custom_command( OUTPUT "${ROCBLAS_GENERAL_YAML}"
                     COMMAND ${CMAKE_COMMAND} -E copy include/rocblas_general.yaml "${ROCBLAS_GENERAL_YAML}"
                     DEPENDS include/rocblas_general.yaml
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" )
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    COMMENT "Copying rocblas_general.yaml to staging" )
 
 set( ROCBLAS_GENTEST "${PROJECT_BINARY_DIR}/staging/rocblas_gentest.py")
 add_custom_command( OUTPUT "${ROCBLAS_GENTEST}"
                     COMMAND ${CMAKE_COMMAND} -E copy common/rocblas_gentest.py "${ROCBLAS_GENTEST}"
                     DEPENDS common/rocblas_gentest.py
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" )
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    COMMENT "Copying rocblas_gentest.py to staging" )
 
 set( ROCBLAS_CLIENTS_README "${PROJECT_BINARY_DIR}/staging/rocblas_clients_readme.txt")
 add_custom_command( OUTPUT "${ROCBLAS_CLIENTS_README}"
                     COMMAND ${CMAKE_COMMAND} -E copy rocblas_clients_readme.txt "${ROCBLAS_CLIENTS_README}"
                     DEPENDS rocblas_clients_readme.txt
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" )
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    COMMENT "Copying rocblas_clients_readme.txt to staging" )
 
-add_custom_target( rocblas-common DEPENDS "${ROCBLAS_COMMON}" "${ROCBLAS_TEMPLATE}" "${ROCBLAS_GENERAL_YAML}" "${ROCBLAS_GENTEST}" "${ROCBLAS_CLIENTS_README}" )
+add_custom_target( rocblas-common DEPENDS "${ROCBLAS_COMMON}" "${ROCBLAS_TEMPLATE}" "${ROCBLAS_GENERAL_YAML}" "${ROCBLAS_GENTEST}" "${ROCBLAS_CLIENTS_README}"
+                   COMMENT "Building rocblas-common files" )
 
 rocm_install(
   FILES ${ROCBLAS_COMMON} ${ROCBLAS_TEMPLATE} ${ROCBLAS_GENERAL_YAML}
@@ -298,3 +520,25 @@ rocm_install(
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
   COMPONENT clients
 )
+
+# Install AOCL library if it's a shared library built from source
+if (BUILD_CLIENTS AND BLAS_LIBRARY MATCHES "\\.so$" AND BLAS_LIBRARY MATCHES "${BUILD_DIR}/deps/aocl")
+  # Get the directory containing the AOCL library
+  get_filename_component(aocl_lib_dir "${BLAS_LIBRARY}" DIRECTORY)
+
+  # Find all shared libraries in the AOCL lib directory
+  file(GLOB AOCL_SHARED_LIBS "${aocl_lib_dir}/*.so*")
+
+  if(AOCL_SHARED_LIBS)
+    message(STATUS "Installing AOCL shared libraries to package:")
+    foreach(lib ${AOCL_SHARED_LIBS})
+      message(STATUS "  ${lib}")
+    endforeach()
+
+    rocm_install(
+      FILES ${AOCL_SHARED_LIBS}
+      DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      COMPONENT clients-common
+    )
+  endif()
+endif()
