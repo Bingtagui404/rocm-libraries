@@ -1444,6 +1444,10 @@ def hook_up_packs(timeline: Timeline, kernel: 'Solution', mfma_reorder: list[int
         int(mfma.issued_at): mfma for _, mfma in timeline.get_instructions_combined("MFMA")
     }
 
+    mfmas_by_index: dict[int, MFMA] = {
+        int(mfma.issued_at): mfma for _, mfma in timeline.get_instructions_combined("MFMA")
+    }
+
     use_plr_pack = kernel.get("UsePLRPack", False)
     for i_loop, loop in enumerate(timeline.loops):
         # 1. Gather all Packs in the current loop.
