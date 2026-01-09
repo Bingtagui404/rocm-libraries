@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -98,16 +98,21 @@ int main(int argc, char* argv[])
 
   // Figure out how many devices are in the system.
   int dev_count = 0;
-  hipGetDeviceCount(&dev_count);
+  hipError_t err = hipGetDeviceCount(&dev_count);
+  if (err != hipSuccess)
+  {
+    std::cerr << "hipGetDeviceCount failed: " << hipGetErrorString(err) << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
 
   // There could be more than one device of each type.
-  // Build a mapping of gfxID (string) to a vector of device IDs (unsigned ints).
-  std::map<std::string, std::vector<unsigned int>> names_to_ids;
+  // Build a mapping of gfxID (string) to a vector of device IDs (ints).
+  std::map<std::string, std::vector<int>> names_to_ids;
   // This entry will hold all device IDs.
   names_to_ids["gpus"] = {};
 
   // Populate the map
-  for (unsigned int dev_id = 0; dev_id < dev_count; ++dev_id)
+  for (int dev_id = 0; dev_id < dev_count; ++dev_id)
   {
     hipDeviceProp_t dev_prop;
     HIP_CHECK(hipGetDeviceProperties(&dev_prop, dev_id));
@@ -117,7 +122,7 @@ int main(int argc, char* argv[])
       name = name.substr(0, pos);
 
     if (names_to_ids.find(name) == names_to_ids.end())
-      names_to_ids[name] = std::vector<unsigned int>({dev_id});
+      names_to_ids[name] = std::vector<int>({dev_id});
     else
       names_to_ids[name].push_back(dev_id);
 
@@ -136,7 +141,7 @@ int main(int argc, char* argv[])
 
   // Add one object for each gfxID.
   // Each gfxID-keyed object will contain an array of device IDs.
-  int key_index = 0;
+  size_t key_index = 0;
   for (auto& name_it : names_to_ids)
   {
     out_file << "      \"" << name_it.first << "\": [" << std::endl;
@@ -147,7 +152,7 @@ int main(int argc, char* argv[])
     // to have a consistent output on each run so that the resource
     // spec file stays the same.
     std::sort(name_it.second.begin(), name_it.second.end());
-    int id_index = 0;
+    size_t id_index = 0;
     for (const auto& id_it : name_it.second)
     {
       out_file << "        {" << std::endl;
