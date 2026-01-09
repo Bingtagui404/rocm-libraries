@@ -475,7 +475,7 @@ def _benchmarkProblemType(problemTypeConfig, problemSizeGroupConfig, problemSize
         # I think the size portion of this yaml could be removed,
         # but for now it's needed, so we update it even in the cache case
         LibraryIO.writeSolutions(solutionsFileName, benchmarkStep.problemSizes, benchmarkStep.biasTypeArgs,
-            benchmarkStep.activationArgs, solutions, cacheValid)
+            benchmarkStep.activationArgs, solutions, cacheValid, format=globalParameters["LibraryFormat"])
 
         # run benchmarking client
         if not os.path.exists(resultsFileName) or globalParameters["ForceRedoBenchmarkProblems"]:
@@ -536,11 +536,21 @@ def main(
 
             # using a suffix to check the csv version (for later addFromCSV())
             csvSuffix = "_CSVWinner" if globalParameters["CSVExportWinner"] else ""
+            
+            # Determine file extension based on LibraryFormat
+            libraryFormat = globalParameters.get("LibraryFormat", "yaml")
+            if libraryFormat == "msgpack":
+                solutionsExt = ".dat"
+            elif libraryFormat == "json":
+                solutionsExt = ".json"
+            else:
+                solutionsExt = ".yaml"
+            
             # results files will be named
             newResultsFileName = os.path.join(benchmarkDataPath, "{}_{:02d}{}.csv" \
                     .format(str(problemTypeObj), idx, csvSuffix) )
-            newSolutionsFileName = os.path.join(benchmarkDataPath, "{}_{:02d}{}.yaml" \
-                    .format(str(problemTypeObj), idx, csvSuffix) )
+            newSolutionsFileName = os.path.join(benchmarkDataPath, "{}_{:02d}{}{}" \
+                    .format(str(problemTypeObj), idx, csvSuffix, solutionsExt) )
             newGranularityFileName = os.path.join(benchmarkDataPath, "{}_{:02d}{}.gsp" \
                     .format(str(problemTypeObj), idx, csvSuffix) )
 
@@ -576,10 +586,26 @@ def main(
                 # copy data
                 resultsFileBase = resultsFileBaseFinal
                 resultsFileName = resultsFileBase + ".csv"
-                solutionsFileName = resultsFileBase + ".yaml"
+                
+                # Determine solutions file extension based on LibraryFormat
+                libraryFormat = globalParameters.get("LibraryFormat", "yaml")
+                if libraryFormat == "msgpack":
+                    solutionsExt = ".dat"
+                elif libraryFormat == "json":
+                    solutionsExt = ".json"
+                else:
+                    solutionsExt = ".yaml"
+                
+                solutionsFileName = resultsFileBase + solutionsExt
                 granularityFileName = resultsFileBase + "_Granularity.csv"
+                
+                # Copy CSV results
                 shutil.copy(resultsFileName, newResultsFileName)
+                
+                # Copy solutions file (YAML/JSON/msgpack)
                 shutil.copy(solutionsFileName, newSolutionsFileName)
+                
+                # Copy granularity CSV if exists
                 if os.path.isfile(granularityFileName):
                     shutil.copy(granularityFileName, newGranularityFileName)
             else:

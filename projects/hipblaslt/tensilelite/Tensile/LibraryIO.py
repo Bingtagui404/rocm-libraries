@@ -67,7 +67,10 @@ except ImportError:
 
 try:
     import msgpack
+    HAS_MSGPACK = True
 except ImportError:
+    msgpack = None
+    HAS_MSGPACK = False
     print("Message pack python library not detected. Must use YAML backend instead.")
 
 
@@ -77,11 +80,14 @@ except ImportError:
 def write(filename_noExt, data, format="yaml"):
     """Writes data to file with specified format; extension is appended based on format."""
     if format == "yaml":
-        writeYAML(filename_noExt + ".yaml", data)
+        filename = filename_noExt + ".yaml"
+        writeYAML(filename, data)
     elif format == "json":
-        writeJson(filename_noExt + ".json", data)
+        filename = filename_noExt + ".json"
+        writeJson(filename, data)
     elif format == "msgpack":
-        writeMsgPack(filename_noExt + ".dat", data)
+        filename = filename_noExt + ".dat"
+        writeMsgPack(filename, data)
     else:
         printExit("Unrecognized write format {}".format(format))
 
@@ -107,24 +113,35 @@ def writeJson(filename, data):
 
 def writeMsgPack(filename, data):
     """Writes data to file in Message Pack format."""
+    if not HAS_MSGPACK:
+        printExit("Message pack python library not detected. Install msgpack to use msgpack format.")
     with open(filename, "wb") as f:
         msgpack.pack(data, f)
 
-def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutions, cache=False):
-    """Writes solution YAML file."""
+def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutions, cache=False, format="yaml"):
+    """Writes solution file in YAML, JSON, or msgpack format."""
+
+    # Adjust filename extension based on format
+    base, _ext = os.path.splitext(filename)
+    if format == "msgpack":
+        filename = base + ".dat"
+    elif format == "json":
+        filename = base + ".json"
+    else:  # yaml
+        filename = base + ".yaml"
 
     # convert objects to nested dictionaries
     solutionStates = []
 
     if cache and os.path.exists(filename):
-        solYaml = read(filename)
-        if solYaml is not None:
+        solData = read(filename)  # Auto-detects format based on extension
+        if solData is not None:
             if biasTypeArgs and activationArgs:
-                solutionStates = solYaml[4:]
+                solutionStates = solData[4:]
             elif biasTypeArgs or activationArgs:
-                solutionStates = solYaml[3:]
+                solutionStates = solData[3:]
             else:
-                solutionStates = solYaml[2:]
+                solutionStates = solData[2:]
     elif solutions is not None:
         for solution in solutions:
             solutionState = solution.getAttributes()
@@ -133,24 +150,118 @@ def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutio
             isa = solutionState["ISA"]
             solutionState["ISA"] = [isa[0], isa[1], isa[2]]
             solutionStates.append(solutionState)
-    # write dictionaries
-    with open(filename, "w") as f:
-        f.write("- MinimumRequiredVersion: {}\n".format(__version__))
-        f.write("- ProblemSizes:\n")
+    
+    # write dictionaries based on format
+    if format == "yaml":
+        # Original YAML format with special header
+        with open(filename, "w") as f:
+            f.write("- MinimumRequiredVersion: {}\n".format(__version__))
+            f.write("- ProblemSizes:\n")
+            if problemSizes:
+                for sizeRange in problemSizes.ranges:
+                    f.write("  - Range: {}\n".format(sizeRange))
+                for problemExact in problemSizes.exacts:
+                    #FIXME-problem, this ignores strides:
+                    f.write("  - Exact: {}\n".format(problemExact))
+            # Write BiasTypeArgs
+            # BUG FIX: Don't use format([]) as it produces "[[]]" instead of "[]"
+            # When biasTypes is empty, we should write "[]" not "[[]]"
+            if biasTypeArgs:
+                bias_type_values = [btype.toChar().lower() for btype in biasTypeArgs.biasTypes]
+                if bias_type_values:
+                    # Non-empty list: write as "[value1, value2, ...]"
+                    f.write("- BiasTypeArgs: [{}]\n".format(', '.join(bias_type_values)))
+                else:
+                    # Empty list: write as "[]" not "[[]]"
+                    f.write("- BiasTypeArgs: []\n")
+            
+            # Write ActivationArgs
+            # BUG FIX: When settingList is empty, write "[]" not just the key with no value
+            # Previously, writing only "- ActivationArgs:\n" results in YAML parsing it as None
+            if activationArgs:
+                if activationArgs.settingList:
+                    # Non-empty list: write with nested structure
+                    f.write("- ActivationArgs:\n")
+                    for setting in activationArgs.settingList:
+                        f.write("  - [Enum: %s]\n"%(setting.activationEnum))
+                else:
+                    # Empty list: write as "[]" not None
+                    f.write("- ActivationArgs: []\n")
+            if solutionStates:  # Only dump if we have solution states
+                yaml.dump(solutionStates, f, default_flow_style=None)
+    
+    elif format in ["json", "msgpack"]:
+        # Structured format for JSON/msgpack
+        data = [
+            {"MinimumRequiredVersion": __version__}
+        ]
+        
+        # Add ProblemSizes (convert custom objects to lists for serialization)
+        # Must match the format expected by Problem.py parser:
+        # ProblemSizes is a list of dictionaries, each with "Range" or "Exact" key
+        problemSizesData = []
         if problemSizes:
-            for sizeRange in problemSizes.ranges:
-                f.write("  - Range: {}\n".format(sizeRange))
-            for problemExact in problemSizes.exacts:
-                #FIXME-problem, this ignores strides:
-                f.write("  - Exact: {}\n".format(problemExact))
+            if problemSizes.ranges:
+                for r in problemSizes.ranges:
+                    # Reconstruct the Range config from ProblemSizeRange attributes
+                    # This mirrors the logic in ProblemSizeRange.__str__()
+                    range_config = []
+                    sizedIdx = 0
+                    mappedIdx = 0
+                    for i in range(len(r.indexIsSized)):
+                        if r.indexIsSized[i]:
+                            # This index is sized, add the 4-element list [start, step, increment, end]
+                            range_config.append(list(r.indicesSized[sizedIdx]))
+                            sizedIdx += 1
+                        else:
+                            # This index is mapped, add the mapping index
+                            range_config.append(r.indicesMapped[mappedIdx])
+                            mappedIdx += 1
+                    problemSizesData.append({"Range": range_config})
+            if problemSizes.exacts:
+                for e in problemSizes.exacts:
+                    # Handle both ExactList and ExactDict
+                    # ExactList: simple list of sizes
+                    # ExactDict: dict with sizes and optional strides
+                    if hasattr(e, 'stridesA') and (e.stridesA or e.stridesB or e.stridesC or e.stridesD):
+                        # This is an ExactDict with strides, serialize as dict
+                        exact_data = {"sizes": list(e.sizes)}
+                        if e.stridesA:
+                            exact_data["stridesA"] = list(e.stridesA)
+                        if e.stridesB:
+                            exact_data["stridesB"] = list(e.stridesB)
+                        if e.stridesC:
+                            exact_data["stridesC"] = list(e.stridesC)
+                        if e.stridesD:
+                            exact_data["stridesD"] = list(e.stridesD)
+                        if hasattr(e, 'count') and e.count:
+                            exact_data["count"] = e.count
+                        problemSizesData.append({"Exact": exact_data})
+                    else:
+                        # This is an ExactList or ExactDict without strides, serialize as list
+                        problemSizesData.append({"Exact": list(e.sizes)})
+        # Wrap in ProblemSizes key to match expected format
+        data.append({"ProblemSizes": problemSizesData})
+        
+        # Add optional fields (only if they exist)
         if biasTypeArgs:
-            f.write("- BiasTypeArgs: [{}]\n".format([btype.value for btype in biasTypeArgs.biasTypes]))
+            data.append({"BiasTypeArgs": [btype.toChar().lower() for btype in biasTypeArgs.biasTypes]})
+            
         if activationArgs:
-            f.write("- ActivationArgs:\n")
-            for setting in activationArgs.settingList:
-                f.write("  - [Enum: %s]\n"%(setting.activationEnum))
-        if solutionStates:  # Only dump if we have solution states
-            yaml.dump(solutionStates, f, default_flow_style=None)
+            # Convert ActivationType objects to strings for serialization
+            data.append({"ActivationArgs": [{"Enum": str(setting.activationEnum)} for setting in activationArgs.settingList]})
+        
+        # Add solutions
+        data.extend(solutionStates)
+        
+        # Write to file
+        if format == "msgpack":
+            if not HAS_MSGPACK:
+                printExit("Message pack python library not detected. Install msgpack to use msgpack format.")
+            with open(filename, "wb") as f:
+                msgpack.pack(data, f, use_bin_type=True)
+        else:  # json
+            writeJson(filename, data)
 
 
 ###############################
@@ -158,18 +269,24 @@ def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutio
 ###############################
 def read(filename, customizedLoader=False):
     name, extension = os.path.splitext(filename)
+    
     if extension == ".yaml":
-        return load_yaml_stream(filename, yamlLoader) if customizedLoader else readYAML(filename)
-    if extension == ".json":
-        return readJson(filename)
+        result = load_yaml_stream(filename, yamlLoader) if customizedLoader else readYAML(filename)
+    elif extension == ".json":
+        result = readJson(filename)
+    elif extension == ".dat":
+        result = readMsgPack(filename)
     else:
         printExit("Unrecognized read format {}".format(extension))
+    
+    return result
 
 
 def readYAML(filename):
     """Reads and returns YAML data from file."""
     with open(filename, "r") as f:
         data = yaml.load(f, yamlLoader)
+    
     return data
 
 
@@ -177,6 +294,17 @@ def readJson(filename):
     """Reads and returns JSON data from file."""
     with open(filename, "r") as f:
         data = json.loads(f.read())
+    
+    return data
+
+
+def readMsgPack(filename):
+    """Reads and returns msgpack data from file."""
+    if not HAS_MSGPACK:
+        printExit("Message pack python library not detected. Install msgpack to use msgpack format.")
+    with open(filename, "rb") as f:
+        data = msgpack.unpack(f, raw=False)
+    
     return data
 
 

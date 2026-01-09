@@ -1469,7 +1469,17 @@ def generateLogic(
           os.path.join(benchmarkDataPath, \
           fileName))[0]
       dataFileName = fileBase + ".csv"
-      solutionsFileName = fileBase + ".yaml"
+      
+      # Determine solutions file extension based on LibraryFormat
+      libraryFormat = globalParameters.get("LibraryFormat", "yaml")
+      if libraryFormat == "msgpack":
+        solutionsExt = ".dat"
+      elif libraryFormat == "json":
+        solutionsExt = ".json"
+      else:
+        solutionsExt = ".yaml"
+      
+      solutionsFileName = fileBase + solutionsExt
       selectionFileName = fileBase + ".gsp"
       if not os.path.exists(dataFileName):
         printExit("%s doesn't exist for %s" % (dataFileName, fileBase) )
