@@ -56,22 +56,24 @@ namespace rocRoller::KernelGraph
          */
         struct DataFlowTagReplacerVisitor
         {
-            bool                      replacementDone = false;
-            int                       tag;
-            Expression::ExpressionPtr exprToReplace;
+            DataFlowTagReplacerVisitor(int tag, Expression::ExpressionPtr replacement)
+                : m_tag(tag)
+                , m_replacement(replacement)
+            {
+            }
 
             Expression::ExpressionPtr operator()(Expression::DataFlowTag const& expr)
             {
-                if(expr.tag == tag)
+                if(expr.tag == m_tag)
                 {
-                    if(replacementDone)
+                    if(m_replacementDone)
                     {
                         Throw<FatalError>("More than one DataFlowTag matching given tag");
                     }
                     else
                     {
-                        replacementDone = true;
-                        return exprToReplace;
+                        m_replacementDone = true;
+                        return m_replacement;
                     }
                 }
                 return std::make_shared<Expression::Expression>(expr);
@@ -139,15 +141,18 @@ namespace rocRoller::KernelGraph
                     return expr;
                 return std::visit(*this, *expr);
             }
+
+        private:
+            bool                      m_replacementDone = false;
+            int                       m_tag;
+            Expression::ExpressionPtr m_replacement;
         };
 
         Expression::ExpressionPtr replaceDataFlowTag(Expression::ExpressionPtr const& expr,
                                                      int                              tag,
-                                                     Expression::ExpressionPtr const& exprToReplace)
+                                                     Expression::ExpressionPtr const& replacement)
         {
-            DataFlowTagReplacerVisitor visitor;
-            visitor.tag           = tag;
-            visitor.exprToReplace = exprToReplace;
+            DataFlowTagReplacerVisitor visitor(tag, replacement);
             return visitor.call(expr);
         }
 
@@ -334,25 +339,23 @@ namespace rocRoller::KernelGraph
         {
             auto tagToReplace = candidate.tag;
 
-            auto writingNode  = candidate.writingNode;
-            auto originalExpr = kgraph.control.getNode<Assign>(candidate.writingNode).expression;
+            auto replacementExpr = kgraph.control.getNode<Assign>(candidate.writingNode).expression;
 
-            auto readingNodeTag = candidate.readingNode;
-            auto readingNode    = kgraph.control.getNode<Assign>(readingNodeTag);
-            auto readingExpr    = readingNode.expression;
+            auto readingNode = kgraph.control.getNode<Assign>(candidate.readingNode);
+            auto readingExpr = readingNode.expression;
 
-            // Replace the DataFlowTag in readingExpr corresponding to tagToReplace with originalExpr
+            // Replace the DataFlowTag in readingExpr corresponding to tagToReplace with replacementExpr
             auto newExpr = FuseExpressionsDetail::replaceDataFlowTag(
-                readingExpr, tagToReplace, originalExpr);
+                readingExpr, tagToReplace, replacementExpr);
 
             // Replace the old expression with this new one
             readingNode.expression = newExpr;
-            kgraph.control.setElement(readingNodeTag, readingNode);
+            kgraph.control.setElement(candidate.readingNode, readingNode);
 
             // Replace writing node with NOP
             auto nop = kgraph.control.addElement(NOP());
-            replaceWith(kgraph, writingNode, nop, false);
-            purgeNodes(kgraph, {writingNode});
+            replaceWith(kgraph, candidate.writingNode, nop, false);
+            purgeNodes(kgraph, {candidate.writingNode});
 
             // If necessary, delete tag
             if(candidate.deleteTag)

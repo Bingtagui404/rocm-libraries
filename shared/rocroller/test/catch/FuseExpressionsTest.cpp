@@ -145,18 +145,44 @@ namespace FuseExpressionsTest
             //                     Node 186
             //                    StoreTiled
 
+            // Examine serialized control graph
             auto dots = NormalizedSource(graph.toDOT(false));
+
+            // Existence of nodes
             CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl183"[label="NOP(183)"];
                 "cntrl184"[label="Assign VGPR Multiply(DataFlowTag(33)NA, DataFlowTag(35)NA)NA(184)"];
-                                  ).")));
-
-            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
-                "cntrl188"[label="Assign VGPR Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA(188)"];
-                                  ).")));
-
-            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
                 "cntrl185"[label="Assign VGPR Add(DataFlowTag(293)NA, DataFlowTag(295)NA)NA(185)"];
-                                  ).")));
+                "cntrl186"[label="StoreTiled Value: Float(186)"];
+                "cntrl187"[label="LoadTiled Value: Float(187)"];
+                "cntrl188"[label="Assign VGPR Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA(188)"];
+                "cntrl189"[label="Sequence(189)",shape=box];
+                "cntrl190"[label="Sequence(190)",shape=box];
+                "cntrl191"[label="Sequence(191)",shape=box];
+                "cntrl192"[label="Sequence(192)",shape=box];
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl199"[label="Sequence(199)",shape=box];
+                "cntrl200"[label="Sequence(200)",shape=box];
+            ).")));
+
+            // Connections
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl183" -> "cntrl199"
+                "cntrl183" -> "cntrl200"
+                "cntrl184" -> "cntrl191"
+                "cntrl185" -> "cntrl192"
+                "cntrl187" -> "cntrl189"
+                "cntrl188" -> "cntrl190"
+                "cntrl189" -> "cntrl188"
+                "cntrl190" -> "cntrl185"
+                "cntrl191" -> "cntrl185"
+                "cntrl192" -> "cntrl186"
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl199" -> "cntrl184"
+                "cntrl200" -> "cntrl187"
+            ).")));
 
             // Apply FuseExpressions
             graph = transform<FuseExpressions>(graph);
@@ -173,7 +199,7 @@ namespace FuseExpressionsTest
             //              \                      \[seq]
             //              \                      \
             //              v                      v
-            //           Node 184               Node 188
+            //           Node 213               Node 216
             //             NOP                    NOP
             //              \                      \
             //              \[seq]                 \[seq]
@@ -187,63 +213,47 @@ namespace FuseExpressionsTest
             //                     Node 186
             //                    StoreTiled
 
+            // Examine serialized control graph
             dots = NormalizedSource(graph.toDOT(false));
-            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
-                "cntrl184"[label="NOP(184)"];
-                                  ).")));
 
+            // Existence of nodes
             CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
-                "cntrl188"[label="NOP(188)"];
-                                  ).")));
+                "cntrl183"[label="NOP(183)"];
+                "cntrl185"[label="Assign VGPR Add(Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA, Multiply(DataFlowTag(33)NA, DataFlowTag(35)NA)NA)NA(185)"];
+                "cntrl186"[label="StoreTiled Value: Float(186)"];
+                "cntrl187"[label="LoadTiled Value: Float(187)"];
+                "cntrl192"[label="Sequence(192)",shape=box];
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl200"[label="Sequence(200)",shape=box];
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl213"[label="NOP(213)"];
+                "cntrl214"[label="Sequence(214)",shape=box];
+                "cntrl215"[label="Sequence(215)",shape=box];
+                "cntrl216"[label="NOP(216)"];
+                "cntrl217"[label="Sequence(217)",shape=box];
+                "cntrl218"[label="Sequence(218)",shape=box];
+            ).")));
 
+            // Connections
             CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
-                "cntrl185"[label="Assign VGPR Add(Multiply(DataFlowTag(24)NA, DataFlowTag(291)NA)NA, Multiply(DataFlowTag(33)NA, DataFlowTag(35)NA)NA)NA(185)"];).")));
+                "cntrl183" -> "cntrl200"
+                "cntrl183" -> "cntrl214"
+                "cntrl185" -> "cntrl192"
+                "cntrl187" -> "cntrl217"
+                "cntrl192" -> "cntrl186"
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl200" -> "cntrl187"
+            ).")));
+            CHECK_THAT(dots, ContainsSubstring(NormalizedSource(R".(
+                "cntrl214" -> "cntrl213"
+                "cntrl215" -> "cntrl185"
+                "cntrl216" -> "cntrl218"
+                "cntrl217" -> "cntrl216"
+                "cntrl218" -> "cntrl185"
+            ).")));
         }
-
-        // SECTION("Apply graph transform with constant propagation")
-        // {
-        //     // Count the Multiply and Add nodes before FuseExpressions
-        //     auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-        //     CHECK(multiplyNodesBefore.size() == 3);
-        //     auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
-        //     CHECK(addNodesBefore.size() == 8);
-        //
-        //     // Apply FuseExpressions
-        //     graph = transform<FuseExpressions>(graph);
-        //
-        //     // Count the Multiply and Add nodes after FuseExpressions
-        //     auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-        //     CHECK(multiplyNodesAfter.size() == 1);
-        //     auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
-        //     CHECK(addNodesAfter.size() == 7);
-        //
-        //     // Count the MultiplyAdd nodes after FuseExpressions
-        //     auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-        //     CHECK(multiplyAddNodes.size() == 1);
-        // }
-
-        //     SECTION("Apply graph transform, no constant propagation")
-        //     {
-        //         graph = graphBeforeConstantPropagation;
-        //
-        //         // Count the Multiply and Add nodes before FuseExpressions
-        //         auto multiplyNodesBefore = getAssignNodes<Expression::Multiply>(graph);
-        //         CHECK(multiplyNodesBefore.size() == 2);
-        //         auto addNodesBefore = getAssignNodes<Expression::Add>(graph);
-        //         CHECK(addNodesBefore.size() == 6);
-        //
-        //         // Apply FuseExpressions
-        //         graph = transform<FuseExpressions>(graph);
-        //
-        //         // Count the Multiply and Add nodes after FuseExpressions
-        //         auto multiplyNodesAfter = getAssignNodes<Expression::Multiply>(graph);
-        //         CHECK(multiplyNodesAfter.size() == 0);
-        //         auto addNodesAfter = getAssignNodes<Expression::Add>(graph);
-        //         CHECK(addNodesAfter.size() == 5);
-        //
-        //         // Count the MultiplyAdd nodes after FuseExpressions
-        //         auto multiplyAddNodes = getAssignNodes<Expression::MultiplyAdd>(graph);
-        //         CHECK(multiplyAddNodes.size() == 1);
-        //     }
     }
 }
