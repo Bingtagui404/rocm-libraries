@@ -205,27 +205,42 @@ namespace rocRoller::KernelGraph
                 }
                 else if(record.rw == RW::READ)
                 {
-                    // See if we have any active possible candidates corresponding to this coordinate and body parent that have a write but no read
-                    if(possibleCandidate->has_value()
-                       && possibleCandidate->value().hasWriteNoRead())
+                    // See if we have any active possible candidates corresponding to this coordinate and body parent
+                    if(possibleCandidate->has_value())
                     {
-                        // Now that we've written to and read from this coordinate,
-                        // this will be a candidate as long as we don't have any more reads to this tag
-                        possibleCandidate->value().readingNode = record.control;
+                        // If that possible candidate has a write but no read, add a read
+                        if(possibleCandidate->value().hasWriteNoRead())
+                        {
+                            // Now that we've written to and read from this coordinate,
+                            // this will be a candidate as long as we don't have any more reads to this tag
+                            possibleCandidate->value().readingNode = record.control;
+                        }
+                        // Otherwise, we have already read from this coordinate, so this is not a candidate after all
+                        else
+                        {
+                            possibleCandidates[{parent, tag}] = std::nullopt;
+                        }
                     }
                 }
                 else if(record.rw == RW::READWRITE)
                 {
                     // A READWRITE is composed of a read followed by a write, so we will treat this as two separate operations:
 
-                    // See if we have any active possible candidates corresponding to this coordinate and body parent that have a write but no read
-                    if(possibleCandidate->has_value()
-                       && possibleCandidate->value().hasWriteNoRead())
+                    // See if we have any active possible candidates corresponding to this coordinate and body parent
+                    if(possibleCandidate->has_value())
                     {
-                        // Now that we've written to and read from this coordinate, since we know we're about to write to it again,
-                        // this is a candidate!
-                        possibleCandidate->value().readingNode = record.control;
-                        candidates.push_back(possibleCandidate->value().createCandidate());
+                        // If that possible candidate has a write but no read, add a read
+                        if(possibleCandidate->value().hasWriteNoRead())
+                        {
+                            // Now that we've written to and read from this coordinate,
+                            // this will be a candidate as long as we don't have any more reads to this tag
+                            possibleCandidate->value().readingNode = record.control;
+                        }
+                        // Otherwise, we have already read from this coordinate, so this is not a candidate after all
+                        else
+                        {
+                            possibleCandidates[{parent, tag}] = std::nullopt;
+                        }
                     }
 
                     // Create a new possible candidate, one that has been written to but not read from yet

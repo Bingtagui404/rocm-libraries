@@ -259,11 +259,60 @@ namespace FuseExpressionsTest
 
         SECTION("Write-read-read (should not be fused)")
         {
-            // TODO:
             // Two reads after a write
             // a = 1
             // b = 2 * a
             // c = a + 1
+
+            // a = 1
+            int    coordA = graph.coordinates.addElement(Linear{});
+            Assign nodeA;
+            nodeA.expression = Expression::literal(2);
+            int idxA         = graph.control.addElement(nodeA);
+            graph.mapper.connect(idxA, coordA, NaryArgument::DEST);
+
+            // b = 2 * a
+            int    coordB = graph.coordinates.addElement(Linear{});
+            Assign nodeB;
+            auto   doubleLiteral = Expression::literal(2);
+            auto   doubleVariable
+                = std::make_shared<Expression::Expression>(Expression::DataFlowTag{coordA});
+            nodeB.expression = std::make_shared<Expression::Expression>(
+                Expression::Add{doubleVariable, doubleLiteral});
+            int idxB = graph.control.addElement(nodeB);
+            graph.mapper.connect(idxB, coordB, NaryArgument::DEST);
+
+            // a = a + 1
+            int    coordC = graph.coordinates.addElement(Linear{});
+            Assign nodeC;
+            auto   incLiteral = Expression::literal(1);
+            auto   incVariable
+                = std::make_shared<Expression::Expression>(Expression::DataFlowTag{coordA});
+            nodeC.expression = std::make_shared<Expression::Expression>(
+                Expression::Add{incVariable, incLiteral});
+            int idxC = graph.control.addElement(nodeC);
+            graph.mapper.connect(idxC, coordC, NaryArgument::DEST);
+
+            // Insert nodes after node 186, which is a StoreTiled node with no outgoing edges
+            insertAfter(graph, 186, idxA, idxA);
+            insertAfter(graph, idxA, idxB, idxB);
+            insertAfter(graph, idxB, idxC, idxC);
+
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(186).to<std::vector>().back()
+                  == idxA);
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(idxA).to<std::vector>().back()
+                  == idxB);
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(idxB).to<std::vector>().back()
+                  == idxC);
+
+            // Expect that none of these are candidates
+            for(const auto& candidate : FuseExpressionsDetail::findFuseCandidates(graph))
+            {
+                CHECK(candidate.tag != coordA);
+                CHECK(candidate.writingNode != idxA);
+                CHECK(candidate.readingNode != idxB);
+                CHECK(candidate.readingNode != idxC);
+            }
         }
 
         SECTION("Write-read-write-read")
