@@ -30,17 +30,18 @@
 #include "TestContext.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "common/SourceMatcher.hpp"
-#include "rocRoller/DataTypes/DataTypes.hpp"
-#include "rocRoller/Expression_fwd.hpp"
-#include "rocRoller/KernelGraph/Utils.hpp"
-#include "rocRoller/Utilities/Logging.hpp"
+
 #include <common/CommonGraphs.hpp>
 #include <common/Utilities.hpp>
+#include <rocRoller/DataTypes/DataTypes.hpp>
 #include <rocRoller/Expression.hpp>
+#include <rocRoller/Expression_fwd.hpp>
 #include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
 #include <rocRoller/KernelGraph/Transforms/All.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions_detail.hpp>
+#include <rocRoller/KernelGraph/Utils.hpp>
+#include <rocRoller/Utilities/Logging.hpp>
 #include <rocRoller/Utilities/Settings_fwd.hpp>
 #include <variant>
 

@@ -26,8 +26,8 @@
 
 #pragma once
 
-#include "rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp"
-#include "rocRoller/KernelGraph/KernelGraph.hpp"
+#include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
+#include <rocRoller/KernelGraph/KernelGraph.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 
 namespace rocRoller
