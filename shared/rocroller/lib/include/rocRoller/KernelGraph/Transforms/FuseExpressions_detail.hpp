@@ -36,6 +36,25 @@ namespace rocRoller
     {
         namespace FuseExpressionsDetail
         {
+            struct PossibleCandidate
+            {
+                int                tag;
+                std::optional<int> writingNode;
+                std::optional<int> readingNode;
+
+                bool operator==(const PossibleCandidate& rhs) const = default;
+
+                bool isCandidate() const
+                {
+                    return writingNode.has_value() && readingNode.has_value();
+                }
+
+                bool hasWriteNoRead() const
+                {
+                    return writingNode.has_value() && !readingNode.has_value();
+                }
+            };
+
             struct Candidate
             {
                 int  tag;

@@ -27,6 +27,7 @@
 #include "rocRoller/Expression_fwd.hpp"
 #include "rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp"
 #include "rocRoller/KernelGraph/CoordinateGraph/Transformer.hpp"
+#include <list>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -182,152 +183,105 @@ namespace rocRoller::KernelGraph
 
         std::vector<Candidate> findFuseCandidates(KernelGraph const& kgraph)
         {
-
             std::vector<Candidate> candidates;
 
-            auto tracer          = ControlFlowRWTracer(kgraph);
-            auto recordsByParent = sortRecordsByBodyParent(kgraph, tracer);
+            auto tracer = ControlFlowRWTracer(kgraph);
+            auto trace  = tracer.coordinatesReadWrite();
 
-            // Examine the reads and writes under each parent to find candidates
-            for(const auto& [parent, records] : recordsByParent)
+            // Map from <parent, tag> -> list of possible candidates
+            std::map<std::pair<int, int>, std::vector<PossibleCandidate>> possibleCandidates;
+            for(auto record : trace)
             {
-                // Sort reads and writes within this body parent by coordinate
-                std::unordered_map<int, std::vector<Record>> recordsByCoordinate;
-                for(auto record : records)
+                // We only care about assign nodes
+                if(!kgraph.control.get<Assign>(record.control).has_value())
                 {
-                    if(kgraph.control.get<Assign>(record.control).has_value())
-                    {
-                        // Add this record to the sequence corresponding to its coordinate
-                        recordsByCoordinate[record.coordinate].push_back(record);
-                    }
+                    continue;
                 }
 
-                // For each coordinate, follow its sequence of reads and writes to find candidates
-                for(const auto& [tag, records] : recordsByCoordinate)
+                auto tag         = record.coordinate;
+                auto node        = kgraph.control.getNode<Assign>(record.control);
+                auto maybeParent = bodyParents(record.control, kgraph).take(1).only();
+                AssertFatal(maybeParent.has_value(), "Node has no body parent", ShowValue(node));
+                auto parent = maybeParent.value();
+
+                // List of possible candidates corresponding to the current body parent and tag
+                auto listOfPossibleCandidates = &possibleCandidates[{parent, tag}];
+
+                if(record.rw == RW::WRITE)
                 {
-                    std::optional<int>       writingNode    = std::nullopt;
-                    std::optional<int>       readingNode    = std::nullopt;
-                    std::optional<Candidate> maybeCandidate = std::nullopt;
-                    for(const auto& record : records)
+                    // Create a new possible candidate
+                    listOfPossibleCandidates->push_back({tag, record.control, std::nullopt});
+                }
+                else if(record.rw == RW::READ)
+                {
+                    // See if we have any active possible candidates corresponding to this tag and body parent
+                    if(!listOfPossibleCandidates->empty())
                     {
-                        auto node = record.control;
-
-                        if(record.rw == RW::WRITE)
+                        // If there's an active possible candidate with a write but no read
+                        auto possibleCandidate = &listOfPossibleCandidates->back();
+                        if(possibleCandidate->hasWriteNoRead())
                         {
-                            // If we have already written to and then read from this coordinate once each, we have found a candidate!
-                            // We can save it as such and then start over with a new write
-                            if(writingNode.has_value() && readingNode.has_value()
-                               && maybeCandidate.has_value())
-                            {
-                                candidates.push_back(maybeCandidate.value());
-
-                                readingNode    = std::nullopt;
-                                maybeCandidate = std::nullopt;
-                            }
-
-                            // Begin the search for a candidate with a write
-                            writingNode    = node;
-                            readingNode    = std::nullopt;
-                            maybeCandidate = std::nullopt;
-                        }
-                        else if(record.rw == RW::READ)
-                        {
-                            // If this coordinate has been written to but hasn't been read from yet, it may be a candidate
-                            if(writingNode.has_value() && !readingNode.has_value())
-                            {
-                                maybeCandidate = {tag, writingNode.value(), node};
-                            }
-                            // Otherwise, this is not a candidate for fusing
-                            else
-                            {
-                                maybeCandidate = std::nullopt;
-                            }
-
-                            readingNode = node;
-                        }
-                        else if(record.rw == RW::READWRITE)
-                        {
-                            // A READWRITE consists of a read followed by a write, in that order
-                            // Thus, we will treat it as if it were split into two separate operations.
-
-                            // READ
-                            // If this tag has been written to but hasn't already been read from,
-                            // and we know it is about to be written to again, we know that it's a candidate!
-                            if(writingNode.has_value() && !readingNode.has_value())
-                            {
-                                candidates.push_back({tag, writingNode.value(), node});
-
-                                readingNode    = std::nullopt;
-                                maybeCandidate = std::nullopt;
-                            }
-
-                            // WRITE
-                            writingNode    = node;
-                            readingNode    = std::nullopt;
-                            maybeCandidate = std::nullopt;
+                            possibleCandidate->readingNode = record.control;
                         }
                         else
                         {
-                            Throw<FatalError>(
-                                "Invalid value for ControlFlowRWTracer::ReadWrite: {}", record.rw);
+                            // Otherwise, this is not a possible candidate, so remove it
+                            listOfPossibleCandidates->pop_back();
+                        }
+                    }
+                }
+                else if(record.rw == RW::READWRITE)
+                {
+                    // See if we have any active possible candidates corresponding to this tag and body parent
+                    if(!listOfPossibleCandidates->empty())
+                    {
+                        // If there's an active possible candidate with a write but no read
+                        auto possibleCandidate = &listOfPossibleCandidates->back();
+                        if(possibleCandidate->hasWriteNoRead())
+                        {
+                            possibleCandidate->readingNode = record.control;
+                        }
+                        else
+                        {
+                            // Otherwise, this is not a possible candidate, so remove it
+                            listOfPossibleCandidates->pop_back();
                         }
                     }
 
-                    // Now that we've finished examining all of the reads and writes to this coordinate in this body parent,
-                    // if we have a possible candidate, we can save it
-                    if(writingNode.has_value() && readingNode.has_value()
-                       && maybeCandidate.has_value())
+                    // Create a new possible candidate
+                    listOfPossibleCandidates->push_back({tag, record.control, std::nullopt});
+                }
+                else
+                {
+                    Throw<FatalError>("Invalid value for ControlFlowRWTracer::ReadWrite: {}",
+                                      record.rw);
+                }
+            }
+
+            for(const auto& [key, listOfPossibleCandidates] : possibleCandidates)
+            {
+                for(const auto& possibleCandidate : listOfPossibleCandidates)
+                {
+                    if(possibleCandidate.isCandidate())
                     {
-                        Candidate candidate = maybeCandidate.value();
+                        Candidate newCandidate = {possibleCandidate.tag,
+                                                  possibleCandidate.writingNode.value(),
+                                                  possibleCandidate.readingNode.value()};
 
-                        // Since we know that there won't be any more writes to this coordinate,
-                        // we can delete this tag once we fuse our two expressions together
-                        candidate.deleteTag = true;
+                        // If this is the final possible candidate for this tag and body parent,
+                        // that means there are no more reads or writes to this tag in this body parent and therefore the tag can be deleted
+                        if(possibleCandidate == listOfPossibleCandidates.back())
+                        {
+                            newCandidate.deleteTag = true;
+                        }
 
-                        candidates.push_back(candidate);
+                        candidates.push_back(newCandidate);
                     }
-                    std::cout << std::endl;
                 }
             }
 
             return candidates;
         }
-    }
-
-    /**
-     * @brief Reconnect incoming and outgoing DataFlow edges from dimension.
-     *
-     * Inputs coming into the dimension are augmented with `other_inputs`.
-     */
-    void reflow(KernelGraph& graph, int dim, std::vector<int> const& other_inputs)
-    {
-        namespace CT = rocRoller::KernelGraph::CoordinateGraph;
-
-        std::vector<int> inputs, outputs;
-        for(auto const& tag : graph.coordinates.getNeighbours<Graph::Direction::Upstream>(dim))
-        {
-            auto df = graph.coordinates.get<CT::DataFlow>(tag);
-            if(!df)
-                continue;
-            auto parents = graph.coordinates.getNeighbours<Graph::Direction::Upstream>(tag);
-            for(auto const parent : parents)
-                inputs.push_back(parent);
-            graph.coordinates.deleteElement(tag);
-        }
-
-        for(auto const& tag : graph.coordinates.getNeighbours<Graph::Direction::Downstream>(dim))
-        {
-            auto df = graph.coordinates.get<CT::DataFlow>(tag);
-            if(!df)
-                continue;
-            auto children = graph.coordinates.getNeighbours<Graph::Direction::Downstream>(tag);
-            for(auto const child : children)
-                outputs.push_back(child);
-            graph.coordinates.deleteElement(tag);
-        }
-
-        std::copy(other_inputs.cbegin(), other_inputs.cend(), std::back_inserter(inputs));
-        graph.coordinates.addElement(CT::DataFlow(), inputs, outputs);
     }
 
     KernelGraph FuseExpressions::apply(KernelGraph const& original)
@@ -360,8 +314,10 @@ namespace rocRoller::KernelGraph
             // If necessary, delete tag
             if(candidate.deleteTag)
             {
-                auto coords = CoordinateGraph::Transformer(&kgraph.coordinates);
-                coords.removeCoordinate(tagToReplace);
+                kgraph.coordinates.deleteElement(tagToReplace);
+                kgraph.mapper.purgeMappingsTo(tagToReplace);
+                // auto coords = CoordinateGraph::Transformer(&kgraph.coordinates);
+                // coords.removeCoordinate(tagToReplace);
             }
         }
 
