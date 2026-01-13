@@ -36,6 +36,16 @@ namespace rocRoller
     {
         namespace FuseExpressionsDetail
         {
+            struct Candidate
+            {
+                int  tag;
+                int  writingNode;
+                int  readingNode;
+                bool deleteTag = false;
+
+                bool operator==(const Candidate& rhs) const = default;
+            };
+
             struct PossibleCandidate
             {
                 int                tag;
@@ -49,20 +59,16 @@ namespace rocRoller
                     return writingNode.has_value() && readingNode.has_value();
                 }
 
+                Candidate createCandidate() const
+                {
+                    AssertFatal(isCandidate(), "Cannot create candidate, conditions not met");
+                    return Candidate{tag, writingNode.value(), readingNode.value()};
+                }
+
                 bool hasWriteNoRead() const
                 {
                     return writingNode.has_value() && !readingNode.has_value();
                 }
-            };
-
-            struct Candidate
-            {
-                int  tag;
-                int  writingNode;
-                int  readingNode;
-                bool deleteTag = false;
-
-                bool operator==(const Candidate& rhs) const = default;
             };
 
             /*

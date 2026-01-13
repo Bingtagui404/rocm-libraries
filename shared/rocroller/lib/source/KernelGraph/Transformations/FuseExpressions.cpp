@@ -173,8 +173,8 @@ namespace rocRoller::KernelGraph
             auto tracer = ControlFlowRWTracer(kgraph);
             auto trace  = tracer.coordinatesReadWrite();
 
-            // Map from <parent, tag> -> list of possible candidates
-            std::map<std::pair<int, int>, std::vector<PossibleCandidate>> possibleCandidates;
+            // Map from <parent, tag> -> possible candidate
+            std::map<std::pair<int, int>, std::optional<PossibleCandidate>> possibleCandidates;
             for(auto record : trace)
             {
                 // We only care about assign nodes
@@ -184,57 +184,52 @@ namespace rocRoller::KernelGraph
                 }
 
                 auto tag         = record.coordinate;
-                auto node        = kgraph.control.getNode<Assign>(record.control);
                 auto maybeParent = bodyParents(record.control, kgraph).take(1).only();
-                AssertFatal(maybeParent.has_value(), "Node has no body parent", ShowValue(node));
+                AssertFatal(
+                    maybeParent.has_value(), "Node has no body parent", ShowValue(record.control));
                 auto parent = maybeParent.value();
 
-                // List of possible candidates corresponding to the current body parent and tag
-                auto listOfPossibleCandidates = &possibleCandidates[{parent, tag}];
+                // Possible candidate corresponding to the current body parent and coordinate, if one exists
+                auto possibleCandidate = &possibleCandidates[{parent, tag}];
 
                 if(record.rw == RW::WRITE)
                 {
-                    // Create a new possible candidate
-                    listOfPossibleCandidates->push_back({tag, record.control, std::nullopt});
+                    // We're about to create a new possible candidate, so if we already had one corresponding to this coordinate and body parent,
+                    // and it satisfies the conditions for being a candidate, we can save it as such
+                    if(possibleCandidate->has_value() && possibleCandidate->value().isCandidate())
+                    {
+                        candidates.push_back(possibleCandidate->value().createCandidate());
+                    }
+                    // Create a new possible candidate, one that has been written to but not read from yet
+                    possibleCandidates[{parent, tag}] = {tag, record.control, std::nullopt};
                 }
                 else if(record.rw == RW::READ)
                 {
-                    // See if we have any active possible candidates corresponding to this tag and body parent
-                    if(!listOfPossibleCandidates->empty())
+                    // See if we have any active possible candidates corresponding to this coordinate and body parent that have a write but no read
+                    if(possibleCandidate->has_value()
+                       && possibleCandidate->value().hasWriteNoRead())
                     {
-                        // If there's an active possible candidate with a write but no read
-                        auto possibleCandidate = &listOfPossibleCandidates->back();
-                        if(possibleCandidate->hasWriteNoRead())
-                        {
-                            possibleCandidate->readingNode = record.control;
-                        }
-                        else
-                        {
-                            // Otherwise, this is not a possible candidate, so remove it
-                            listOfPossibleCandidates->pop_back();
-                        }
+                        // Now that we've written to and read from this coordinate,
+                        // this will be a candidate as long as we don't have any more reads to this tag
+                        possibleCandidate->value().readingNode = record.control;
                     }
                 }
                 else if(record.rw == RW::READWRITE)
                 {
-                    // See if we have any active possible candidates corresponding to this tag and body parent
-                    if(!listOfPossibleCandidates->empty())
+                    // A READWRITE is composed of a read followed by a write, so we will treat this as two separate operations:
+
+                    // See if we have any active possible candidates corresponding to this coordinate and body parent that have a write but no read
+                    if(possibleCandidate->has_value()
+                       && possibleCandidate->value().hasWriteNoRead())
                     {
-                        // If there's an active possible candidate with a write but no read
-                        auto possibleCandidate = &listOfPossibleCandidates->back();
-                        if(possibleCandidate->hasWriteNoRead())
-                        {
-                            possibleCandidate->readingNode = record.control;
-                        }
-                        else
-                        {
-                            // Otherwise, this is not a possible candidate, so remove it
-                            listOfPossibleCandidates->pop_back();
-                        }
+                        // Now that we've written to and read from this coordinate, since we know we're about to write to it again,
+                        // this is a candidate!
+                        possibleCandidate->value().readingNode = record.control;
+                        candidates.push_back(possibleCandidate->value().createCandidate());
                     }
 
-                    // Create a new possible candidate
-                    listOfPossibleCandidates->push_back({tag, record.control, std::nullopt});
+                    // Create a new possible candidate, one that has been written to but not read from yet
+                    possibleCandidates[{parent, tag}] = {tag, record.control, std::nullopt};
                 }
                 else
                 {
@@ -243,25 +238,18 @@ namespace rocRoller::KernelGraph
                 }
             }
 
-            for(const auto& [key, listOfPossibleCandidates] : possibleCandidates)
+            for(const auto& [parentAndTag, possibleCandidate] : possibleCandidates)
             {
-                for(const auto& possibleCandidate : listOfPossibleCandidates)
+                if(possibleCandidate.has_value() && possibleCandidate.value().isCandidate())
                 {
-                    if(possibleCandidate.isCandidate())
-                    {
-                        Candidate newCandidate = {possibleCandidate.tag,
-                                                  possibleCandidate.writingNode.value(),
-                                                  possibleCandidate.readingNode.value()};
+                    Candidate newCandidate = possibleCandidate.value().createCandidate();
 
-                        // If this is the final possible candidate for this tag and body parent,
-                        // that means there are no more reads or writes to this tag in this body parent and therefore the tag can be deleted
-                        if(possibleCandidate == listOfPossibleCandidates.back())
-                        {
-                            newCandidate.deleteTag = true;
-                        }
+                    // Since this possible candidate meets the requirements for being a candidate,
+                    // we know that there were no more reads or writes to this coordinate after the ones that constituted the candidate,
+                    // and therefore the tag can be deleted
+                    newCandidate.deleteTag = true;
 
-                        candidates.push_back(newCandidate);
-                    }
+                    candidates.push_back(newCandidate);
                 }
             }
 
