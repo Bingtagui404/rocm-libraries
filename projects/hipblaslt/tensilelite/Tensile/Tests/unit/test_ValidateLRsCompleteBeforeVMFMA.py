@@ -361,8 +361,8 @@ class TestValidateLRsCompleteBeforeVMFMA_tf32(CMSValidationTestBase):
         kernel_updates.update({"UseF32XEmulation": True, "ISA": IsaVersion(9,5,0), "DepthU": 32, "ForceUnrollSubIter": True})
         super().setUp(kernel_updates)
 
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_lrs_finished_before_vmfma(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_lrs_finished_before_vmfma(timeline, sched, kernel_dict, codePathIdx)
 
     def test_LR0s_pass(self):
         """
@@ -436,8 +436,8 @@ class TestValidateLRsCompleteBeforeVMFMA_tf32(CMSValidationTestBase):
         self.validate(optSchedule, syncCode, 1, None, None, 0, None)
 
 class TestValidateLRsCompleteBeforeVMFMA_MfmaReorder(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_lrs_finished_before_vmfma(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_lrs_finished_before_vmfma(timeline, sched, kernel_dict, codePathIdx)
 
     def test_simple_bf16(self):
         """
@@ -554,8 +554,8 @@ class TestValidateLRsCompleteBeforeVMFMA_ForceUnrollSubIter(CMSValidationTestBas
     def setUp(self, kernel_updates: Optional[dict[str, Any]] = None):
         super().setUp({"ForceUnrollSubIter": True, "MIWaveTileA": 4, "MIWaveTileB": 4, "DepthU": 32})
 
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_lrs_finished_before_vmfma(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_lrs_finished_before_vmfma(timeline, sched, kernel_dict, codePathIdx)
 
 
     def test_bf16_pass(self):
@@ -577,7 +577,7 @@ class TestValidateLRsCompleteBeforeVMFMA_ForceUnrollSubIter(CMSValidationTestBas
         self.validate(optSchedule, syncCode, 1, None, None, 0, None)
 
     def test_bf16_fail(self):
-        """Same as above, but with the proper SWaitCnt for the LR3s."""
+        """Same as above, but WITHOUT the proper SWaitCnt for the LR3s."""
         assert self.num_vmfma == 16
 
         optSchedule = {

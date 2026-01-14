@@ -82,8 +82,8 @@ class TestValidateNgl(CMSValidationTestBase):
         self.validate(optSchedule, syncCode, 1, shift_value, shift_value, 0, None)
 
 class TestValidateNll(CMSValidationTestBase):
-    def validation_function(self, sched, kernel_dict, codePathIdx):
-        return verify_lrs_finished_before_vmfma(sched, kernel_dict, codePathIdx)
+    def validation_function(self, timeline, sched, kernel_dict, codePathIdx):
+        return verify_lrs_finished_before_vmfma(timeline, sched, kernel_dict, codePathIdx)
 
     def test_lr0_swait_depends_on_lr1(self):
         """

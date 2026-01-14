@@ -637,7 +637,18 @@ class Timeline:
         """
         Populates all timelines with deep copies of the instructions from schedule_info.
         """
-        assert kernel["DirectToLds"], "Only DirectToLds cases are supported by validator."
+        DTL = kernel.get("DirectToLds", False)
+        DTLA = kernel.get("DirectToLdsA", False)
+        DTLB = kernel.get("DirectToLdsB", False)
+
+        has_GRA = "GRA" in instruction_names_to_add and "GRA" in schedule_info.optSchedule
+        has_GRB = "GRB" in instruction_names_to_add and "GRB" in schedule_info.optSchedule
+
+        if not DTL and (has_GRA or has_GRB):
+            if has_GRA and not DTLA:
+                raise ValueError("GRA requires DirectToLdsA to be True.")
+            if has_GRB and not DTLB:
+                raise ValueError("GRB requires DirectToLdsB to be True.")
 
         swap_global_read_order = kernel["SwapGlobalReadOrder"]
 
@@ -1986,16 +1997,11 @@ def index_for_force_unroll_sub_iter(original_idx: int, M: int, N: int) -> int:
     return block_idx * block_size + local_idx
 
 
-def verify_lrs_finished_before_vmfma(schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
+def verify_lrs_finished_before_vmfma(timeline: 'Timeline', schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure that the LocalReads are guaranteed to be complete before the first VMFMA that uses their data.
     """
-    kernel = context["kernel"]
-
-    relevant_names = ["LRA0", "LRB0", "LRA1", "LRB1", "LRA3", "LRB3", "SYNC"]
-    timeline = Timeline(relevant_names, code_path, schedule_info, kernel)
-
-    set_lr_needed_by_for_VMFMA(timeline, kernel, schedule_info.mfmaReorder)
+    set_lr_needed_by_for_VMFMA(timeline, context["kernel"], schedule_info.mfmaReorder)
     apply_swaits(timeline)
     apply_barriers(timeline)
 
@@ -2005,7 +2011,7 @@ def verify_lrs_finished_before_vmfma(schedule_info: 'ScheduleInfo', context: dic
     return True, ""
 
 
-def verify_packs_start_and_end_at_correct_indices(schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
+def verify_packs_start_and_end_at_correct_indices(timeline: 'Timeline', schedule_info: 'ScheduleInfo', context: dict, code_path: int) -> tuple[bool, str]:
     """
     Ensure that the Packs start and end at the correct indices.
     The pack commands take the data loaded into registers by LR commands and manipulate it in various ways to prepare it for the VMFMA instructions.
@@ -2016,14 +2022,7 @@ def verify_packs_start_and_end_at_correct_indices(schedule_info: 'ScheduleInfo',
         1. The ordering of the Pack instructions.
         2. The minimum number of quad-cycles that must pass between issuing certain pack instructions and when their results get used. These restrictions are defined in section 7.6 of the CDNA 4 ISA.
     """
-    relevant_names = ["SYNC", "SNOP"]
-    for num in [0, 1, 3]:
-        relevant_names.append(f"PackA{num}")
-        relevant_names.append(f"PackB{num}")
-        relevant_names.append(f"LRA{num}")
-        relevant_names.append(f"LRB{num}")
     kernel = context["kernel"]
-    timeline = Timeline(relevant_names, code_path, schedule_info, kernel)
     
     if kernel.get("UseF32XEmulation", False) and not kernel.get("UseDirect32XEmulation", False):
         printWarning("UseF32XEmulation is set to True but UseDirect32XEmulation is not set to True. Skipping CMS validation for packs.")
@@ -2110,6 +2109,8 @@ def isValid(scheduleInfo: 'ScheduleInfo', context: dict) -> tuple[bool, str]:
     Note 2: if False is returned, this is not proof that the schedule
     is invalid. It may be a false positive.
     """
+    if "kernel" not in context:
+        return False, "Kernel not found in context."
     # TODO: Validate numbers of instructions and numvmfma first so that the rest of the code can depend on it.
     
     # Case where there was an explicit request to skip validation.
@@ -2141,7 +2142,8 @@ def isValid(scheduleInfo: 'ScheduleInfo', context: dict) -> tuple[bool, str]:
 
     for code_path in range(scheduleInfo.numCodePaths):
         kernel = context.get("kernel")
-        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "SYNC"]
+        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "LRA3", "LRB3", "SYNC", "SNOP",
+                         "PackA0", "PackB0", "PackA1", "PackB1", "PackA3", "PackB3"]
         timeline = Timeline(relevant_names, code_path, scheduleInfo, kernel)
         
         for rule in rules:

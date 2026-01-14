@@ -460,7 +460,6 @@ class TestValidateGlobalReadsNotTooEarly(CMSValidationTestBase):
         }
         syncCode = [SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment=""), SBarrier(comment="")]
 
-        TODO: What do the GRA instructions contain when directolds is false?
         self.kernel["DirectToLds"] = False
         self.kernel["DirectToLdsA"] = True
         self.validate(optSchedule, syncCode, 1, None, None, 0, None)
@@ -628,9 +627,12 @@ class TestValidateGlobalReadsNotTooEarly(CMSValidationTestBase):
             SBarrier(),
         ]
         # Just check that it contains the right substring
-        from Tensile.Components.CustomSchedule import ScheduleInfo
+        from Tensile.Components.CMSValidator import Timeline
         sched = ScheduleInfo(1, self.num_vmfma, optSchedule, syncCode, None, None, None)
-        status, message = self.validation_function(sched, {}, 0)
+        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "LRA3", "LRB3", "SYNC", "SNOP",
+                         "PackA0", "PackB0", "PackA1", "PackB1", "PackA3", "PackB3"]
+        timeline = Timeline(relevant_names, 0, sched, self.kernel)
+        status, message = self.validation_function(timeline, sched, {}, 0)
         assert "Failed to verify that a barrier (to sync waves) exists between completion of local reads" in message
         assert status is False
 
@@ -650,8 +652,12 @@ class TestValidateGlobalReadsNotTooEarly(CMSValidationTestBase):
             SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment=""),
             SBarrier(),
         ]
+        from Tensile.Components.CMSValidator import Timeline
         sched = ScheduleInfo(1, self.num_vmfma, optSchedule, syncCode, None, None, None)
-        status, message = self.validation_function(sched, {}, 0)
+        relevant_names = ["GRA", "GRB", "LRA0", "LRB0", "LRA1", "LRB1", "LRA3", "LRB3", "SYNC", "SNOP",
+                         "PackA0", "PackB0", "PackA1", "PackB1", "PackA3", "PackB3"]
+        timeline = Timeline(relevant_names, 0, sched, self.kernel)
+        status, message = self.validation_function(timeline, sched, {}, 0)
         assert "Failed to verify that a barrier (to sync waves) exists between completion of local reads for B" in message
         assert status is False
 
