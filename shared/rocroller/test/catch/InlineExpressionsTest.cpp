@@ -38,8 +38,8 @@
 #include <rocRoller/Expression_fwd.hpp>
 #include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
 #include <rocRoller/KernelGraph/Transforms/All.hpp>
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions_detail.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions_detail.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
 #include <rocRoller/Utilities/Logging.hpp>
 #include <rocRoller/Utilities/Settings_fwd.hpp>
@@ -47,7 +47,7 @@
 
 using namespace rocRoller;
 
-namespace FuseExpressionsTest
+namespace InlineExpressionsTest
 {
     // Helper function to get all assign nodes of a particular expression type from the graph
     template <typename ExpressionType>
@@ -69,12 +69,12 @@ namespace FuseExpressionsTest
         return expressionNodes;
     }
 
-    TEST_CASE("FuseExpressions transformation works", "[kernel-graph][graph-transforms]")
+    TEST_CASE("InlineExpressions transformation works", "[kernel-graph][graph-transforms]")
     {
         using namespace rocRoller::KernelGraph;
         using namespace rocRoller::KernelGraph::CoordinateGraph;
         using namespace rocRoller::KernelGraph::ControlGraph;
-        using namespace rocRoller::KernelGraph::FuseExpressionsDetail;
+        using namespace rocRoller::KernelGraph::InlineExpressionsDetail;
 
         auto context = TestContext::ForDefaultTarget();
 
@@ -94,7 +94,6 @@ namespace FuseExpressionsTest
         auto params = example.getCommandParameters();
 
         // Apply transformations up to ConstantPropagation,
-        // for some cases we will apply it before FuseExpressions and for others we will not
         graph = transform<IdentifyParallelDimensions>(graph);
         graph = transform<OrderMemory>(graph, true);
         graph = transform<UpdateParameters>(graph, params);
@@ -103,12 +102,11 @@ namespace FuseExpressionsTest
         graph = transform<LowerTile>(graph, params, context.get());
         graph = transform<LowerTensorContraction>(graph, params, context.get());
         graph = transform<Simplify>(graph);
-        auto graphBeforeConstantPropagation = graph;
-        graph                               = transform<ConstantPropagation>(graph);
+        graph = transform<ConstantPropagation>(graph);
 
         SECTION("Find candidates")
         {
-            auto candidates = FuseExpressionsDetail::findFuseCandidates(graph);
+            auto candidates = InlineExpressionsDetail::findInlineCandidates(graph);
             CHECK(candidates.size() == 2);
 
             Candidate expectedCandidate1 = {
@@ -124,9 +122,9 @@ namespace FuseExpressionsTest
             // Original:
             //         Node 188                 Node 184
             // (Tag293 = Tag24 * Tag291) (Tag295 = Tag33 * Tag35)
-            //              \                      \
-            //              \[seq]                 \[seq]
-            //              \                      \
+            //              |                      |
+            //              |[seq]                 |[seq]
+            //              |                      |
             //              ------> Node 185 <------
             //              (Tag_ = Tag293 + Tag295)
 
@@ -164,15 +162,15 @@ namespace FuseExpressionsTest
             CHECK(incomingNodes[0] == multiplyIndex1);
             CHECK(incomingNodes[1] == multiplyIndex2);
 
-            // Apply FuseExpressions
-            graph = transform<FuseExpressions>(graph);
+            // Apply InlineExpressions
+            graph = transform<InlineExpressions>(graph);
 
             // After:
             //           Node 216               Node 213
             //             NOP                    NOP
-            //              \                      \
-            //              \[seq]                 \[seq]
-            //              \                      \
+            //              |                      |
+            //              |[seq]                 |[seq]
+            //              |                      |
             //              ------> Node 185 <------
             //     (Tag_ = (Tag24 * Tag291) + (Tag33 * Tag35))
 
@@ -232,8 +230,8 @@ namespace FuseExpressionsTest
             CHECK(graph.control.getOutputNodeIndices<Sequence>(writeIdx).to<std::vector>().back()
                   == incIdx);
 
-            // Apply FuseExpressions
-            graph = transform<FuseExpressions>(graph);
+            // Apply InlineExpressions
+            graph = transform<InlineExpressions>(graph);
 
             // Expect expression a = 2 + 1
             auto node = graph.control.getNode<Assign>(incIdx);
@@ -246,7 +244,7 @@ namespace FuseExpressionsTest
             int maybeNOPIdx
                 = graph.control.getOutputNodeIndices<Sequence>(186).to<std::vector>().back();
             CHECK(graph.control.get<NOP>(maybeNOPIdx).has_value());
-            // Child of NOP should be fused add expression
+            // Child of NOP should be inlined add expression
             CHECK(graph.control.getOutputNodeIndices<Sequence>(maybeNOPIdx).to<std::vector>().back()
                   == incIdx);
 
@@ -257,7 +255,7 @@ namespace FuseExpressionsTest
             CHECK(connections.back().coordinate == coord);
         }
 
-        SECTION("Write-read-read (should not be fused)")
+        SECTION("Write-read-read (should not be inlined)")
         {
             // Two reads after a write
             // a = 1
@@ -306,7 +304,7 @@ namespace FuseExpressionsTest
                   == idxC);
 
             // Expect that none of these are candidates
-            for(const auto& candidate : FuseExpressionsDetail::findFuseCandidates(graph))
+            for(const auto& candidate : InlineExpressionsDetail::findInlineCandidates(graph))
             {
                 CHECK(candidate.tag != coordA);
                 CHECK(candidate.writingNode != idxA);

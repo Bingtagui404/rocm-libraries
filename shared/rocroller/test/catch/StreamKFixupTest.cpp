@@ -168,7 +168,7 @@ TEST_CASE("StreamK multiple fix-ups", "[streamk][kernel-graph]")
               transforms.push_back(std::make_shared<LowerTile>(params, context.get()));
               transforms.push_back(std::make_shared<LowerTensorContraction>(params, context.get()));
               transforms.push_back(std::make_shared<Simplify>());
-              transforms.push_back(std::make_shared<FuseExpressions>());
+              transforms.push_back(std::make_shared<InlineExpressions>());
               transforms.push_back(std::make_shared<AddStreamK>(
                   context.get(), params, rocRoller::XLOOP, rocRoller::KLOOP, numWGsExpr));
 

@@ -133,4 +133,11 @@ namespace rocRoller
         Register::ValuePtr lhs,
         Register::ValuePtr rhs,
         Expression::Multiply const&);
+    template <>
+    Generator<Instruction>
+        MultiplyGenerator<Register::Type::Accumulator, DataType::Float>::generate(
+            Register::ValuePtr dst,
+            Register::ValuePtr lhs,
+            Register::ValuePtr rhs,
+            Expression::Multiply const&);
 }

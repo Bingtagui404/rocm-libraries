@@ -32,17 +32,17 @@ namespace rocRoller
     namespace KernelGraph
     {
         /**
-         * @brief Performs the expression fusion transformation.
+         * @brief Performs the expression inlining transformation.
          *
-         * Fuses neighbouring expressions where possible.
+         * Inlines subexpressions into larger expressions where possible.
          */
-        class FuseExpressions : public GraphTransform
+        class InlineExpressions : public GraphTransform
         {
         public:
             KernelGraph apply(KernelGraph const& original) override;
             std::string name() const override
             {
-                return "FuseExpressions";
+                return "InlineExpressions";
             }
         };
     }

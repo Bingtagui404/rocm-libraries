@@ -88,7 +88,7 @@ namespace AliasDataFlowTagsTest
         graph = transform<Simplify>(graph);
 
         graph = transform<ConstantPropagation>(graph);
-        graph = transform<FuseExpressions>(graph);
+        graph = transform<InlineExpressions>(graph);
         graph = transform<ConnectWorkgroups>(graph, context.get());
         graph = transform<WorkgroupRemapXCC>(graph, context.get(), params->workgroupRemapXCC);
         graph = transform<UnrollLoops>(graph, params, context.get());

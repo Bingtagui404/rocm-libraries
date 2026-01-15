@@ -219,7 +219,7 @@ TEST_CASE("Colour by NaryArgument - Basic Matrix Multiply", "[kernel-graph]")
     graph = transform<LowerTensorContraction>(graph, params, context.get());
     graph = transform<Simplify>(graph);
     graph = transform<ConstantPropagation>(graph);
-    graph = transform<FuseExpressions>(graph);
+    graph = transform<InlineExpressions>(graph);
     graph = transform<ConnectWorkgroups>(graph, context.get());
     graph = transform<WorkgroupRemapXCC>(graph, context.get(), params->workgroupRemapXCC);
     graph = transform<UnrollLoops>(graph, params, context.get());
@@ -302,7 +302,7 @@ TEST_CASE("Colour by NaryArgument - Matrix Multiply with Scaling", "[kernel-grap
     graph = transform<LowerTensorContraction>(graph, params, context.get());
     graph = transform<Simplify>(graph);
     graph = transform<ConstantPropagation>(graph);
-    graph = transform<FuseExpressions>(graph);
+    graph = transform<InlineExpressions>(graph);
     graph = transform<ConnectWorkgroups>(graph, context.get());
     graph = transform<UnrollLoops>(graph, params, context.get());
     graph = transform<FuseLoops>(graph);

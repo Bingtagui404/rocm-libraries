@@ -42,10 +42,10 @@
 #include <rocRoller/KernelGraph/Transforms/CleanLoops.hpp>
 #include <rocRoller/KernelGraph/Transforms/ConnectWorkgroups.hpp>
 #include <rocRoller/KernelGraph/Transforms/ConstantPropagation.hpp>
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
 #include <rocRoller/KernelGraph/Transforms/FuseLoops.hpp>
 #include <rocRoller/KernelGraph/Transforms/HoistLoopInvariant.hpp>
 #include <rocRoller/KernelGraph/Transforms/IdentifyParallelDimensions.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
 #include <rocRoller/KernelGraph/Transforms/InlineIncrements.hpp>
 #include <rocRoller/KernelGraph/Transforms/InlineInits.hpp>
 #include <rocRoller/KernelGraph/Transforms/LoadPacked.hpp>

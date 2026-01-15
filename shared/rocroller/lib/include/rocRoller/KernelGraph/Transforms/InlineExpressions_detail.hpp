@@ -28,13 +28,13 @@
 
 #include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
 #include <rocRoller/KernelGraph/KernelGraph.hpp>
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
 
 namespace rocRoller
 {
     namespace KernelGraph
     {
-        namespace FuseExpressionsDetail
+        namespace InlineExpressionsDetail
         {
             struct Candidate
             {
@@ -81,22 +81,13 @@ namespace rocRoller
                                    Expression::ExpressionPtr const& exprToReplaceWith);
 
             /**
-             * @brief sort output from ControlFlowRWTracer by body parent
-             *
-             * @return Mapping from parent nodes to read-write records underneath them
-             */
-            std::unordered_map<int, std::vector<ControlFlowRWTracer::ReadWriteRecord>>
-                sortRecordsByBodyParent(KernelGraph const&         kgraph,
-                                        ControlFlowRWTracer const& tracer);
-
-            /**
              * If a DataFlowTag is:
              * 1. written to only once
              * 2. read only once within that same body parent
              *
-             * then those two control nodes comprise a candidate for FuseExpressions.
+             * then those two control nodes comprise a candidate for InlineExpressions.
              */
-            std::vector<Candidate> findFuseCandidates(KernelGraph const& kgraph);
+            std::vector<Candidate> findInlineCandidates(KernelGraph const& kgraph);
         }
     }
 }

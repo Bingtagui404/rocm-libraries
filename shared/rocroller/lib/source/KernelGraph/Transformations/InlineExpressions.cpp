@@ -24,15 +24,15 @@
  *
  *******************************************************************************/
 
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions.hpp>
-#include <rocRoller/KernelGraph/Transforms/FuseExpressions_detail.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
+#include <rocRoller/KernelGraph/Transforms/InlineExpressions_detail.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
 
 namespace rocRoller::KernelGraph
 {
     using namespace ControlGraph;
 
-    namespace FuseExpressionsDetail
+    namespace InlineExpressionsDetail
     {
         /**
          * @brief Visitor to replace a DataFlowTag with a given expression
@@ -166,7 +166,7 @@ namespace rocRoller::KernelGraph
             return recordsByParent;
         }
 
-        std::vector<Candidate> findFuseCandidates(KernelGraph const& kgraph)
+        std::vector<Candidate> findInlineCandidates(KernelGraph const& kgraph)
         {
             std::vector<Candidate> candidates;
 
@@ -233,13 +233,9 @@ namespace rocRoller::KernelGraph
                         if(possibleCandidate->value().hasWriteNoRead())
                         {
                             // Now that we've written to and read from this coordinate,
-                            // this will be a candidate as long as we don't have any more reads to this tag
+                            // since we know we're about to write to it again, this is a candidate!
                             possibleCandidate->value().readingNode = record.control;
-                        }
-                        // Otherwise, we have already read from this coordinate, so this is not a candidate after all
-                        else
-                        {
-                            possibleCandidates[{parent, tag}] = std::nullopt;
+                            candidates.push_back(possibleCandidate->value().createCandidate());
                         }
                     }
 
@@ -272,11 +268,11 @@ namespace rocRoller::KernelGraph
         }
     }
 
-    KernelGraph FuseExpressions::apply(KernelGraph const& original)
+    KernelGraph InlineExpressions::apply(KernelGraph const& original)
     {
         auto kgraph = original;
 
-        auto candidates = FuseExpressionsDetail::findFuseCandidates(kgraph);
+        auto candidates = InlineExpressionsDetail::findInlineCandidates(kgraph);
         for(auto candidate : candidates)
         {
             auto tagToReplace = candidate.tag;
@@ -287,7 +283,7 @@ namespace rocRoller::KernelGraph
             auto readingExpr = readingNode.expression;
 
             // Replace the DataFlowTag in readingExpr corresponding to tagToReplace with replacementExpr
-            auto newExpr = FuseExpressionsDetail::replaceDataFlowTag(
+            auto newExpr = InlineExpressionsDetail::replaceDataFlowTag(
                 readingExpr, tagToReplace, replacementExpr);
 
             // Replace the old expression with this new one
@@ -304,8 +300,6 @@ namespace rocRoller::KernelGraph
             {
                 kgraph.coordinates.deleteElement(tagToReplace);
                 kgraph.mapper.purgeMappingsTo(tagToReplace);
-                // auto coords = CoordinateGraph::Transformer(&kgraph.coordinates);
-                // coords.removeCoordinate(tagToReplace);
             }
         }
 
