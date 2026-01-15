@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <tuple>
 
+#include "formocast/formocast.hpp"
 #include "origami/hardware.hpp"
 #include "origami/math.hpp"
 #include "origami/types.hpp"
@@ -575,21 +576,27 @@ double compute_memory_latency(const problem_t& problem,
   const size_t MT_M = config.mt.m;
   const size_t MT_N = config.mt.n;
   const size_t MT_K = config.mt.k;
-
+  bool debug = origami::runtime_options().get().debug_enabled;
+  if (debug) 
+    std::cout << "MT " << MT_M << "x" << MT_N << "x" << MT_K << std::endl;
   // 1) Estimate L2 hit-rate
   double H_mem1 = estimate_l2_hit(problem, hardware, config, splitting_factor);
-
+  if (debug)
+    std::cout << "estimate_l2_hit " << H_mem1 << std::endl;
   // Global cap on L2 hit-rate (prevents impossible cache residency claims)
   // (Assumes capacity is given in KiB, convert to bytes)
   double H_mem1_global =
       compute_l2_hit_rate_global(problem, hardware, config, hardware.L2_capacity * 1024);
-
+  if (debug)
+    std::cout << "compute_l2_hit_rate_global " << H_mem1_global << std::endl;
   H_mem1 = std::min(H_mem1, H_mem1_global);
 
   if (H_mem1 == 0) { H_mem1 = 0.5; }
 
   // 2) Estimate mall hit-rate
   double H_mem2 = estimate_mall_hit(problem, hardware, config, num_active_cus, splitting_factor);
+  if (debug)
+    std::cout << "estimate_mall_hit " << H_mem2 << std::endl;
 
   // 3) Total loads are loads from A and loads from B
   size_t MT_M_rounded_128bytes = round_elements_to_128B(MT_M, a_bits);
@@ -678,7 +685,107 @@ double compute_memory_latency(const problem_t& problem,
   // 12) pick the worst‐case bound
   double L_mem = std::max({L_mem_mem1, L_mem_mem2, L_mem_MEM});
 
+  /// Formocast
+  uint32_t threadnum = 64 * config.wave_num;
+  double lda = a_trans? problem.size.k : problem.size.m;
+  double ldb = b_trans? problem.size.n : problem.size.k;
+  int N_WGs_per_tile_XCD = std::min(config.workgroup_mapping, static_cast<int>(grid_n));
+  int M_WGs_per_tile_XCD = std::min(
+        static_cast<int>(grid_m), math::safe_ceil_div(int(hardware.N_CU / hardware.NUM_XCD), N_WGs_per_tile_XCD));
+  int M_WGs_per_tile =
+        std::min(static_cast<int>(grid_m), math::safe_ceil_div(int(hardware.N_CU), N_WGs_per_tile_XCD));
+  int N_WGs_per_tile =
+        std::min(static_cast<int>(grid_n), N_WGs_per_tile_XCD * math::safe_ceil_div(M_WGs_per_tile, static_cast<int>(grid_m)));
+  
+  uint32_t numberWGs = grid_m * grid_n * problem.batch * splitting_factor;
+  uint32_t WGs_per_tile = std::min(uint32_t(hardware.N_CU), numberWGs);
+  uint32_t WGs_per_tile_XCD = WGs_per_tile / hardware.NUM_XCD;
+  Tensilelite::Simulator::L1CacheHitRate l1 = Tensilelite::Simulator::computeL1CacheHitRate(
+                hardware.L1CacheCapacity, hardware.L1CacheLineSize, hardware.L1BusWidthPerCU, 
+                MT_M, MT_N, a_bytes, b_bytes, config.cache_hints_a, config.cache_hints_b, config.grvw_a,
+                config.grvw_b, config.direct_to_vgpr_a, config.direct_to_vgpr_b, false, false,
+                config.vector_width_a, config.vector_width_b, a_trans, b_trans, lda, ldb, config.numloads_coalesced_a,
+                config.numloads_coalesced_b, threadnum, config.wave_group[0], config.wave_group[1]);
+  
+  Tensilelite::Simulator::L2CacheHitRate l2 = Tensilelite::Simulator::computeL2CacheHitRate(problem.size.m, problem.size.n, problem.size.k, MT_M, MT_N,
+                                     MT_K, hardware.L2CacheCapacity, hardware.N_CU,
+                                     hardware.NUM_XCD, 1, config.workgroup_mapping, problem.batch,
+                                     a_bytes, b_bytes, config.cache_hints_a, config.cache_hints_b,
+                                     false);
+  
+  Tensilelite::Simulator::L3CacheHitRate l3 = Tensilelite::Simulator::computeL3CacheHitRate(problem.size.m, problem.size.n, problem.size.k, hardware.L3CacheCapacity,
+                                     hardware.N_CU, a_bytes, b_bytes, config.cache_hints_a, config.cache_hints_b,
+                                     grid_n, grid_m, N_WGs_per_tile, M_WGs_per_tile);
+  if (debug) {
+    std::cout << "l1 t0 " << l1.tile0HitRate << ", t1 " << l1.tile1HitRate << std::endl;
+    std::cout << "l2 t0 " << l2.tile0HitRate << ", t1 " << l2.tile1HitRate << ", total " << l2.totalHitRate << std::endl;
+    std::cout << "l3 t0 " << l3.tile0HitRate << ", t1 " << l3.tile1HitRate << ", total " << l3.totalHitRate << std::endl;
+                              }
+  double tcc_ea0_coalscedA;
+  double tcc_ea0_coalscedB;
+  double L2ReadArbEff = 0.9;
+  double L3Bandwidth = 1578.95;
+  double hbmBandwidth = 3157.89;
 
+  double L2BandWidthPerCU = L2ReadArbEff * 128 * 16 / WGs_per_tile_XCD;
+  double L3BandWidthPerCU = L3Bandwidth / WGs_per_tile;
+  double HBMBandWidthPerCU = hbmBandwidth / WGs_per_tile;
+  double A_L1_req =
+        Tensilelite::Simulator::getLoadRequest(std::min(problem.size.m,MT_M), MT_K, hardware.L1CacheLineSize, config.grvw_a, a_bytes, config.direct_to_vgpr_a,
+                                  a_trans,                 // isTransposed
+                                  false,          // isSwizzled (for transposed case)
+                                  config.vector_width_a,                 // VW (for transposed case)
+                                  hardware.L1BusWidthPerCU,  // L1BusWidthPerCU (for non-transposed case)
+                                  config.numloads_coalesced_a,      // NumLoadsCoalesced (for non-transposed case)
+                                  config.wave_group[1],  // numWaveX (for non-transposed case)
+                                  tcc_ea0_coalscedA);
+
+    double B_L1_req =
+        Tensilelite::Simulator::getLoadRequest(std::min(problem.size.n,MT_N), MT_K, hardware.L1CacheLineSize, config.grvw_b, b_bytes, config.direct_to_vgpr_b,
+                                  !b_trans,        // isTransposed (B is transposed when trB=false)
+                                  false,  // isSwizzled (for transposed case)
+                                  config.vector_width_b,         // VW (for transposed case)
+                                  hardware.L1BusWidthPerCU,  // L1BusWidthPerCU (for non-transposed case)
+                                  config.numloads_coalesced_b,      // NumLoadsCoalesced (for non-transposed case)
+                                  config.wave_group[0],  // numWaveX (for non-transposed case)
+                                  tcc_ea0_coalscedB);
+    if (debug) {
+      std::cout << "A " << A_L1_req << ", tcc_ea0_coalescedA " << tcc_ea0_coalscedA << std::endl;
+      std::cout << "B " << B_L1_req << ", tcc_ea0_coalescedB " << tcc_ea0_coalscedB << std::endl;
+    }
+    double A_L2_req = A_L1_req * (1 - l1.tile0HitRate) / 2 * tcc_ea0_coalscedA;
+    double A_L3_req = A_L2_req * (1 - l2.tile0HitRate) / tcc_ea0_coalscedA;
+    double A_hbm_req = A_L3_req * (1 - l3.tile0HitRate);
+    double B_L2_req = B_L1_req * (1 - l1.tile1HitRate) / 2 * tcc_ea0_coalscedB;
+    double B_L3_req = B_L2_req * (1 - l2.tile1HitRate) / tcc_ea0_coalscedB;
+    double B_hbm_req = B_L3_req * (1 - l3.tile1HitRate);
+
+    double A_L1_clk = A_L1_req * 64 / hardware.L1BusWidthPerCU; 
+    double A_L2_clk = A_L2_req * 128 / std::min(L2BandWidthPerCU, hardware.L2BusWidthPerCU);
+    double A_L3_clk = A_L3_req * 128 / L3BandWidthPerCU;
+    double A_hbm_clk = A_hbm_req * 128 / HBMBandWidthPerCU;
+
+    double B_L1_clk = B_L1_req * 64 / hardware.L1BusWidthPerCU;
+    double B_L2_clk = B_L2_req * 128 / std::min(L2BandWidthPerCU, hardware.L2BusWidthPerCU);
+    double B_L3_clk = B_L3_req * 128 / L3BandWidthPerCU;
+    double B_hbm_clk = B_hbm_req * 128 / HBMBandWidthPerCU;
+    if (debug) {
+      std::cout << "A_L2_req " << A_L2_req << " A_L3_req " << A_L3_req << " A_hbm_req " << A_hbm_req << std::endl;
+      std::cout << "B_L2_req " << B_L2_req << " B_L3_req " << B_L3_req << " B_hbm_req " << B_hbm_req << std::endl;
+      std::cout << "A_L1_clk " << A_L1_clk << " A_L2_clk " << A_L2_clk << " A_L3_clk " << A_L3_clk << " A_hbm_clk " << A_hbm_clk << std::endl;
+      std::cout << "B_L1_clk " << B_L1_clk << " B_L2_clk " << B_L2_clk << " B_L3_clk " << B_L3_clk << " B_hbm_clk " << B_hbm_clk << std::endl;
+    }
+    double L1_overall = (A_L1_clk + B_L1_clk);
+    double L2_overall = (A_L2_clk + B_L2_clk);
+    double L3_overall = (A_L3_clk + B_L3_clk);
+    double hbm_overall = (A_hbm_clk + B_hbm_clk);
+
+    double mem_overall = L1_overall + L2_overall + L3_overall + hbm_overall;
+    if (debug)
+      std::cout << "mem_overall " << mem_overall << " L_mem " << L_mem << std::endl;
+  const char* formocast = std::getenv("USE_FORMOCAST");
+  if (formocast)
+    return mem_overall;
   return L_mem;
 }
 

@@ -163,6 +163,14 @@ namespace TensileLite
 
         int nonTemporalA = 0;
         int nonTemporalB = 0;
+        bool DirectToVgprA = false;
+        bool DirectToVgprB = false;
+        int NumLoadsCoalescedA = 0;
+        int NumLoadsCoalescedB = 0;
+        int VectorWidthA = 1;
+        int VectorWidthB = 1;
+
+        std::array<int, 2> waveGroup;
     };
 
     struct StreamKSettings

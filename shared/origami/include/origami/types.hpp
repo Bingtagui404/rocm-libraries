@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <compare>
 #include <cstddef>
@@ -316,6 +317,21 @@ struct config_t {
 
   /// Whether operand B is accessed with cache-flags.
   int cache_hints_b = 0;
+
+  /// Tensilelite specific
+  size_t grvw_a = 1;
+  size_t grvw_b = 1;
+  size_t gwvw_c = 1;
+  size_t gwvw_d = 1;
+  int prefetch_global_read = 2;
+  bool direct_to_vgpr_a = false;
+  bool direct_to_vgpr_b = false;
+  int numloads_coalesced_a = 0;
+  int numloads_coalesced_b = 0;
+  int vector_width_a = 1;
+  int vector_width_b = 1;
+  std::array<int, 2> wave_group;
+  size_t wave_num = 0;
 
   /// Workspace size parameters.
   std::size_t workspace_size            = 0;

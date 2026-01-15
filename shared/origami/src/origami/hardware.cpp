@@ -21,7 +21,16 @@ hardware_t::hardware_t(architecture_t arch,
                        size_t L2_capacity,
                        double compute_clock_ghz,
                        size_t parallel_mi_cu,
-                       std::tuple<double, double, double> mem_bw_per_wg_coefficients)
+                       std::tuple<double, double, double> mem_bw_per_wg_coefficients,
+                       double L1CacheCapacity,
+                       double L2CacheCapacity,
+                       double L3CacheCapacity,
+                       double L1CacheLineSize,
+                       double L2CacheLineSize,
+                       double L1BusWidthPerCU,
+                       double L2BusWidthPerCU,
+                       double L1WriteBusWidthPerCU,
+                       double L2WriteBusWidthPerCU)
     : arch(arch)
     , N_CU(N_CU)
     , lds_capacity(lds_capacity)
@@ -33,7 +42,16 @@ hardware_t::hardware_t(architecture_t arch,
     , compute_clock_ghz(compute_clock_ghz)
     , parallel_mi_cu(parallel_mi_cu)
     , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
-    , NUM_XCD(NUM_XCD) {}
+    , NUM_XCD(NUM_XCD)
+    , L1CacheCapacity(L1CacheCapacity)
+    , L2CacheCapacity(L2CacheCapacity)
+    , L3CacheCapacity(L3CacheCapacity)
+    , L1CacheLineSize(L1CacheLineSize)
+    , L2CacheLineSize(L2CacheLineSize)
+    , L1BusWidthPerCU(L1BusWidthPerCU)
+    , L2BusWidthPerCU(L2BusWidthPerCU)
+    , L1WriteBusWidthPerCU(L1WriteBusWidthPerCU)
+    , L2WriteBusWidthPerCU(L2WriteBusWidthPerCU) {}
 
 hardware_t::hardware_t(hipDeviceProp_t properties)
     : hardware_t(get_hardware_for_properties(properties)) {}
@@ -50,7 +68,16 @@ hardware_t::hardware_t(const hardware_t& other)
     , compute_clock_ghz(other.compute_clock_ghz)
     , parallel_mi_cu(other.parallel_mi_cu)
     , mem_bw_per_wg_coefficients(other.mem_bw_per_wg_coefficients)
-    , NUM_XCD(other.NUM_XCD) {}
+    , NUM_XCD(other.NUM_XCD) 
+    , L1CacheCapacity(other.L1CacheCapacity)
+    , L2CacheCapacity(other.L2CacheCapacity)
+    , L3CacheCapacity(other.L3CacheCapacity)
+    , L1CacheLineSize(other.L1CacheLineSize)
+    , L2CacheLineSize(other.L2CacheLineSize)
+    , L1BusWidthPerCU(other.L1BusWidthPerCU)
+    , L2BusWidthPerCU(other.L2BusWidthPerCU)
+    , L1WriteBusWidthPerCU(other.L1WriteBusWidthPerCU)
+    , L2WriteBusWidthPerCU(other.L2WriteBusWidthPerCU){}
 
 hardware_t hardware_t::get_hardware_for_properties(hipDeviceProp_t properties) {
   auto arch_name = get_before_first_colon(properties.gcnArchName);
@@ -72,7 +99,16 @@ hardware_t hardware_t::get_hardware_for_properties(hipDeviceProp_t properties) {
       properties.l2CacheSize,
       properties.clockRate / 1e6,
       constants.parallel_mi_cu,
-      constants.mem_bw_per_wg_coefficients);
+      constants.mem_bw_per_wg_coefficients,
+      constants.L1CacheCapacity,
+      constants.L2CacheCapacity,
+      constants.L3CacheCapacity,
+      constants.L1CacheLineSize,
+      constants.L2CacheLineSize,
+      constants.L1BusWidthPerCU,
+      constants.L2BusWidthPerCU,
+      constants.L1WriteBusWidthPerCU,
+      constants.L2WriteBusWidthPerCU);
 }
 
 hardware_t hardware_t::get_hardware_for_device(int deviceId) {

@@ -78,6 +78,15 @@ class hardware_t {
     std::tuple<double, double, double>
         mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
     double mem_clock_ratio;          ///< Memory clock ratio relative to compute clock
+    double L1CacheCapacity;
+    double L2CacheCapacity;
+    double L3CacheCapacity;
+    double L1CacheLineSize;
+    double L2CacheLineSize;
+    double L1BusWidthPerCU;
+    double L2BusWidthPerCU;
+    double L1WriteBusWidthPerCU;
+    double L2WriteBusWidthPerCU;
 
     constexpr architecture_constants(size_t num_xcds,
                                      double mem1_perf_ratio,
@@ -85,14 +94,32 @@ class hardware_t {
                                      double mem3_perf_ratio,
                                      size_t parallel_mi_cu,
                                      std::tuple<double, double, double> mem_bw_per_wg_coefficients,
-                                     double mem_clock_ratio)  // Obtained through microbenchmarking
+                                     double mem_clock_ratio,
+                                     double L1CacheCapacity=0.0,
+                                     double L2CacheCapacity=0.0,
+                                     double L3CacheCapacity=0.0,
+                                     double L1CacheLineSize=0.0,
+                                     double L2CacheLineSize=0.0,
+                                     double L1BusWidthPerCU=0.0,
+                                     double L2BusWidthPerCU=0.0,
+                                     double L1WriteBusWidthPerCU=0.0,
+                                     double L2WriteBusWidthPerCU=0.0)  // Obtained through microbenchmarking
         : num_xcds(num_xcds)
         , mem1_perf_ratio(mem1_perf_ratio)
         , mem2_perf_ratio(mem2_perf_ratio)
         , mem3_perf_ratio(mem3_perf_ratio)
         , parallel_mi_cu(parallel_mi_cu)
         , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
-        , mem_clock_ratio(mem_clock_ratio) {}
+        , mem_clock_ratio(mem_clock_ratio)
+        , L1CacheCapacity(L1CacheCapacity)
+        , L2CacheCapacity(L2CacheCapacity)
+        , L3CacheCapacity(L3CacheCapacity)
+        , L1CacheLineSize(L1CacheLineSize)
+        , L2CacheLineSize(L2CacheLineSize)
+        , L1BusWidthPerCU(L1BusWidthPerCU)
+        , L2BusWidthPerCU(L2BusWidthPerCU)
+        , L1WriteBusWidthPerCU(L1WriteBusWidthPerCU)
+        , L2WriteBusWidthPerCU(L2WriteBusWidthPerCU) {}
   };
 
   /**
@@ -112,7 +139,7 @@ class hardware_t {
       case architecture_t::gfx942:
         return {8, 17, 1.21875121875121875122 * 6, 4, 4, std::make_tuple(0, 0.015, 0), 1.5};
       case architecture_t::gfx950:
-        return {8, 17, 1.21875121875121875122 * 7, 6, 4, std::make_tuple(0, 0.008, 0), 1.5};
+        return {8, 17, 1.21875121875121875122 * 7, 6, 4, std::make_tuple(0, 0.008, 0), 1.5, 32768, 4.1943e+06, 2.68435e+08, 128, 128, 64, 128, 64, 64};
       case architecture_t::gfx1201:
         return {1, 5.74, 1.21875121875121875122 * 2.41, 0.464, 2, std::make_tuple(0, 0.17, 0), 1.5};
       case architecture_t::gfx1100:
@@ -383,6 +410,15 @@ class hardware_t {
   std::tuple<double, double, double>
       mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
   size_t NUM_XCD;                  ///< Number of XCDs (XGMI Complex Die)
+  double L1CacheCapacity;
+  double L2CacheCapacity;
+  double L3CacheCapacity;
+  double L1CacheLineSize;
+  double L2CacheLineSize;
+  double L1BusWidthPerCU;
+  double L2BusWidthPerCU;
+  double L1WriteBusWidthPerCU;
+  double L2WriteBusWidthPerCU;
 
   /**
    * @brief Construct hardware_t with explicit parameters.
@@ -409,7 +445,16 @@ class hardware_t {
              size_t L2_capacity,
              double compute_clock_ghz,
              size_t parallel_mi_cu,
-             std::tuple<double, double, double> mem_bw_per_wg_coefficients);
+             std::tuple<double, double, double> mem_bw_per_wg_coefficients,
+             double L1CacheCapacity=0.0,
+             double L2CacheCapacity=0.0,
+             double L3CacheCapacity=0.0,
+             double L1CacheLineSize=0.0,
+             double L2CacheLineSize=0.0,
+             double L1BusWidthPerCU=0.0,
+             double L2BusWidthPerCU=0.0,
+             double L1WriteBusWidthPerCU=0.0,
+             double L2WriteBusWidthPerCU=0.0);
 
   /**
    * @brief Construct hardware_t from HIP device properties.

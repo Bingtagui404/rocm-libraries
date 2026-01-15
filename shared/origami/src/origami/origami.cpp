@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <iostream>
 
+#include "formocast/formocast.hpp"
+
 #include "origami/gemm.hpp"
 #include "origami/math.hpp"
 #include "origami/origami.hpp"
