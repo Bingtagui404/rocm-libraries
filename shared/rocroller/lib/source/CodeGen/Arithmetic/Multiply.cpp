@@ -402,12 +402,10 @@ namespace rocRoller
     {
         AssertFatal(lhs != nullptr);
         AssertFatal(rhs != nullptr);
-        if(lhs->regType() == Register::Type::Accumulator
-           && !m_context->targetArchitecture().HasCapability(GPUCapability::ArchAccUnifiedRegs))
-            co_yield m_context->copier()->ensureType(lhs, lhs, Register::Type::Vector);
-        if(lhs->regType() == Register::Type::Accumulator
-           && !m_context->targetArchitecture().HasCapability(GPUCapability::ArchAccUnifiedRegs))
-            co_yield m_context->copier()->ensureType(rhs, rhs, Register::Type::Vector);
+
+        co_yield m_context->copier()->ensureType(lhs, lhs, Register::Type::Vector);
+        co_yield m_context->copier()->ensureType(rhs, rhs, Register::Type::Vector);
+
         co_yield_(Instruction("v_mul_f32", {dest}, {lhs, rhs}, {}, ""));
     }
 }
