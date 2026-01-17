@@ -798,6 +798,9 @@ double compute_tile_latency(const problem_t& problem,
                             size_t num_active_cus,
                             size_t splitting_factor) {
   // Extract parameters from structured types
+  bool debug = runtime_options().get().debug_enabled;
+  logger run_info;
+
   const size_t K = problem.size.k;
   size_t batch   = problem.batch;
 
@@ -852,6 +855,24 @@ double compute_tile_latency(const problem_t& problem,
 
   L_prologue = L_prologue * pow(0.95, real_occupancy);  // Factor chosen empirically
   L_epilogue = L_epilogue * pow(0.95, real_occupancy);  // Factor chosen empirically
+  if(debug)
+  {
+    run_info.log_debug("Problem size", std::to_string(int(problem.size.m)) + "x" + std::to_string(int(problem.size.n)) + "x"
+                                   + std::to_string(int(problem.size.k)));
+    run_info.log_debug("batch", problem.batch);
+    run_info.log_debug("Macrotile", std::to_string(int(MT_M)) + "x" + std::to_string(int(MT_N)) + "x" + std::to_string(int(MT_K)));
+    run_info.log_debug("mem_bw_occ", mem_bw_occ);
+    run_info.log_debug("mem_bw_occ_limited", mem_bw_occ_limited);
+    run_info.log_debug("utilization", utilization);
+    run_info.log_debug("output_utilization", output_utilization);
+    run_info.log_debug("effective_tile_penalty", effective_tile_penalty);
+    run_info.log_debug("output_utilization_penalty", output_utilization_penalty);
+    run_info.log_debug("grid_m", grid_m);
+    run_info.log_debug("grid_n", grid_n);
+    run_info.log_debug("config.occupancy", config.occupancy);
+    run_info.log_debug("real_occupancy", real_occupancy);
+    run_info.log_debug("num_active_cus", num_active_cus);
+  }
   // 4') K-split reductions are globally coherent, we need to write and read split-1 MT_M*MT_N
   // tiles to coherent memory
   if (splitting_factor > 1) {
@@ -874,6 +895,15 @@ double compute_tile_latency(const problem_t& problem,
 
     double L_reduce = partial_readwrite_bytes / (mem_bw_occ_limited);
     L_epilogue += L_reduce + partial_adds + 10000;
+    if(debug)
+    {
+        run_info.log_debug("splitting_factor", splitting_factor);
+        run_info.log_debug("partial_read_bytes", partial_read_bytes);
+        run_info.log_debug("partial_write_bytes", partial_write_bytes);
+        run_info.log_debug("partial_readwrite_bytes", partial_readwrite_bytes);
+        run_info.log_debug("partial_adds", partial_adds);
+        run_info.log_debug("L_reduce", L_reduce);
+    }
   }
   // 4'') tf32 emu has some more overhead
   double L_cvt = 0;
@@ -901,8 +931,9 @@ double compute_tile_latency(const problem_t& problem,
       std::max(static_cast<long>(math::safe_ceil_div(static_cast<size_t>(k_per_split), MT_K) - 1),
                static_cast<long>(1));
   // Zero Padding in the K dimension on last iteration
+  double problem_k_quant = 0;
   if (K % MT_K != 0) {
-    const double problem_k_quant = static_cast<double>(K % MT_K) / static_cast<double>(K);
+    problem_k_quant = static_cast<double>(K % MT_K) / static_cast<double>(K);
     L_epilogue += problem_k_quant * 50000;  // Scale by remainder proportion of problem. 50k cycle
                                             // penalty if have to zero pad all except 1.
                                             //(Scale Determined Empirically)
@@ -914,8 +945,22 @@ double compute_tile_latency(const problem_t& problem,
       (L_tile_single * static_cast<double>(num_iter)) + L_prologue + L_epilogue * 2 + L_WG_setup +
       (500 * static_cast<double>(
                  num_iter));  // 7 instructions (each with 4 cycles) at the end of the loop
-
-
+  if(debug)
+  {
+    run_info.log_debug("L_mem", L_mem);
+    run_info.log_debug("L_compute", L_compute);
+    run_info.log_debug("L_cvt", L_cvt);
+    run_info.log_debug("k_per_split", k_per_split);
+    run_info.log_debug("num_iter", num_iter);
+    run_info.log_debug("problem_k_quant", problem_k_quant);
+    run_info.log_debug("L_prologue", L_prologue);
+    run_info.log_debug("L_tile_single", L_tile_single);
+    run_info.log_debug("L_epilogue", L_epilogue);
+    run_info.log_debug("L_tile_total", L_tile_total);
+    run_info.print_debug_info();
+    run_info.clear_debug();
+  }
+  
   return L_tile_total;
 }
 
