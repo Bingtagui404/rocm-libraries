@@ -315,7 +315,6 @@ namespace InlineExpressionsTest
 
         SECTION("Write-read-write-read")
         {
-            // TODO:
             // Multiple pairs of one write, one read
             // a = 1
             // b = a + 1
@@ -326,6 +325,90 @@ namespace InlineExpressionsTest
             // b = 1 + 1
             // NOP
             // c = 2 * 2
+
+            // a = 1
+            int    coordA = graph.coordinates.addElement(Linear{});
+            Assign nodeA;
+            nodeA.expression = Expression::literal(1);
+            int idxA         = graph.control.addElement(nodeA);
+            graph.mapper.connect(idxA, coordA, NaryArgument::DEST);
+
+            // b = 2 * a
+            int    coordB = graph.coordinates.addElement(Linear{});
+            Assign nodeB;
+            auto   doubleLiteral = Expression::literal(2);
+            auto   doubleVariable
+                = std::make_shared<Expression::Expression>(Expression::DataFlowTag{coordA});
+            nodeB.expression = std::make_shared<Expression::Expression>(
+                Expression::Multiply{doubleLiteral, doubleVariable});
+            int idxB = graph.control.addElement(nodeB);
+            graph.mapper.connect(idxB, coordB, NaryArgument::DEST);
+
+            // a = 2
+            Assign nodeA2;
+            nodeA2.expression = Expression::literal(2);
+            int idxA2         = graph.control.addElement(nodeA);
+            graph.mapper.connect(idxA2, coordA, NaryArgument::DEST);
+
+            // c = a + 1
+            int    coordC = graph.coordinates.addElement(Linear{});
+            Assign nodeC;
+            auto   incLiteral = Expression::literal(1);
+            auto   incVariable
+                = std::make_shared<Expression::Expression>(Expression::DataFlowTag{coordA});
+            nodeC.expression = std::make_shared<Expression::Expression>(
+                Expression::Add{incVariable, incLiteral});
+            int idxC = graph.control.addElement(nodeC);
+            graph.mapper.connect(idxC, coordC, NaryArgument::DEST);
+
+            // Insert nodes after node 186, which is a StoreTiled node with no outgoing edges
+            insertAfter(graph, 186, idxA, idxA);
+            insertAfter(graph, idxA, idxB, idxB);
+            insertAfter(graph, idxB, idxA2, idxA2);
+            insertAfter(graph, idxA2, idxC, idxC);
+
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(186).to<std::vector>().back()
+                  == idxA);
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(idxA).to<std::vector>().back()
+                  == idxB);
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(idxB).to<std::vector>().back()
+                  == idxA2);
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(idxA2).to<std::vector>().back()
+                  == idxC);
+
+            // Apply InlineExpressions
+            graph = transform<InlineExpressions>(graph);
+
+            // Expect expression b = 2 * 1
+            auto node         = graph.control.getNode<Assign>(idxB);
+            auto multiplyExpr = std::get<Expression::Multiply>(*node.expression);
+            CHECK(std::get<int>(Expression::evaluate(*multiplyExpr.lhs)) == 2);
+            CHECK(std::get<int>(Expression::evaluate(*multiplyExpr.rhs)) == 1);
+
+            // Expect expression c = 2 + 1
+            node         = graph.control.getNode<Assign>(idxC);
+            auto addExpr = std::get<Expression::Add>(*node.expression);
+            CHECK(std::get<int>(Expression::evaluate(*addExpr.lhs)) == 2);
+            CHECK(std::get<int>(Expression::evaluate(*addExpr.rhs)) == 1);
+
+            // Make sure everything is still connected correctly
+            // Child of node 186 should be a NOP now
+            int maybeNOPIdx
+                = graph.control.getOutputNodeIndices<Sequence>(186).to<std::vector>().back();
+            CHECK(graph.control.get<NOP>(maybeNOPIdx).has_value());
+            // Child of NOP should be node B - inlined multiply expression
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(maybeNOPIdx).to<std::vector>().back()
+                  == idxB);
+            // Child of node B should be another NOP
+            maybeNOPIdx
+                = graph.control.getOutputNodeIndices<Sequence>(idxB).to<std::vector>().back();
+            CHECK(graph.control.get<NOP>(maybeNOPIdx).has_value());
+            // Child of second NOP should be node C - inlined add expression
+            CHECK(graph.control.getOutputNodeIndices<Sequence>(maybeNOPIdx).to<std::vector>().back()
+                  == idxC);
+
+            // Make sure coordinate was purged
+            CHECK(!graph.coordinates.exists(coordA));
         }
     }
 }
