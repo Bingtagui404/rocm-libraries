@@ -577,6 +577,8 @@ double compute_memory_latency(const problem_t& problem,
   const size_t MT_N = config.mt.n;
   const size_t MT_K = config.mt.k;
   bool debug = origami::runtime_options().get().debug_enabled;
+  const char* formocast = std::getenv("USE_FORMOCAST");
+
   if (debug) 
     std::cout << "MT " << MT_M << "x" << MT_N << "x" << MT_K << std::endl;
   // 1) Estimate L2 hit-rate
