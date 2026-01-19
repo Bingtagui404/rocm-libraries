@@ -3663,6 +3663,7 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
     syncCode = []
     mfmaReorder = []
     nglshift = nllshift = 0
+    numCodePaths = 2
     if isTN(kernel) and not useLDSTr and TLDS==1:
         kernel["UsePLRPack"] = True
         kernel["UseMFMAF32XEmulation"] = True
@@ -3830,6 +3831,291 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
             'PackA3' : [packA3],
         }
         nglshift = nllshift = 12 # vmcnt shift for ngl and nll
+    elif isNT(kernel) and useLDSTr and TLDS==0:
+        kernel["UsePLRPack"] = True
+        kernel["UseMFMAF32XEmulation"] = True
+
+        lra0 = [
+            [
+                  0,0,   2,2,   4,4,   6,6, # A0
+                16,16, 18,18, 20,20, 22,22, # A1
+            ],
+            [
+                  1,1,   3,3,   5,5,   7,7, # A0
+                17,17, 19,19, 21,21, 23,23, # A1
+            ],
+        ]
+
+        grIncA = [
+            [0, 1,1,1, 2, 3,3,3, 4],
+            [1, 2,2,2, 3, 4,4,4, 5],
+        ]
+        grIncB = [
+            [5,5,5, 6, 7,7,7, 8,8],
+            [6,6,6, 7, 8,8,8, 9,9],
+        ]
+
+        startPACKA0 = 22
+        packA0Offset = [ 
+            # A0
+            # A0_hi first needed at 24
+            0, 0, 0, 0, 
+            # A0_lo first needed at 32
+            2, 3,
+            8, 8, 9, 9,
+
+            # A1
+            # A1_hi first needed at 36
+            12, 12, 12, 12,
+            # A1_lo first needed at 44
+            15, 16,
+            20, 20, 21, 21,
+        ]
+        packA0 = [x + startPACKA0 for x in packA0Offset]
+
+        lrb0_start = packA0[5]
+        _lrb0 = [
+            [
+                   0,0,0,    2,2,2,   4,4,  # B4
+                   4,6,6,    6,8,8,  8,10,  # B5
+                10,10,12, 12,12,14, 14,14,  # B6
+                16,16,16, 18,18,18, 20,20   # B7
+            ],
+            [
+                   0,0,0,    2,2,2,   4,4,  # B4
+                   4,6,6,    6,8,8,  8,10,  # B5
+                10,10,12, 12,12,14, 14,14,  # B6
+                16,16,16, 18,18,18, 20,20   # B7
+            ],
+        ]
+        lrb0 = [
+            [_i + lrb0_start for _i in _lrb0[0]],
+            # [_i + lrb0_start for _i in _lrb0[1]]
+        ]
+
+        _grA_start = packA0[-1]
+        _grA = [0,0, 2,2, 4,4, 6,6]
+        grA = [
+            [_grA_start + _i for _i in _grA],
+            [_grA_start + _i + 1 for _i in _grA]
+        ]
+
+        startPACKB0 = 46
+        # TODO: renumber to get only 3 per mfma
+        packB0Offset = [ 
+            # B4
+            # B4_hi first needed at 48 (2)
+            # B4_lo first needed at 52 (6)
+            0, 0, 0, 0, 
+            1, 2,
+            4, 4, 4, 4,
+
+            # B5
+            # B5_hi first needed at 54 (8)
+            # B5_lo first needed at 58 (12)
+            6, 6, 6, 6,
+            7, 8,
+            10, 10, 10, 10,
+
+            # B6
+            # B6_hi first needed at 60 (14)
+            # B6_lo first needed at 64 (18)
+            12, 12, 12, 12, 
+            13, 14,
+            16, 16, 16, 16,
+
+            # B7
+            # B7_hi first needed at 66 (20)
+            # B7_lo first needed at 70 (24)
+            18, 18, 18, 18, 
+            19, 20,
+            22, 22, 22, 22,
+            ]   
+        packB0 = [x + startPACKB0 for x in packB0Offset]
+
+        halfMFMA = numMfma//2
+
+        # LR3
+        # TODO: We can start loading this in the 2nd quarter if we're careful.
+        startLRB3 = halfMFMA
+        # Spread LRB3 reads over more indices to reduce LDS FIFO pressure.
+        lrb3_base = create_range(min_val = startLRB3, num = 16, step = 1, repeat = 2)
+        lrb3 = [
+            lrb3_base,
+            [val + 1 for val in lrb3_base],
+        ]
+
+        # GRB interleaved with LRB3, similar to TN case
+        # First part around halfMFMA, second part around 3*numMfma//4
+        grB = [create_range(min_val = startLRB3+1, num = 4, step = 2, repeat = 2),
+               create_range(min_val = startLRB3, num = 4, step = 2, repeat = 2)]
+        
+        startPACKB3 = max(lrb3[1])+2 
+        packB3Offset = [
+            # B0
+            0, 0, 1, 1, 
+            8, 8,
+            9, 9, 10, 10,
+
+            # B1
+            2, 2, 3, 3, 
+            8, 8,
+            11, 11, 19, 19,
+
+            # B2
+            4, 4, 5, 5, 
+            8, 8,
+            20, 20, 21, 21,
+
+            # B3
+            6, 6, 7, 7, 
+            8, 8,
+            22, 22, 23, 23,
+            ]   
+
+        # PackB3
+        packB3 = [x + startPACKB3 for x in packB3Offset]
+
+        startLRA3 = (3*numMfma)//4 
+        # GRB + LRA3 (interleaved)
+        grB[0] += create_range(min_val = startLRA3, num = 4, step = 2, repeat = 2)
+        grB[1] += create_range(min_val = startLRA3+1, num = 4, step = 2, repeat = 2)
+
+        lra3_base = create_range(min_val = startLRA3+1, num=4, step=2, repeat=4)
+        lra3 = [
+            lra3_base,
+            # sorted(val + (1 if i % 2 == 0 else 2) for i, val in enumerate(lra3_base)),
+        ]
+        
+        packA3 = [  # As close to the end as possible
+            # A2
+            89, 89, 90, 90, 
+            92, 92,
+            93, 93, 94, 94,
+
+            # A3
+            90, 91, 91, 91, 
+            92, 92,
+            94, 95, 95, 95,
+        ]
+
+        def inflight_others(not_list, index):
+            res = 0
+            lsts = [lra0, lrb0, lra3, lrb3]
+            lsts.remove(not_list)
+            for lst in lsts:
+                if len(lst) > 1:
+                    for i in range(numCodePaths):
+                        assert inflight(lst[i], index) == inflight(lst[0], index)
+                res += inflight(lst[0], index)
+            return res
+
+        # TODO: Need to update dscnt once all LRs are in the right places
+        syncTable = [
+            -1, SBarrier(comment="Sync codepath"),
+
+            packA0[0], SWaitCnt(dscnt=8-2, comment="Wait for 1/2 of LRA0"),
+            packA0[10], SWaitCnt(dscnt=inflight_others(lra0, packA0[10]), comment="Wait for 2/2 of LRA0"),
+            
+            packA0[12], SBarrier(comment="Barrier before GRA"),
+
+            packB0[0], SWaitCnt(dscnt=0,comment="Wait for 1/3 of LRB0"),
+
+            # SWait and SBarrier before LRB3 and GRB (similar to TN case)
+            # Must be before startLRB3 (48) which is before packB0[10] (52)
+            # Note: vlcnt=2 (not 4 like TN) because NT case has GRAs at 43-49 which overlap with idx=47,
+            # leaving fewer GlobalReads issued before the SWait at combined idx 143 in MAIN_LOOP
+            startLRB3-1, SWaitCnt(dscnt=-1, vlcnt=2, vscnt=-1, comment="Wait for previous GRA&B"),
+            startLRB3-1, SBarrier(comment="Barrier before GRB and before LRB3"),
+
+            packB0[10], SWaitCnt(dscnt=0, comment="Wait for 2/3 of LRB0"),
+            packB0[20], SWaitCnt(dscnt=0, comment="Wait for 3/3 of LRB0"),
+
+            packB3[0], SWaitCnt(dscnt=24, vlcnt=-1, vscnt=-1, comment="Wait for 1/4 of LRB3"),
+            packB3[10], SWaitCnt(dscnt=16, vlcnt=-1, vscnt=-1, comment="Wait for 2/4 of LRB3"),
+            packB3[20], SWaitCnt(dscnt=8, vlcnt=-1, vscnt=-1, comment="Wait for 3/4 of LRB3"),
+            packB3[30], SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment="Wait for 4/4 of LRB3"),
+            
+            packA3[0], SWaitCnt(dscnt=16//2, vlcnt=-1, vscnt=-1, comment="Wait for 1/2 of LRA3"),
+            packA3[10], SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment="Wait for 2/2 of LRA3"),
+        ]
+
+        syncCode = syncTable[1::2]
+        
+        optSchedule = {
+            'SYNC': [syncTable[::2]],
+
+            'GRIncA': grIncA,
+            'GRIncB': grIncB,
+            'LRA0': lra0,
+            'PackA0' : [packA0],
+            'LRB0': lrb0,
+            'PackB0' : [packB0],
+
+            'GRA': grA,
+            'GRB': [*grB],              
+            'LRSA': [[47]],
+            'LRSB': [[47]],
+            'LWSA': [[packA3[4]]],
+            'LWSB': [[packA3[4]]],
+
+            'LRA3': [*lra3],
+            'LRB3': [*lrb3],
+            'PackB3' : [packB3],
+            'PackA3' : [packA3],
+            'LCC': [[packA3[4]]*2],
+
+        }
+        nglshift = nllshift = 12
+
+        # Reorder to do all of A0 first, then all of A1.
+        # Within each A tile, do all A_hi x B_hi first, then A_hi x B_lo next, and A_lo x B_hi last.
+        # This is done to allow as much time as possible for the following to finish, in order of priority:
+        # 1. LRA0
+        # 2. PackA0
+        # A0_hi first needed at 24+0  (24)
+        # A0_lo first needed at 24+8  (32)
+        # A1_hi first needed at 24+12 (36)
+        # A1_lo first needed at 24+20 (44)
+        reordered_2nd_quadrant = [
+             0,  8,  1,
+            12, 20, 13,
+             2,  9,  3,
+            14, 21, 15,
+             4, 10,  5,
+            16, 22, 17,
+             6, 11,  7,
+            18, 23, 19,
+        ]
+        reordered_2nd_quadrant = [i + numMfma//4 for i in reordered_2nd_quadrant]
+        # Reorder to do all B0 first, then all B1, then all B2, then all B3.
+        # Within each B tile, do all B_hi x A_hi first, then B_hi x A_lo next, and B_lo x A_hi last.
+        # This is done to provide as much time as possible for the following to finish, in order of priority:
+        # 1. LRB0
+        # 2. PackB0
+        # B0_hi first needed at 48+0  (48)
+        # B0_lo first needed at 48+4  (52)
+        # B1_hi first needed at 48+6  (54)
+        # B1_lo first needed at 48+10 (58)
+        # B2_hi first needed at 48+12 (60)
+        # B2_lo first needed at 48+16 (64)
+        # B3_hi first needed at 48+18 (66)
+        # B3_lo first needed at 48+22 (70)
+        reordered_3rd_quadrant = [
+             0,  1,  4,
+             2,  3,  5,
+
+             6,  7, 10,
+             8,  9, 11,
+
+            12, 13, 16,
+            14, 15, 17,
+
+            18, 19, 22,
+            20, 21, 23,
+        ]
+        reordered_3rd_quadrant = [i + numMfma//2 for i in reordered_3rd_quadrant]
+        mfmaReorder = list(range(numMfma//4)) + reordered_2nd_quadrant + reordered_3rd_quadrant + list(range(3*numMfma//4, numMfma))
     elif isNN(kernel) and TLDS==1:
         kernel["UsePLRPack"] = True
         kernel["UseMFMAF32XEmulation"] = True
@@ -3959,7 +4245,8 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
     else:
         return False, None
 
-    opt1 = ScheduleInfo(2, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
+    opt1 = ScheduleInfo(numCodePaths, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
+    # opt1.disableValidation(, mfmaReorder=mfmaReorder)
     return True, opt1
 
 
