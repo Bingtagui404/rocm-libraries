@@ -29,9 +29,23 @@ function(get_rocprim_test_target TEST_SOURCES TEST_TARGET)
   set(TEST_TARGET ${TEST_TARGET} PARENT_SCOPE)
 endfunction()
 
+function(set_build_coverage TEST_TARGET)
+  if(BUILD_CODE_COVERAGE)
+    target_compile_options(${TEST_TARGET} PRIVATE
+      -w
+      -fprofile-instr-generate
+      -fcoverage-mapping
+    )
+    target_link_options(${TEST_TARGET} PRIVATE
+      -fprofile-instr-generate
+    )
+  endif()
+endfunction()
+
 function(add_rocprim_test TEST_NAME TEST_SOURCES)
   get_rocprim_test_target(${TEST_SOURCES} TEST_TARGET)
   add_rocprim_test_internal(${TEST_NAME} "${TEST_SOURCES}" ${TEST_TARGET})
+  set_build_coverage(${TEST_TARGET})
   # Re-propagate DLLS_COPIED_2 from add_rocprim_test_internal's scope to our
   # caller (file scope). PARENT_SCOPE only propagates one level, so without
   # this relay the guard resets on every call and each test target gets
@@ -99,6 +113,7 @@ function(add_rocprim_test_internal TEST_NAME TEST_SOURCES TEST_TARGET)
     get_rocprim_test_target(${TEST_SOURCES} TEST_TARGET)
     set(TEST_TARGET "${TEST_TARGET}_disable_dpp")
     add_rocprim_test_internal("${TEST_NAME}_disable_dpp" "${TEST_SOURCES}" ${TEST_TARGET})
+    set_build_coverage(${TEST_TARGET})
     target_compile_definitions(${TEST_TARGET} PRIVATE ROCPRIM_DISABLE_DPP=1)
   endfunction()
 
@@ -244,6 +259,7 @@ ${TEST_TYPE_SLICE_COUNT} test type slice(s) for test target ${TEST_TARGET}")
 
   set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${TEST_TARGET}.parallel")
   add_rocprim_test_internal(${TEST_NAME} "${SOURCES}" ${TEST_TARGET})
+  set_build_coverage(${TEST_TARGET})
   target_include_directories("${TEST_TARGET}" PRIVATE "../../test/rocprim")
   # Make sure the configured files are re-configured if they are removed (via clean).
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SOURCES})
@@ -253,6 +269,7 @@ function(add_rocprim_cpp_standard_test STANDARD EXTENSIONS TARGET_SUFFIX TEST_NA
   get_rocprim_test_target(${TEST_SOURCES} TEST_TARGET)
   set(TEST_TARGET ${TEST_TARGET}${TARGET_SUFFIX})
   add_rocprim_test_internal(${TEST_NAME}${TARGET_SUFFIX} "${TEST_SOURCES}" ${TEST_TARGET})
+  set_build_coverage(${TEST_TARGET})
   # Request C++ standard 17, but decay to a previous version if not available:
   set_target_properties(${TEST_TARGET}
     PROPERTIES
