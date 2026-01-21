@@ -563,6 +563,9 @@ double compute_memory_latency(const problem_t& problem,
                               const config_t& config,
                               size_t num_active_cus,
                               size_t splitting_factor) {
+
+  bool debug = runtime_options().get().debug_enabled;
+
   // Extract parameters from structured types
   const auto a_bytes = data_type_to_bytes(problem.a_dtype);
   const auto b_bytes = data_type_to_bytes(problem.b_dtype);
@@ -675,7 +678,25 @@ double compute_memory_latency(const problem_t& problem,
 
   // 12) pick the worst‐case bound
   double L_mem = std::max({L_mem_mem1, L_mem_mem2, L_mem_MEM});
-
+  if(debug)
+  {
+    info_logger.log_debug("Ld_CU_bytes", Ld_CU_bytes);
+    info_logger.log_debug("total_Ld", total_Ld);
+    info_logger.log_debug("H_mem1", H_mem1);
+    info_logger.log_debug("H_mem1_global", H_mem1_global);
+    info_logger.log_debug("H_mem2", H_mem2);
+    info_logger.log_debug("Ld_MEM", Ld_MEM);
+    info_logger.log_debug("Ld_mem2", Ld_mem2);
+    info_logger.log_debug("bw_limited", bw_limited);
+    info_logger.log_debug("L_mem_mem1", L_mem_mem1);
+    info_logger.log_debug("L_mem_mem2", L_mem_mem2);
+    info_logger.log_debug("L_mem_MEM", L_mem_MEM);
+    info_logger.log_debug("grid_m", std::to_string(int(grid_m)));
+    info_logger.log_debug("grid_n", std::to_string(int(grid_n)));
+    info_logger.log_debug("mall_m", std::to_string(int(mall_m)));
+    info_logger.log_debug("mall_n", std::to_string(int(mall_n)));
+    info_logger.log_debug("config.workgroup_mapping", std::to_string(int(config.workgroup_mapping)));
+  }
   return L_mem;
 }
 
@@ -687,6 +708,9 @@ double compute_tile_latency(const problem_t& problem,
                             const config_t& config,
                             size_t num_active_cus,
                             size_t splitting_factor) {
+  
+  bool debug = runtime_options().get().debug_enabled;
+
   // Extract parameters from structured types
   const size_t K = problem.size.k;
   size_t batch   = problem.batch;
@@ -742,6 +766,20 @@ double compute_tile_latency(const problem_t& problem,
 
   L_prologue = L_prologue * pow(0.95, real_occupancy);  // Factor chosen empirically
   L_epilogue = L_epilogue * pow(0.95, real_occupancy);  // Factor chosen empirically
+
+  if(debug)
+  {
+    info_logger.log_debug("mem_bw_occ", mem_bw_occ);
+    info_logger.log_debug("mem_bw_occ_limited", mem_bw_occ_limited);
+    info_logger.log_debug("utilization", utilization);
+    info_logger.log_debug("output_utilization", output_utilization);
+    info_logger.log_debug("effective_tile_penalty", effective_tile_penalty);
+    info_logger.log_debug("output_utilization_penalty", output_utilization_penalty);
+    info_logger.log_debug("config.occupancy", config.occupancy);
+    info_logger.log_debug("real_occupancy", real_occupancy);
+    info_logger.log_debug("num_active_cus", std::to_string(int(num_active_cus)));
+    info_logger.log_debug("splitting_factor", std::to_string(int(splitting_factor)));
+  }
   // 4') K-split reductions are globally coherent, we need to write and read split-1 MT_M*MT_N
   // tiles to coherent memory
   if (splitting_factor > 1) {
@@ -764,6 +802,14 @@ double compute_tile_latency(const problem_t& problem,
 
     double L_reduce = partial_readwrite_bytes / (mem_bw_occ_limited);
     L_epilogue += L_reduce + partial_adds + 10000;
+    if(debug)
+    {
+        info_logger.log_debug("partial_read_bytes", partial_read_bytes);
+        info_logger.log_debug("partial_write_bytes", partial_write_bytes);
+        info_logger.log_debug("partial_readwrite_bytes", partial_readwrite_bytes);
+        info_logger.log_debug("partial_adds", partial_adds);
+        info_logger.log_debug("L_reduce", L_reduce);
+    }
   }
   // 4'') tf32 emu has some more overhead
   double L_cvt = 0;
@@ -797,8 +843,9 @@ double compute_tile_latency(const problem_t& problem,
       std::max(static_cast<long>(math::safe_ceil_div(static_cast<size_t>(k_per_split), MT_K) - 1),
                static_cast<long>(1));
   // Zero Padding in the K dimension on last iteration
+  double problem_k_quant = 0;
   if (K % MT_K != 0) {
-    const double problem_k_quant = static_cast<double>(K % MT_K) / static_cast<double>(K);
+    problem_k_quant = static_cast<double>(K % MT_K) / static_cast<double>(K);
     L_epilogue += problem_k_quant * 50000;  // Scale by remainder proportion of problem. 50k cycle
                                             // penalty if have to zero pad all except 1.
                                             //(Scale Determined Empirically)
@@ -810,7 +857,20 @@ double compute_tile_latency(const problem_t& problem,
       (L_tile_single * static_cast<double>(num_iter)) + L_prologue + L_epilogue * 2 + L_WG_setup +
       (500 * static_cast<double>(
                  num_iter));  // 7 instructions (each with 4 cycles) at the end of the loop
-
+  if(debug)
+  {
+    info_logger.log_debug("L_mem", L_mem);
+    info_logger.log_debug("L_compute", L_compute);
+    info_logger.log_debug("L_cvt", L_cvt);
+    info_logger.log_debug("k_per_split", k_per_split);
+    info_logger.log_debug("num_iter", std::to_string(int(num_iter)));
+    info_logger.log_debug("problem_k_quant", problem_k_quant);
+    info_logger.log_debug("L_prologue", L_prologue);
+    info_logger.log_debug("L_tile_single", L_tile_single);
+    info_logger.log_debug("L_epilogue", L_epilogue);
+    info_logger.log_debug("L_tile_total", L_tile_total);
+  }
+  
   return L_tile_total;
 }
 
@@ -831,6 +891,7 @@ double compute_total_latency(const problem_t& problem,
                              const config_t& config,
                              size_t max_cus) {
   assert(config.is_valid());
+  bool debug = runtime_options().get().debug_enabled;
 
   // Extract parameters from structured types
   size_t M     = problem.size.m;
@@ -851,6 +912,16 @@ double compute_total_latency(const problem_t& problem,
   const int a_bits  = datatype_to_bits(problem.a_dtype);
   const int b_bits  = datatype_to_bits(problem.b_dtype);
   const int a_bytes = data_type_to_bytes(problem.a_dtype);
+
+  if(debug)
+  {
+    info_logger.log_debug("Problem size", std::to_string(int(M)) + "x" + std::to_string(int(N)) + "x"
+                                   + std::to_string(int(K)));
+    info_logger.log_debug("batch", std::to_string(int(batch)));
+    info_logger.log_debug("Macrotile", std::to_string(int(MT_M)) + "x" + std::to_string(int(MT_N)) + "x" + std::to_string(int(MT_K)));
+    info_logger.log_debug("Element size A (bits)", std::to_string(int(a_bits)));
+    info_logger.log_debug("Element size B (bits)", std::to_string(int(b_bits)));
+  }
 
   // 0) Short-circuit
   // We don't need to compute latency for all MTs. With this, we can shortcut.
@@ -953,7 +1024,12 @@ double compute_total_latency(const problem_t& problem,
       }
     }
   }
-
+  if (debug)
+  {
+    info_logger.log_debug("total_latency", total_latency);
+    info_logger.print_debug_info();
+    info_logger.clear_debug();
+  }
   return total_latency;
 }
 
