@@ -30,11 +30,12 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <ostream>
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <unordered_map>
+#include <vector>
 
 #include "origami/math.hpp"
 
@@ -320,6 +321,36 @@ struct runtime_options {
    */
   void update_from_env();
 };
+
+static inline struct logger {
+  // Debug tracking info
+  std::vector<std::pair<std::string, std::string>> debug_info;
+
+  void log_debug(const std::string& key, const std::string& value)
+  {
+      debug_info.push_back(std::make_pair(key,value));
+  }
+
+  void log_debug(const std::string& key, double value)
+  {
+      debug_info.push_back(std::make_pair(key,std::to_string(value)));
+  }
+
+  void clear_debug()
+  {
+      debug_info.clear();
+  }
+
+  void print_debug_info()
+  {
+      std::cout << "===  Origami Debug Info  ===\n";
+      for(const auto& [key, val] : debug_info)
+      {
+          std::cout << key << ": " << val << "\n";
+      }
+      std::cout << "===========================\n";
+  }
+} info_logger;
 
 /**
  * @brief Full kernel configuration (tile shape + execution parameters).
