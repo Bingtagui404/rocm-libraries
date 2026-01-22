@@ -177,11 +177,7 @@ namespace rocRoller::KernelGraph
             std::map<std::pair<int, int>, std::optional<PossibleCandidate>> possibleCandidates;
             for(auto record : trace)
             {
-                // We only care about assign nodes
-                if(!kgraph.control.get<Assign>(record.control).has_value())
-                {
-                    continue;
-                }
+                bool isAssignNode = kgraph.control.get<Assign>(record.control).has_value();
 
                 auto tag         = record.coordinate;
                 auto maybeParent = bodyParents(record.control, kgraph).take(1).only();
@@ -194,6 +190,12 @@ namespace rocRoller::KernelGraph
 
                 if(record.rw == RW::WRITE)
                 {
+                    // We only care about Assign nodes that write to a coordinate
+                    if(!isAssignNode)
+                    {
+                        continue;
+                    }
+
                     // We're about to create a new possible candidate, so if we already had one corresponding to this coordinate and body parent,
                     // and it satisfies the conditions for being a candidate, we can save it as such
                     if(possibleCandidate->has_value() && possibleCandidate->value().isCandidate())
@@ -208,8 +210,8 @@ namespace rocRoller::KernelGraph
                     // See if we have any active possible candidates corresponding to this coordinate and body parent
                     if(possibleCandidate->has_value())
                     {
-                        // If that possible candidate has a write but no read, add a read
-                        if(possibleCandidate->value().hasWriteNoRead())
+                        // If that possible candidate has a write but no read and this read is from an assign node, add a read
+                        if(possibleCandidate->value().hasWriteNoRead() && isAssignNode)
                         {
                             // Now that we've written to and read from this coordinate,
                             // this will be a candidate as long as we don't have any more reads to this tag
@@ -229,14 +231,20 @@ namespace rocRoller::KernelGraph
                     // See if we have any active possible candidates corresponding to this coordinate and body parent
                     if(possibleCandidate->has_value())
                     {
-                        // If that possible candidate has a write but no read, add a read
-                        if(possibleCandidate->value().hasWriteNoRead())
+                        // If that possible candidate has a write but no read and this read is from an assign node, add a read
+                        if(possibleCandidate->value().hasWriteNoRead() && isAssignNode)
                         {
                             // Now that we've written to and read from this coordinate,
                             // since we know we're about to write to it again, this is a candidate!
                             possibleCandidate->value().readingNode = record.control;
                             candidates.push_back(possibleCandidate->value().createCandidate());
                         }
+                    }
+
+                    // We only care about Assign nodes that write to a coordinate
+                    if(!isAssignNode)
+                    {
+                        continue;
                     }
 
                     // Create a new possible candidate, one that has been written to but not read from yet

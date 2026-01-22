@@ -203,11 +203,11 @@ namespace rocRoller
                 return rhs;
             }
 
-            if(lhs == Type::Accumulator || rhs == Type::Accumulator)
-                return Type::Accumulator;
-
             if(lhs == Type::Vector || rhs == Type::Vector)
                 return Type::Vector;
+
+            if(lhs == Type::Accumulator || rhs == Type::Accumulator)
+                return Type::Accumulator;
 
             Throw<FatalError>("Invalid Register::Type combo: ", ShowValue(lhs), ShowValue(rhs));
         }

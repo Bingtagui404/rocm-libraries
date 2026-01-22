@@ -71,7 +71,7 @@ TEST_CASE("Register::Value::PromoteType works", "[codegen][register]")
 
     ExpectEqual(Register::Type::Vector, Register::Type::Vector, Register::Type::Scalar);
     ExpectEqual(Register::Type::Accumulator, Register::Type::Accumulator, Register::Type::Scalar);
-    ExpectEqual(Register::Type::Accumulator, Register::Type::Accumulator, Register::Type::Vector);
+    ExpectEqual(Register::Type::Vector, Register::Type::Accumulator, Register::Type::Vector);
 
     CHECK_THROWS(Register::PromoteType(Register::Type::Literal, Register::Type::Label));
 }
