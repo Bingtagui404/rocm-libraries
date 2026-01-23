@@ -24,7 +24,6 @@
  *
  *******************************************************************************/
 
-#include "rocRoller/GPUArchitecture/GPUCapability.hpp"
 #include <rocRoller/CodeGen/AddInstruction.hpp>
 #include <rocRoller/CodeGen/Arithmetic/Multiply.hpp>
 #include <rocRoller/CodeGen/CopyGenerator.hpp>
@@ -392,20 +391,4 @@ namespace rocRoller
         co_yield_(Instruction("v_mul_f64", {dest}, {lhs, rhs}, {}, ""));
     }
 
-    template <>
-    Generator<Instruction>
-        MultiplyGenerator<Register::Type::Accumulator, DataType::Float>::generate(
-            Register::ValuePtr dest,
-            Register::ValuePtr lhs,
-            Register::ValuePtr rhs,
-            Expression::Multiply const&)
-    {
-        AssertFatal(lhs != nullptr);
-        AssertFatal(rhs != nullptr);
-
-        co_yield m_context->copier()->ensureType(lhs, lhs, Register::Type::Vector);
-        co_yield m_context->copier()->ensureType(rhs, rhs, Register::Type::Vector);
-
-        co_yield_(Instruction("v_mul_f32", {dest}, {lhs, rhs}, {}, ""));
-    }
 }

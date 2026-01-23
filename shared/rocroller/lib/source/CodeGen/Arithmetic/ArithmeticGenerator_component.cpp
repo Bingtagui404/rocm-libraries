@@ -285,7 +285,6 @@ namespace rocRoller
         registerComponent<MultiplyGenerator<Register::Type::Vector, DataType::Halfx2>>();
         registerComponent<MultiplyGenerator<Register::Type::Vector, DataType::Float>>();
         registerComponent<MultiplyGenerator<Register::Type::Vector, DataType::Double>>();
-        registerComponent<MultiplyGenerator<Register::Type::Accumulator, DataType::Float>>();
     }
 
     template <>

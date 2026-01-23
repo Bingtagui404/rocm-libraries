@@ -393,6 +393,7 @@ namespace rocRoller
 
                 int valueCount = resultValueCount(dest, {lhs, rhs});
 
+                // TODO: Should this be pushed to arithmetic generators?
                 // If any sources were AGPRs, copy to VGPRs first.
                 if(lhs->regType() == Register::Type::Accumulator
                    || rhs->regType() == Register::Type::Accumulator)
