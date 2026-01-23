@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include "rocRoller/Utilities/Error.hpp"
 #include <rocRoller/KernelGraph/ControlGraph/ControlFlowRWTracer.hpp>
 #include <rocRoller/KernelGraph/KernelGraph.hpp>
 #include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
@@ -36,39 +37,93 @@ namespace rocRoller
     {
         namespace InlineExpressionsDetail
         {
-            struct Candidate
+            struct InliningCandidate
             {
-                int  tag;
-                int  writingNode;
-                int  readingNode;
-                bool deleteTag = false;
+                int  m_coordinate;
+                int  m_writingNode;
+                int  m_readingNode;
+                bool m_deleteCoordinate;
 
-                bool operator==(const Candidate& rhs) const = default;
+                InliningCandidate(int coordinate,
+                                  int writingNode,
+                                  int readingNode,
+                                  int deleteCoordinate)
+                    : m_coordinate(coordinate)
+                    , m_writingNode(writingNode)
+                    , m_readingNode(readingNode)
+                    , m_deleteCoordinate(deleteCoordinate)
+                {
+                }
+
+                bool operator==(const InliningCandidate& rhs) const = default;
             };
 
-            struct PossibleCandidate
+            struct PossibleInliningCandidate
             {
-                int                tag;
-                std::optional<int> writingNode;
-                std::optional<int> readingNode;
+                int m_coordinate;
 
-                bool operator==(const PossibleCandidate& rhs) const = default;
+                int m_writeParent;
+                int m_writingNode;
 
+                std::optional<int> m_readParent;
+                std::optional<int> m_readingNode;
+
+                PossibleInliningCandidate(int coordinate, int writeParent, int writingNode)
+                    : m_coordinate(coordinate)
+                    , m_writeParent(writeParent)
+                    , m_writingNode(writingNode)
+                    , m_readParent(std::nullopt)
+                    , m_readingNode(std::nullopt)
+                {
+                }
+
+                /*
+                 * @brief Check if this possible candidate satisfies the conditions for being a true inlining candidate
+                 * @return True if the candidate conditions are met and false otherwise
+                 */
                 bool isCandidate() const
                 {
-                    return writingNode.has_value() && readingNode.has_value();
+                    return m_readingNode.has_value() && m_readParent.has_value()
+                           && m_writeParent == m_readParent.value();
                 }
 
-                Candidate createCandidate() const
+                /*
+                 * @brief Assuming this possible candidate meets the conditions for an inlining candidate, create a new candidate struct
+                 * @return a new InliningCandidate
+                 */
+                InliningCandidate createCandidate(bool deleteCoordinate) const
                 {
                     AssertFatal(isCandidate(), "Cannot create candidate, conditions not met");
-                    return Candidate{tag, writingNode.value(), readingNode.value()};
+                    return InliningCandidate(
+                        m_coordinate, m_writingNode, m_readingNode.value(), deleteCoordinate);
                 }
 
-                bool hasWriteNoRead() const
+                /*
+                 * @brief Check if a new read will satisfy the conditions for an inlining candidate
+                 * @return True if a new read to this coordinate will satisfy the conditions for a candidate, and false otherwise
+                 */
+                bool checkNewRead(int readParent, bool isAssignNode) const
                 {
-                    return writingNode.has_value() && !readingNode.has_value();
+                    // We already know that we've written to this coordinate, so if we haven't yet read from it,
+                    // and this new read comes from an assign node under the same body parent as the write, this will satisfy the conditions
+                    return !m_readingNode.has_value() && m_writeParent == readParent
+                           && isAssignNode;
                 }
+
+                /*
+                 * @brief Add a read to this possible candidate
+                 */
+                void addRead(int readParent, int readingNode)
+                {
+                    AssertFatal(m_writeParent == readParent,
+                                "Cannot add read to possible candidate, body parents must match",
+                                ShowValue(m_writeParent),
+                                ShowValue(readParent));
+                    m_readParent  = readParent;
+                    m_readingNode = readingNode;
+                }
+
+                bool operator==(const PossibleInliningCandidate& rhs) const = default;
             };
 
             /*
@@ -81,13 +136,17 @@ namespace rocRoller
                                    Expression::ExpressionPtr const& exprToReplaceWith);
 
             /**
-             * If a DataFlowTag is:
+             * @brief Find candidates for expression inlining
+             *
+             * If a coordinate is:
              * 1. written to only once
              * 2. read only once within that same body parent
              *
              * then those two control nodes comprise a candidate for InlineExpressions.
+             *
+             * @return A list of candidates for InlineExpressions
              */
-            std::vector<Candidate> findInlineCandidates(KernelGraph const& kgraph);
+            std::vector<InliningCandidate> findInliningCandidates(KernelGraph const& kgraph);
         }
     }
 }

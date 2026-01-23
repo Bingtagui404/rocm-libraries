@@ -27,6 +27,7 @@
 #include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
 #include <rocRoller/KernelGraph/Transforms/InlineExpressions_detail.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
+#include <unordered_map>
 
 namespace rocRoller::KernelGraph
 {
@@ -166,27 +167,27 @@ namespace rocRoller::KernelGraph
             return recordsByParent;
         }
 
-        std::vector<Candidate> findInlineCandidates(KernelGraph const& kgraph)
+        std::vector<InliningCandidate> findInliningCandidates(KernelGraph const& kgraph)
         {
-            std::vector<Candidate> candidates;
+            std::vector<InliningCandidate> candidates;
 
             auto tracer = ControlFlowRWTracer(kgraph);
             auto trace  = tracer.coordinatesReadWrite();
 
-            // Map from <parent, tag> -> possible candidate
-            std::map<std::pair<int, int>, std::optional<PossibleCandidate>> possibleCandidates;
+            // Map from tag -> possible candidate
+            std::unordered_map<int, std::optional<PossibleInliningCandidate>> possibleCandidates;
             for(auto record : trace)
             {
                 bool isAssignNode = kgraph.control.get<Assign>(record.control).has_value();
 
-                auto tag         = record.coordinate;
+                auto coordinate  = record.coordinate;
                 auto maybeParent = bodyParents(record.control, kgraph).take(1).only();
                 AssertFatal(
                     maybeParent.has_value(), "Node has no body parent", ShowValue(record.control));
                 auto parent = maybeParent.value();
 
                 // Possible candidate corresponding to the current body parent and coordinate, if one exists
-                auto possibleCandidate = &possibleCandidates[{parent, tag}];
+                auto possibleCandidate = &possibleCandidates[coordinate];
 
                 if(record.rw == RW::WRITE)
                 {
@@ -196,31 +197,33 @@ namespace rocRoller::KernelGraph
                         continue;
                     }
 
-                    // We're about to create a new possible candidate, so if we already had one corresponding to this coordinate and body parent,
+                    // We're about to create a new possible candidate, so if we already had one corresponding to this coordinate,
                     // and it satisfies the conditions for being a candidate, we can save it as such
                     if(possibleCandidate->has_value() && possibleCandidate->value().isCandidate())
                     {
-                        candidates.push_back(possibleCandidate->value().createCandidate());
+                        candidates.push_back(
+                            possibleCandidate->value().createCandidate(/*deleteTag=*/false));
                     }
                     // Create a new possible candidate, one that has been written to but not read from yet
-                    possibleCandidates[{parent, tag}] = {tag, record.control, std::nullopt};
+                    possibleCandidates[coordinate]
+                        = PossibleInliningCandidate(coordinate, parent, record.control);
                 }
                 else if(record.rw == RW::READ)
                 {
-                    // See if we have any active possible candidates corresponding to this coordinate and body parent
+                    // See if we have any active possible candidates corresponding to this coordinate
                     if(possibleCandidate->has_value())
                     {
-                        // If that possible candidate has a write but no read and this read is from an assign node, add a read
-                        if(possibleCandidate->value().hasWriteNoRead() && isAssignNode)
+                        // If this read would satisfy that possible candidate, add it
+                        if(possibleCandidate->value().checkNewRead(parent, isAssignNode))
                         {
                             // Now that we've written to and read from this coordinate,
-                            // this will be a candidate as long as we don't have any more reads to this tag
-                            possibleCandidate->value().readingNode = record.control;
+                            // this will be a candidate as long as we don't have any more reads to it
+                            possibleCandidate->value().addRead(parent, record.control);
                         }
-                        // Otherwise, we have already read from this coordinate, so this is not a candidate after all
+                        // Otherwise, we do not have a candidate
                         else
                         {
-                            possibleCandidates[{parent, tag}] = std::nullopt;
+                            possibleCandidates[coordinate] = std::nullopt;
                         }
                     }
                 }
@@ -228,16 +231,17 @@ namespace rocRoller::KernelGraph
                 {
                     // A READWRITE is composed of a read followed by a write, so we will treat this as two separate operations:
 
-                    // See if we have any active possible candidates corresponding to this coordinate and body parent
+                    // See if we have any active possible candidates corresponding to this coordinate
                     if(possibleCandidate->has_value())
                     {
-                        // If that possible candidate has a write but no read and this read is from an assign node, add a read
-                        if(possibleCandidate->value().hasWriteNoRead() && isAssignNode)
+                        // If this read would satisfy that possible candidate, add it
+                        if(possibleCandidate->value().checkNewRead(parent, isAssignNode))
                         {
                             // Now that we've written to and read from this coordinate,
                             // since we know we're about to write to it again, this is a candidate!
-                            possibleCandidate->value().readingNode = record.control;
-                            candidates.push_back(possibleCandidate->value().createCandidate());
+                            possibleCandidate->value().addRead(parent, record.control);
+                            candidates.push_back(
+                                possibleCandidate->value().createCandidate(/*deleteTag=*/false));
                         }
                     }
 
@@ -248,7 +252,8 @@ namespace rocRoller::KernelGraph
                     }
 
                     // Create a new possible candidate, one that has been written to but not read from yet
-                    possibleCandidates[{parent, tag}] = {tag, record.control, std::nullopt};
+                    possibleCandidates[coordinate]
+                        = PossibleInliningCandidate(coordinate, parent, record.control);
                 }
                 else
                 {
@@ -261,14 +266,9 @@ namespace rocRoller::KernelGraph
             {
                 if(possibleCandidate.has_value() && possibleCandidate.value().isCandidate())
                 {
-                    Candidate newCandidate = possibleCandidate.value().createCandidate();
-
-                    // Since this possible candidate meets the requirements for being a candidate,
-                    // we know that there were no more reads or writes to this coordinate after the ones that constituted the candidate,
-                    // and therefore the tag can be deleted
-                    newCandidate.deleteTag = true;
-
-                    candidates.push_back(newCandidate);
+                    // Since we know there were no more reads or writes to this coordinate, we can delete it
+                    candidates.push_back(
+                        possibleCandidate.value().createCandidate(/*deleteCoordinate=*/true));
                 }
             }
 
@@ -280,34 +280,35 @@ namespace rocRoller::KernelGraph
     {
         auto kgraph = original;
 
-        auto candidates = InlineExpressionsDetail::findInlineCandidates(kgraph);
+        auto candidates = InlineExpressionsDetail::findInliningCandidates(kgraph);
         for(auto candidate : candidates)
         {
-            auto tagToReplace = candidate.tag;
+            auto coordinateToReplace = candidate.m_coordinate;
 
-            auto replacementExpr = kgraph.control.getNode<Assign>(candidate.writingNode).expression;
+            auto replacementExpr
+                = kgraph.control.getNode<Assign>(candidate.m_writingNode).expression;
 
-            auto readingNode = kgraph.control.getNode<Assign>(candidate.readingNode);
+            auto readingNode = kgraph.control.getNode<Assign>(candidate.m_readingNode);
             auto readingExpr = readingNode.expression;
 
-            // Replace the DataFlowTag in readingExpr corresponding to tagToReplace with replacementExpr
+            // Replace the DataFlowTag in readingExpr corresponding to coordinateToReplace with replacementExpr
             auto newExpr = InlineExpressionsDetail::replaceDataFlowTag(
-                readingExpr, tagToReplace, replacementExpr);
+                readingExpr, coordinateToReplace, replacementExpr);
 
             // Replace the old expression with this new one
             readingNode.expression = newExpr;
-            kgraph.control.setElement(candidate.readingNode, readingNode);
+            kgraph.control.setElement(candidate.m_readingNode, readingNode);
 
             // Replace writing node with NOP
             auto nop = kgraph.control.addElement(NOP());
-            replaceWith(kgraph, candidate.writingNode, nop, false);
-            purgeNodes(kgraph, {candidate.writingNode});
+            replaceWith(kgraph, candidate.m_writingNode, nop, false);
+            purgeNodes(kgraph, {candidate.m_writingNode});
 
-            // If necessary, delete tag
-            if(candidate.deleteTag)
+            // If necessary, delete the coordinate
+            if(candidate.m_deleteCoordinate)
             {
-                kgraph.coordinates.deleteElement(tagToReplace);
-                kgraph.mapper.purgeMappingsTo(tagToReplace);
+                kgraph.coordinates.deleteElement(coordinateToReplace);
+                kgraph.mapper.purgeMappingsTo(coordinateToReplace);
             }
         }
 

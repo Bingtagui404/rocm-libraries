@@ -28,8 +28,6 @@
 
 #include "SimpleTest.hpp"
 #include "TestContext.hpp"
-#include "catch2/matchers/catch_matchers_string.hpp"
-#include "common/SourceMatcher.hpp"
 
 #include <common/CommonGraphs.hpp>
 #include <common/Utilities.hpp>
@@ -106,12 +104,12 @@ namespace InlineExpressionsTest
 
         SECTION("Find candidates")
         {
-            auto candidates = InlineExpressionsDetail::findInlineCandidates(graph);
+            auto candidates = InlineExpressionsDetail::findInliningCandidates(graph);
             CHECK(candidates.size() == 2);
 
-            Candidate expectedCandidate1 = {
+            InliningCandidate expectedCandidate1 = {
                 /* tag */ 293, /* writingNode */ 188, /* readingNode */ 185, /* deleteTag */ true};
-            Candidate expectedCandidate2 = {
+            InliningCandidate expectedCandidate2 = {
                 /* tag */ 295, /* writingNode */ 184, /* readingNode */ 185, /* deleteTag */ true};
             CHECK(candidates[0] == expectedCandidate1);
             CHECK(candidates[1] == expectedCandidate2);
@@ -304,12 +302,12 @@ namespace InlineExpressionsTest
                   == idxC);
 
             // Expect that none of these are candidates
-            for(const auto& candidate : InlineExpressionsDetail::findInlineCandidates(graph))
+            for(const auto& candidate : InlineExpressionsDetail::findInliningCandidates(graph))
             {
-                CHECK(candidate.tag != coordA);
-                CHECK(candidate.writingNode != idxA);
-                CHECK(candidate.readingNode != idxB);
-                CHECK(candidate.readingNode != idxC);
+                CHECK(candidate.m_coordinate != coordA);
+                CHECK(candidate.m_writingNode != idxA);
+                CHECK(candidate.m_readingNode != idxB);
+                CHECK(candidate.m_readingNode != idxC);
             }
         }
 
