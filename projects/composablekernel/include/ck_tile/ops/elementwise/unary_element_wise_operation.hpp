@@ -447,6 +447,15 @@ CK_TILE_HOST_DEVICE bf16x8_t fp8x8_to_bf16x8_scale(const fp8x8_t& src, const flo
     return y;
 }
 
+CK_TILE_HOST_DEVICE fp8x8_t bf16x8_to_fp8x8_scale(const bf16x8_t& src, const float& scale)
+{
+    fp8x8_t y;
+    static_for<0, 8, 1>{}([&](auto i) {
+        y[i.value] = type_convert<fp8_t>(type_convert<float>(src[i.value]) * scale);
+    });
+    return y;
+}
+
 CK_TILE_HOST_DEVICE fp16x8_t fp8x8_to_fp16x8_scale(const fp8x8_t& src, const float& scale)
 {
     fp16x8_t y;
@@ -488,6 +497,15 @@ CK_TILE_HOST_DEVICE fp16x8_t fp8x8_to_fp16x8_scale(const fp8x8_t& src, const flo
         y[i.value] = type_convert<fp16_t>(type_convert<float>(src[i.value]) * scale);
     });
 #endif
+    return y;
+}
+
+CK_TILE_HOST_DEVICE fp8x8_t fp16x8_to_fp8x8_scale(const fp16x8_t& src, const float& scale)
+{
+    fp8x8_t y;
+    static_for<0, 8, 1>{}([&](auto i) {
+        y[i.value] = type_convert<fp8_t>(type_convert<float>(src[i.value]) * scale);
+    });
     return y;
 }
 
@@ -620,10 +638,30 @@ struct PassThroughPack8
     template <typename Y, typename X>
     CK_TILE_HOST_DEVICE void operator()(Y& y, const X& x) const;
 
+    CK_TILE_HOST_DEVICE constexpr void operator()(fp16x8_t& y, const fp8x8_t& x) const
+    {
+        y = fp8x8_to_fp16x8_scale(x, 1.0f);
+    }
+
+    CK_TILE_HOST_DEVICE constexpr void operator()(fp8x8_t& y, const fp16x8_t& x) const
+    {
+        y = fp16x8_to_fp8x8_scale(x, 1.0f);
+    }
+
     CK_TILE_HOST_DEVICE constexpr void operator()(fp16x8_t& y, const pk_int4x4_t& x) const
     {
         y.lo = i4_to_half4(bit_cast<int>(x));
         y.hi = i4_to_half4(bit_cast<int>(x) >> 8);
+    }
+
+    CK_TILE_HOST_DEVICE constexpr void operator()(bf16x8_t& y, const fp8x8_t& x) const
+    {
+        y = fp8x8_to_bf16x8_scale(x, 1.0f);
+    }
+
+    CK_TILE_HOST_DEVICE constexpr void operator()(fp8x8_t& y, const bf16x8_t& x) const
+    {
+        y = bf16x8_to_fp8x8_scale(x, 1.0f);
     }
 
     CK_TILE_HOST_DEVICE constexpr void operator()(bf16x8_t& y, const pk_int4x4_t& x) const
