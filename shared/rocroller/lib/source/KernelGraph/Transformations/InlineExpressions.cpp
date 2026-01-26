@@ -24,10 +24,13 @@
  *
  *******************************************************************************/
 
+#include "rocRoller/Graph/Hypergraph.hpp"
+#include "rocRoller/KernelGraph/CoordinateGraph/CoordinateEdge_fwd.hpp"
 #include <rocRoller/KernelGraph/Transforms/InlineExpressions.hpp>
 #include <rocRoller/KernelGraph/Transforms/InlineExpressions_detail.hpp>
 #include <rocRoller/KernelGraph/Utils.hpp>
 #include <unordered_map>
+#include <variant>
 
 namespace rocRoller::KernelGraph
 {
@@ -304,11 +307,37 @@ namespace rocRoller::KernelGraph
             replaceWith(kgraph, candidate.m_writingNode, nop, false);
             purgeNodes(kgraph, {candidate.m_writingNode});
 
-            // If necessary, delete the coordinate
+            // If necessary, delete the coordinate and connect any parents to any children
             if(candidate.m_deleteCoordinate)
             {
+                auto incomingEdges = kgraph.coordinates.getNeighbours<Graph::Direction::Upstream>(
+                    coordinateToReplace);
+                std::vector<int> incomingNodes;
+                for(auto inEdgeIdx : incomingEdges)
+                {
+                    for(auto inNodeIdx :
+                        kgraph.coordinates.getNeighbours<Graph::Direction::Upstream>(inEdgeIdx))
+                    {
+                        incomingNodes.push_back(inNodeIdx);
+                    }
+                }
+                auto outgoingEdges = kgraph.coordinates.getNeighbours<Graph::Direction::Downstream>(
+                    coordinateToReplace);
+                std::vector<int> outgoingNodes;
+                for(auto outEdgeIdx : outgoingEdges)
+                {
+                    for(auto outNodeIdx :
+                        kgraph.coordinates.getNeighbours<Graph::Direction::Downstream>(outEdgeIdx))
+                    {
+                        outgoingNodes.push_back(outNodeIdx);
+                    }
+                }
+
                 kgraph.coordinates.deleteElement(coordinateToReplace);
                 kgraph.mapper.purgeMappingsTo(coordinateToReplace);
+
+                kgraph.coordinates.addElement(
+                    CoordinateGraph::DataFlow(), incomingNodes, outgoingNodes);
             }
         }
 
