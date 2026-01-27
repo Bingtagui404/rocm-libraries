@@ -2860,13 +2860,21 @@ public:
                                                elapsed_gpu_secs,
                                                noise_timeout,
                                                m_amdsmi);
-
+                m_last_bytes_per_second = bytes_per_sec;
                 break;
             }
         }
 
         for(const auto& event : events)
             PRIMBENCH_HIP_CHECK(hipEventDestroy(event));
+    }
+
+    /**
+     * \brief Returns the bytes per second of the last ran benchmark.
+     */
+    double get_last_bytes_per_second()
+    {
+        return m_last_bytes_per_second;
     }
 
     /**
@@ -3115,6 +3123,8 @@ private:
     bool   m_has_set_writes   = false;
     size_t m_items            = 0;
     size_t m_read_write_bytes = 0;
+
+    double m_last_bytes_per_second = 0.0;
 }; // class state
 
 /**
@@ -3774,6 +3784,7 @@ public:
             {
                 auto state = new_state(algo, meta, family_index);
                 b->run(state);
+                m_last_bytes_per_second = state.get_last_bytes_per_second();
             }
 
             family_index++;
@@ -3789,6 +3800,14 @@ public:
     T get(std::string_view name, const T& default_val, std::string_view description)
     {
         return m_cli.get<T>(name, default_val, description);
+    }
+
+    /**
+     * \brief Returns the bytes per second of the last ran benchmark.
+     */
+    double get_last_bytes_per_second()
+    {
+        return m_last_bytes_per_second;
     }
 
 private:
@@ -4060,6 +4079,8 @@ private:
     bool        m_own_stream; /** Whether primbench should create its own stream */
 
     detail::cli m_cli; /**< Command-line argument parser */
+
+    double m_last_bytes_per_second = 0.0; /**< Last bytes per second */
 
     std::unique_ptr<detail::stream_blocker>
         m_stream_blocker; /**< Stream blocker to serialize output */
