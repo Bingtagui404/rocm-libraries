@@ -315,10 +315,15 @@ namespace rocRoller::KernelGraph
                 std::vector<int> incomingNodes;
                 for(auto inEdgeIdx : incomingEdges)
                 {
-                    for(auto inNodeIdx :
-                        kgraph.coordinates.getNeighbours<Graph::Direction::Upstream>(inEdgeIdx))
+                    if(kgraph.coordinates.getEdgeType(inEdgeIdx)
+                       == CoordinateGraph::EdgeType::DataFlow)
                     {
-                        incomingNodes.push_back(inNodeIdx);
+                        for(auto inNodeIdx :
+                            kgraph.coordinates.getNeighbours<Graph::Direction::Upstream>(inEdgeIdx))
+                        {
+                            incomingNodes.push_back(inNodeIdx);
+                        }
+                        kgraph.coordinates.deleteElement(inEdgeIdx);
                     }
                 }
                 auto outgoingEdges = kgraph.coordinates.getNeighbours<Graph::Direction::Downstream>(
@@ -326,18 +331,25 @@ namespace rocRoller::KernelGraph
                 std::vector<int> outgoingNodes;
                 for(auto outEdgeIdx : outgoingEdges)
                 {
-                    for(auto outNodeIdx :
-                        kgraph.coordinates.getNeighbours<Graph::Direction::Downstream>(outEdgeIdx))
+                    if(kgraph.coordinates.getEdgeType(outEdgeIdx)
+                       == CoordinateGraph::EdgeType::DataFlow)
                     {
-                        outgoingNodes.push_back(outNodeIdx);
+                        for(auto outNodeIdx :
+                            kgraph.coordinates.getNeighbours<Graph::Direction::Downstream>(
+                                outEdgeIdx))
+                        {
+                            outgoingNodes.push_back(outNodeIdx);
+                        }
+                        kgraph.coordinates.deleteElement(outEdgeIdx);
                     }
                 }
 
                 kgraph.coordinates.deleteElement(coordinateToReplace);
                 kgraph.mapper.purgeMappingsTo(coordinateToReplace);
 
-                kgraph.coordinates.addElement(
-                    CoordinateGraph::DataFlow(), incomingNodes, outgoingNodes);
+                if(incomingNodes.size() > 0 && outgoingNodes.size() > 0)
+                    kgraph.coordinates.addElement(
+                        CoordinateGraph::DataFlow(), incomingNodes, outgoingNodes);
             }
         }
 
