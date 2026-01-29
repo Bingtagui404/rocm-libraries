@@ -138,6 +138,269 @@ def count_items(input_list: list[int], sv: Optional[int] = None, ev: Optional[in
             count += 1
     return count
 
+
+################################################################################
+# Intent-based helper functions for computing wait counts (dscnt/vlcnt)
+# These functions are designed to be used in GUI-editable schedules with @DYNAMIC marker
+################################################################################
+
+def _get_schedule_list(optSchedule: dict, inst_type: str, codepath: int) -> list:
+    """
+    Get the schedule list for an instruction type and codepath.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        inst_type: Instruction type key (e.g., 'LRA0', 'GRB')
+        codepath: Which codepath to use
+        
+    Returns:
+        List of MFMA indices for the instruction type, or empty list if not found
+    """
+    if inst_type not in optSchedule:
+        return []
+    schedule = optSchedule[inst_type]
+    if not isinstance(schedule, list) or len(schedule) == 0:
+        return []
+    # Handle both single codepath (1D list) and multi-codepath (2D list)
+    if isinstance(schedule[0], list):
+        # Multi-codepath: schedule[codepath] is the list
+        if codepath < len(schedule):
+            return schedule[codepath]
+        return schedule[0]  # Fall back to first codepath
+    else:
+        # Single codepath: schedule is the list itself
+        return schedule
+
+
+def count_inflight(optSchedule: dict, types: Union[str, list], index: int, 
+                   codepath: int = 0) -> int:
+    """
+    Count how many instructions of the specified types are inflight at given index.
+    (i.e., issued before index but not yet complete)
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to count (e.g., 'LRA0' or ['LRA0', 'LRB0'])
+        index: MFMA index to check
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        Total count of inflight instructions of the specified types
+        
+    Example:
+        count_inflight(optSchedule, 'LRA0', 22) - count LRA0s issued before index 22
+        count_inflight(optSchedule, ['LRA0', 'LRB0'], 22) - count LRA0s + LRB0s before 22
+    """
+    if isinstance(types, str):
+        types = [types]
+    
+    total = 0
+    for inst_type in types:
+        schedule_list = _get_schedule_list(optSchedule, inst_type, codepath)
+        total += inflight(schedule_list, index)
+    return total
+
+
+def total_lds_inflight(optSchedule: dict, index: int, codepath: int = 0) -> int:
+    """
+    Count total LDS instructions (all LR* types) inflight at given index.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        index: MFMA index to check
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        Total count of all LDS (local read) instructions inflight
+    """
+    lr_types = [key for key in optSchedule.keys() if key.startswith('LR')]
+    return count_inflight(optSchedule, lr_types, index, codepath)
+
+
+def total_vmem_inflight(optSchedule: dict, index: int, codepath: int = 0) -> int:
+    """
+    Count total VMEM instructions (all GR* types) inflight at given index.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        index: MFMA index to check
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        Total count of all VMEM (global read) instructions inflight
+    """
+    gr_types = [key for key in optSchedule.keys() if key.startswith('GR')]
+    return count_inflight(optSchedule, gr_types, index, codepath)
+
+
+def dscnt_after_finish(optSchedule: dict, types: Union[str, list], index: int, 
+                       codepath: int = 0) -> int:
+    """
+    Return dscnt value to wait for ALL of the specified instruction types to finish.
+    
+    This computes the dscnt such that all instructions of the specified LDS types
+    that were issued before `index` will be complete after the wait. Other LDS
+    instructions (not in `types`) may still be in flight.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to wait for (e.g., 'LRA0' or ['LRA0', 'LRB0'])
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        dscnt value = (total LDS inflight) - (inflight of specified types)
+        
+    Example:
+        dscnt_after_finish(optSchedule, 'LRA0', 22) 
+        - Returns dscnt such that all LRA0 issued before index 22 will be complete
+        - Other LDS instructions (LRB0, etc.) may still be in flight
+        
+        dscnt_after_finish(optSchedule, ['LRA0', 'LRB0'], 46)
+        - Wait for all LRA0 AND LRB0 to finish
+    """
+    total_lds = total_lds_inflight(optSchedule, index, codepath)
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    return total_lds - target_inflight
+
+
+def dscnt_after_n_finish(optSchedule: dict, types: Union[str, list], n: int, 
+                         index: int, codepath: int = 0) -> int:
+    """
+    Return dscnt value to wait for N of the specified instruction types to finish.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to wait for (e.g., 'LRA0' or ['LRA0', 'LRB0'])
+        n: Number of instructions that must finish
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        dscnt value = (total LDS inflight) - n
+        
+    Raises:
+        ValueError: If n > number of instructions issued before index
+        
+    Example:
+        dscnt_after_n_finish(optSchedule, 'LRA0', 4, 22)
+        - If 8 LRA0s issued before index 22, wait for 4 to finish (4 may remain in flight)
+    """
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    if n > target_inflight:
+        raise ValueError(f"Cannot wait for {n} instructions to finish: only {target_inflight} were issued before index {index}")
+    
+    total_lds = total_lds_inflight(optSchedule, index, codepath)
+    return total_lds - n
+
+
+def dscnt_with_n_inflight(optSchedule: dict, types: Union[str, list], n: int,
+                          index: int, codepath: int = 0) -> int:
+    """
+    Return dscnt value to have exactly N of the specified types still in flight.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to keep in flight (e.g., 'LRA0' or ['LRA0', 'LRB0'])
+        n: Number of instructions to keep in flight
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        dscnt value = (total LDS inflight) - (inflight of types) + n
+        
+    Raises:
+        ValueError: If n > number of instructions issued before index
+        
+    Example:
+        dscnt_with_n_inflight(optSchedule, 'LRA0', 2, 22)
+        - If 8 LRA0s issued, wait until only 2 remain in flight (6 must finish)
+    """
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    if n > target_inflight:
+        raise ValueError(f"Cannot keep {n} instructions in flight: only {target_inflight} were issued before index {index}")
+    
+    total_lds = total_lds_inflight(optSchedule, index, codepath)
+    return total_lds - target_inflight + n
+
+
+def vlcnt_after_finish(optSchedule: dict, types: Union[str, list], index: int,
+                       codepath: int = 0) -> int:
+    """
+    Return vlcnt value to wait for ALL of the specified global read types to finish.
+    
+    Similar to dscnt_after_finish but for global reads (GRA, GRB, GRInc*).
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to wait for (e.g., 'GRA' or ['GRA', 'GRB'])
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        vlcnt value = (total VMEM inflight) - (inflight of specified types)
+        
+    Example:
+        vlcnt_after_finish(optSchedule, ['GRA', 'GRB'], 47)
+        - Wait for all previous GRA and GRB to complete
+    """
+    total_vmem = total_vmem_inflight(optSchedule, index, codepath)
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    return total_vmem - target_inflight
+
+
+def vlcnt_after_n_finish(optSchedule: dict, types: Union[str, list], n: int,
+                         index: int, codepath: int = 0) -> int:
+    """
+    Return vlcnt value to wait for N of the specified global reads to finish.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to wait for (e.g., 'GRA' or ['GRA', 'GRB'])
+        n: Number of instructions that must finish
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        vlcnt value = (total VMEM inflight) - n
+        
+    Raises:
+        ValueError: If n > number of instructions issued before index
+    """
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    if n > target_inflight:
+        raise ValueError(f"Cannot wait for {n} instructions to finish: only {target_inflight} were issued before index {index}")
+    
+    total_vmem = total_vmem_inflight(optSchedule, index, codepath)
+    return total_vmem - n
+
+
+def vlcnt_with_n_inflight(optSchedule: dict, types: Union[str, list], n: int,
+                          index: int, codepath: int = 0) -> int:
+    """
+    Return vlcnt value to have exactly N of the specified VMEM types still in flight.
+    
+    Args:
+        optSchedule: The schedule dictionary
+        types: Instruction type(s) to keep in flight (e.g., 'GRA' or ['GRA', 'GRB'])
+        n: Number of instructions to keep in flight
+        index: MFMA index at which the wait occurs
+        codepath: Which codepath to compute for (default 0)
+        
+    Returns:
+        vlcnt value = (total VMEM inflight) - (inflight of types) + n
+        
+    Raises:
+        ValueError: If n > number of instructions issued before index
+    """
+    target_inflight = count_inflight(optSchedule, types, index, codepath)
+    if n > target_inflight:
+        raise ValueError(f"Cannot keep {n} instructions in flight: only {target_inflight} were issued before index {index}")
+    
+    total_vmem = total_vmem_inflight(optSchedule, index, codepath)
+    return total_vmem - target_inflight + n
+
+
 def switch_A_B_schedule(optSchedule):
     # Swap A and B entries in the schedule
     # Only replace A/B if it's the last or second-last character
@@ -3648,7 +3911,6 @@ def _get_schedule_128x128x64_TF32(kernel, useLDSTr, TLDS):
     opt1 = ScheduleInfo(2, n_mfma, optSchedule, syncCode, nglshift, nllshift)
     return True, opt1
 
-
 @RegisterSchedule(
     tile_config=TileConfig(128, 256, 32, 2, 0, True, 0, 0),
     dtype_predicate=isTF32,
@@ -3657,14 +3919,14 @@ def _get_schedule_128x128x64_TF32(kernel, useLDSTr, TLDS):
     mfma_wave_group=[2, 2]
 )
 def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
-    numMfma = 96
-    kernel["MfmaInitCVgprs"] = True
-    optSchedule = dict()
-    syncCode = []
-    mfmaReorder = []
-    nglshift = nllshift = 0
-    numCodePaths = 2
     if isTN(kernel) and not useLDSTr and TLDS==1:
+        numMfma = 96
+        kernel["MfmaInitCVgprs"] = True
+        optSchedule = dict()
+        syncCode = []
+        mfmaReorder = []
+        nglshift = nllshift = 0
+        numCodePaths = 2
         kernel["UsePLRPack"] = True
         kernel["UseMFMAF32XEmulation"] = True
 
@@ -3831,7 +4093,12 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
             'PackA3' : [packA3],
         }
         nglshift = nllshift = 12 # vmcnt shift for ngl and nll
+        return True, ScheduleInfo(numCodePaths, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
     elif isNT(kernel) and useLDSTr and TLDS==0:
+        # GUI_SCHEDULE_BEGIN
+        numMfma = 96
+        numCodePaths = 2
+        kernel["MfmaInitCVgprs"] = True
         kernel["UsePLRPack"] = True
         kernel["UseMFMAF32XEmulation"] = True
 
@@ -4116,6 +4383,8 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
         ]
         reordered_3rd_quadrant = [i + numMfma//2 for i in reordered_3rd_quadrant]
         mfmaReorder = list(range(numMfma//4)) + reordered_2nd_quadrant + reordered_3rd_quadrant + list(range(3*numMfma//4, numMfma))
+        return True, ScheduleInfo(numCodePaths, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
+        # GUI_SCHEDULE_END
     elif isNN(kernel) and TLDS==1:
         kernel["UsePLRPack"] = True
         kernel["UseMFMAF32XEmulation"] = True
@@ -4242,12 +4511,9 @@ def _get_schedule_128x256x32_TF32(kernel, useLDSTr, TLDS):
         }
         syncCode = syncTable[1::2]
         nglshift = nllshift = 12
+        return True, ScheduleInfo(numCodePaths, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
     else:
         return False, None
-
-    opt1 = ScheduleInfo(numCodePaths, numMfma, optSchedule, syncCode, nglshift, nllshift, mfmaReorder=mfmaReorder)
-    # opt1.disableValidation(, mfmaReorder=mfmaReorder)
-    return True, opt1
 
 
 @RegisterSchedule(

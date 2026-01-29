@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Compiled output
+out/
+dist/
+
+# Package files
+*.vsix
+
+# VS Code test instances
+.vscode-test/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

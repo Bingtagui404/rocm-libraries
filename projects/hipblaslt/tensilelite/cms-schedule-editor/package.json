@@ -1,0 +1,105 @@
+{
+  "name": "cms-schedule-editor",
+  "displayName": "CMS Schedule Editor",
+  "description": "Interactive editor for Tensile Custom Main Loop Schedules (CMS)",
+  "version": "0.1.0",
+  "publisher": "amd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ROCm/hipBLASLt"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cms.openEditor",
+        "title": "CMS: Open Schedule Editor"
+      },
+      {
+        "command": "cms.runSchedule",
+        "title": "CMS: Run Schedule (cms-fast)"
+      },
+      {
+        "command": "cms.saveSchedule",
+        "title": "CMS: Save Schedule"
+      },
+      {
+        "command": "cms.reloadLatencies",
+        "title": "CMS: Reload Latencies"
+      },
+      {
+        "command": "cms.showLog",
+        "title": "CMS: Show Log Output"
+      }
+    ],
+    "configuration": {
+      "title": "CMS Schedule Editor",
+      "properties": {
+        "cms.customSchedulePath": {
+          "type": "string",
+          "default": "Tensile/Components/CustomSchedule.py",
+          "description": "Relative path to CustomSchedule.py from workspace root"
+        },
+        "cms.yamlPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to benchmark YAML file"
+        },
+        "cms.outputDir": {
+          "type": "string",
+          "default": "",
+          "description": "Output directory for cms-fast runs"
+        },
+        "cms.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python interpreter path"
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "cms.runSchedule",
+          "when": "activeWebviewPanelId == 'cmsScheduleEditor'",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "cms.runSchedule",
+        "key": "ctrl+shift+r",
+        "when": "activeWebviewPanelId == 'cmsScheduleEditor'"
+      },
+      {
+        "command": "cms.saveSchedule",
+        "key": "ctrl+s",
+        "when": "activeWebviewPanelId == 'cmsScheduleEditor'"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  }
+}
