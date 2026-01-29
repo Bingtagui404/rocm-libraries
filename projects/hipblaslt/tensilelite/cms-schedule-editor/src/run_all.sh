@@ -282,7 +282,7 @@ if [[ "$mode" == "baseline" ]]; then
     export baseline_dir=${out_dir}_non_cms
     mkdir -p $baseline_dir
     
-    export non_cms_yaml_file=$baseline_dir/non_cms_${yaml_file}
+    export non_cms_yaml_file=$baseline_dir/non_cms_$(basename "$yaml_file")
     # Validate and create non-CMS yaml file
     create_non_cms_yaml "$yaml_file" "$non_cms_yaml_file"
     if [[ $? -ne 0 ]]; then
@@ -290,6 +290,7 @@ if [[ "$mode" == "baseline" ]]; then
     fi
 
     # 1. Run non-cms through Tensile to get baseline performance (BT).
+    mkdir -p $baseline_dir/traces
     export tensile_log_file=$baseline_dir/traces/tensile.log
     CU=256 Tensile $non_cms_yaml_file $baseline_dir &>> $tensile_log_file
     if [[ $? -ne 0 ]]; then
@@ -299,7 +300,6 @@ if [[ "$mode" == "baseline" ]]; then
     export run_script=$(find $baseline_dir -name "run.sh")
 
     # TODO: Hardcoded iteration range
-    mkdir -p $baseline_dir/traces
     export rocprofv3_log_file=$baseline_dir/traces/rocprofv3.log
     rocprofv3 --att \
         --att-activity 10 \
@@ -423,7 +423,7 @@ elif [[ "$mode" == "cms-fast" ]]; then
         --att-target-cu 0 \
         --kernel-include-regex Cijk \
         -d $trace_dir \
-        --kernel-iteration-range 20-49 \
+        --kernel-iteration-range 20-119 \
         --output-format csv \
         -- $run_script &>> $rocprofv3_log_file
     if [[ $? -ne 0 ]]; then

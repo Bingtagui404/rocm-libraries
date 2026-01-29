@@ -24,6 +24,7 @@ import argparse
 import csv
 import os
 import re
+import shutil
 import sys
 from itertools import chain
 from dataclasses import dataclass, field
@@ -217,6 +218,24 @@ def is_comment_or_empty(line: str) -> bool:
         # Labels like "label_name:" but not instructions with comments ending in ":"
         return True
     return False
+
+
+def backup_if_exists(filepath: str) -> None:
+    """
+    If a file exists, copy it to a backup path with '_prev' before the extension.
+    
+    Args:
+        filepath: Path to the file to potentially backup
+        
+    Example:
+        backup_if_exists("output/cycles_histogram.png")
+        # If file exists, copies it to "output/cycles_histogram_prev.png"
+    """
+    if os.path.exists(filepath):
+        base, ext = os.path.splitext(filepath)
+        prev_path = f"{base}_prev{ext}"
+        shutil.copy2(filepath, prev_path)
+
 
 def find_loop_ranges(asm_file: str) -> Dict[str, Tuple[int, int, List[Tuple[int, str, InstructionClass]]]]:
     """
@@ -416,7 +435,7 @@ def find_all_loop_ranges(
     Args:
         asm_file: Path to the .s assembly file
         csv_file: Path to a CSV file with profiling data (must have Source column)
-        num_code_paths: Number of code paths (0 for non-SIMD, typically 2 or 4 for SIMD)
+        num_code_paths: Number of code paths (1 for non-SIMD, typically 2 or 4 for SIMD)
         
     Returns:
         LoopRanges dataclass with CSV row indices (0-indexed, inclusive):
@@ -429,7 +448,7 @@ def find_all_loop_ranges(
         All CSV files for the same kernel should have identical row ranges since
         they trace the same code.
     """
-    if num_code_paths > 0:
+    if num_code_paths > 1:
         line_mapping = find_loop_ranges_simd_specialized(asm_file, num_code_paths)
         # line_mapping: {'mainloop_simd_0': line, ..., 'ngl': line, 'nll': line}
         
@@ -442,17 +461,44 @@ def find_all_loop_ranges(
         def get_loop_for_asm_line(asm_line: int) -> Optional[str]:
             return asm_line_to_loop.get(asm_line)
     else:
-        loop_ranges = find_loop_ranges(asm_file)
-        # loop_ranges: {'mainloop': (start, end, instrs), 'ngl': ..., 'nll': ...}
+        # Check if this is a macro-based kernel by looking for MAINLOOP invocations
+        # For macro-based kernels, use exact matching on MAINLOOP invocation lines
+        # (all instructions inside the macro have the same source line)
+        with open(asm_file, "r") as f:
+            lines = f.readlines()
         
-        mainloop_names = ['mainloop']
+        mainloop_invocations = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("MAINLOOP "):
+                mainloop_invocations.append(i + 1)  # 1-indexed
         
-        def get_loop_for_asm_line(asm_line: int) -> Optional[str]:
-            for loop_name in ['mainloop', 'ngl', 'nll']:
-                start, end, _ = loop_ranges[loop_name]
-                if start <= asm_line <= end:
-                    return loop_name
-            return None
+        if len(mainloop_invocations) >= 3:
+            # Macro-based kernel: use exact matching
+            # First MAINLOOP is main loop, second-to-last is NGL, last is NLL
+            line_mapping = {
+                'mainloop': mainloop_invocations[0],
+                'ngl': mainloop_invocations[-2],
+                'nll': mainloop_invocations[-1],
+            }
+            asm_line_to_loop = {line: name for name, line in line_mapping.items()}
+            mainloop_names = ['mainloop']
+            
+            def get_loop_for_asm_line(asm_line: int) -> Optional[str]:
+                return asm_line_to_loop.get(asm_line)
+        else:
+            # Non-macro kernel: use range-based matching
+            loop_ranges = find_loop_ranges(asm_file)
+            # loop_ranges: {'mainloop': (start, end, instrs), 'ngl': ..., 'nll': ...}
+            
+            mainloop_names = ['mainloop']
+            
+            def get_loop_for_asm_line(asm_line: int) -> Optional[str]:
+                for loop_name in ['mainloop', 'ngl', 'nll']:
+                    start, end, _ = loop_ranges[loop_name]
+                    if start <= asm_line <= end:
+                        return loop_name
+                return None
     
     # Track first and last row index for each loop
     # Initialize with None to detect first occurrence
@@ -827,6 +873,7 @@ def generate_boxplot(
         fig.patch.set_facecolor('#505050')
         ax.set_facecolor('#505050')
         ax.set_title(f"{title}\nNo data to display", color='white', fontweight='bold')
+        backup_if_exists(output_path)
         plt.savefig(output_path, dpi=200, facecolor=fig.get_facecolor())
         plt.close()
         return output_path
@@ -889,10 +936,12 @@ def generate_boxplot(
     # Set white, bold text for labels and title
     ax.set_xlabel("Instruction", color='white', fontweight='bold')
     ax.set_ylabel(y_label, color='white', fontweight='bold')
+    median_eff = np.median(efficiency)
+    iqr_low = np.percentile(efficiency, 25)
+    iqr_high = np.percentile(efficiency, 75)
     ax.set_title(
         f"{title}\n"
-        f"Mean Efficiency: {np.mean(efficiency):.1f}% | "
-        f"Min: {np.min(efficiency):.1f}% | Max: {np.max(efficiency):.1f}% | "
+        f"Efficiency: {median_eff:.1f}% (IQR: {iqr_low:.1f}%-{iqr_high:.1f}%) | "
         f"Runs: {num_runs}\n",
         color='white', fontweight='bold'
     )
@@ -960,6 +1009,7 @@ def generate_boxplot(
     # Adjust layout to prevent label cutoff with extra bottom padding for rotated labels
     plt.tight_layout(rect=[0, 0.05, 1, 1])
     
+    backup_if_exists(output_path)
     plt.savefig(output_path, dpi=200, facecolor=fig.get_facecolor())
     plt.close()
     
@@ -1126,8 +1176,9 @@ class EfficiencyStats(NamedTuple):
     total_iterations: int
     mean_cycles: float
     theoretical_cycles: int
-    mean_efficiency: float
-    std_efficiency: float
+    median_efficiency: float
+    iqr_low: float  # 25th percentile
+    iqr_high: float  # 75th percentile
 
 
 def compute_and_report_efficiency(
@@ -1171,20 +1222,22 @@ def compute_and_report_efficiency(
     )
     
     mean_cycles = float(np.mean(total_cycles))
-    mean_efficiency = float(np.mean(efficiency))
-    std_efficiency = float(np.std(efficiency))
+    median_efficiency = float(np.median(efficiency))
+    iqr_low = float(np.percentile(efficiency, 25))
+    iqr_high = float(np.percentile(efficiency, 75))
     
     print(f"Actual cycles: {mean_cycles:.0f}")
     print(f"Theoretical cycles: {theoretical_cycles}")
-    print(f"Mean efficiency: {mean_efficiency:.1f}% +/- {std_efficiency:.1f}%")
+    print(f"Efficiency: {median_efficiency:.1f}% (IQR: {iqr_low:.1f}%-{iqr_high:.1f}%)")
     
     return EfficiencyStats(
         efficiency=efficiency,
         total_iterations=total_iterations,
         mean_cycles=mean_cycles,
         theoretical_cycles=theoretical_cycles,
-        mean_efficiency=mean_efficiency,
-        std_efficiency=std_efficiency
+        median_efficiency=median_efficiency,
+        iqr_low=iqr_low,
+        iqr_high=iqr_high,
     )
 
 
