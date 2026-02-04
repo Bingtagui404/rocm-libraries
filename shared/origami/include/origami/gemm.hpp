@@ -201,7 +201,6 @@ double compute_memory_latency(const problem_t& problem,
  * @param config Kernel configuration.
  * @param num_active_cus
  * @param splitting_factor
- * @param logger debug logging struct
  * @return double Latency in cycles.
  */
 double compute_tile_latency(const problem_t& problem,

@@ -399,6 +399,12 @@ class hardware_t {
           {CMS_kernel(data_type_t::BFloat16, transpose_t::T, transpose_t::N, 256, 192, 64), 1. / 1.10},
           {CMS_kernel(data_type_t::BFloat16, transpose_t::T, transpose_t::N, 256, 224, 64), 1. / 1.05},
           {CMS_kernel(data_type_t::BFloat16, transpose_t::T, transpose_t::N, 256, 256, 64), 1. / 1.05},
+          // TF32X3
+          // NN
+          {CMS_kernel(data_type_t::XFloat32, transpose_t::N, transpose_t::N, 192, 256, 32), 1. / 1.23},
+          // TN
+          {CMS_kernel(data_type_t::XFloat32, transpose_t::T, transpose_t::N, 128, 256, 32), 1. / 1.26},
+          {CMS_kernel(data_type_t::XFloat32, transpose_t::T, transpose_t::N, 192, 256, 32), 1. / 1.23},
         }
       },
     };
