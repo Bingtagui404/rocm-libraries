@@ -1,6 +1,6 @@
 ################################################################################
 #
-# Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,12 @@
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+
+# NOTE: Must manually set tensile bin path here to use properly.
+TENSILE_BIN_PATH=/home/alvasile/rocm-libraries/projects/hipblaslt/tensilelite/Tensile/bin
+Tensile=${TENSILE_BIN_PATH}/Tensile
+TensileCreateLibrary=${TENSILE_BIN_PATH}/TensileCreateLibrary
 
 # Print error message along with the last N lines of a log file
 # Args: error_message log_file [num_lines]
@@ -45,16 +51,18 @@ print_error_with_log() {
 
 # Parse command line arguments
 usage() {
-    echo "Usage: $0 -m <mode> -y <yaml_file> -o <out_dir>" >&2
-    echo "  -m, --mode      Mode: 'baseline','cms', or 'cms-fast'" >&2
-    echo "  -y, --yaml      Path to YAML file" >&2
-    echo "  -o, --out       Output directory" >&2
+    echo "Usage: $0 -m <mode> -y <yaml_file> -o <out_dir> [-c <chosen_index>]" >&2
+    echo "  -m, --mode          Mode: 'baseline','cms', or 'cms-fast'" >&2
+    echo "  -y, --yaml          Path to YAML file" >&2
+    echo "  -o, --out           Output directory" >&2
+    echo "  -c, --chosen-index  (baseline only) Skip discovery and use this solution index directly" >&2
     exit 1
 }
 
 export mode=""
 export yaml_file=""
 export out_dir=""
+export chosen_index=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -68,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -o|--out)
             out_dir="$2"
+            shift 2
+            ;;
+        -c|--chosen-index)
+            chosen_index="$2"
             shift 2
             ;;
         -h|--help)
@@ -294,7 +306,9 @@ export kernel_str="MT${kernel}_MI${mfma_shape}"
 if [[ "$mode" == "baseline" ]]; then
     # TODO: create folder containing baseline results
     export baseline_dir=${out_dir}_non_cms
-    mkdir -p $baseline_dir
+    export trace_dir=$baseline_dir/traces
+    export submission_dir=$baseline_dir/submission
+    mkdir -p $baseline_dir $submission_dir $trace_dir
     
     export non_cms_yaml_file=$baseline_dir/non_cms_$(basename "$yaml_file")
     # Validate and create non-CMS yaml file
@@ -304,131 +318,153 @@ if [[ "$mode" == "baseline" ]]; then
     fi
 
     # 1. Run non-cms through Tensile to get baseline performance (BT).
-    mkdir -p $baseline_dir/traces
-    export tensile_log_file=$baseline_dir/traces/tensile.log
-    CU=256 Tensile $non_cms_yaml_file $baseline_dir &>> $tensile_log_file
+    export tensile_log_file=$trace_dir/tensile.log
+    CU=256 $Tensile $non_cms_yaml_file $baseline_dir &>> $tensile_log_file
     if [[ $? -ne 0 ]]; then
         print_error_with_log "Tensile failed to run for non-CMS kernel" "$tensile_log_file"
         exit 1
     fi
+    cp $tensile_log_file $submission_dir/"Baseline - Tensile.log"
+    
     export run_script=$(find $baseline_dir -name "run.sh")
-
-    export rocprofv3_log_file=$baseline_dir/traces/rocprofv3.log
+    export rocprofv3_log_file=$trace_dir/rocprofv3.log
     rocprofv3 --att \
         --att-activity 10 \
         --att-target-cu 0 \
         --kernel-include-regex Cijk \
-        -d $baseline_dir/traces \
+        -d $trace_dir \
         --output-format csv \
         -- $run_script &>> $rocprofv3_log_file
     if [[ $? -ne 0 ]]; then
         print_error_with_log "rocprofv3 failed to run for non-CMS kernel" "$rocprofv3_log_file"
         exit 1
     fi
-    # TODO: zip up the trace
-
-    print_gflops_from_tensile_log $tensile_log_file
-    # TODO: Get mainloop efficiency script from https://github.com/ROCm/hipblaslt-tools/
-
-    # 3. Run non-cms through hipblaslt-bench to get baseline performance (BH).
-    export non_cms_tmp_hipblaslt_results=$baseline_dir/non_cms_hipblaslt-bench_all.txt
-    export hipblaslt_log_file=$baseline_dir/hipblaslt-bench.log
-    # Run a very fast iteration to find all kernels of the right shape.
-    # TODO: Turn these hipblaslt-bench calls into a function that can be fed to rocprofv3
-    hipblaslt-bench --function matmul \
-        --sizem $M --sizen $N --sizek $K  \
-        --transA $transA --transB $transB \
-        --algo_method all --api_method cpp \
-        --iters 1 --cold_iters 1 \
-        --alpha 1 --beta 0  --initialization trig_float --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type xf32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
-        > $non_cms_tmp_hipblaslt_results 2> $hipblaslt_log_file
-    if [[ $? -ne 0 ]]; then
-        print_error_with_log "hipblaslt-bench failed to run for non-CMS kernel" "$hipblaslt_log_file"
+    # Extract run_id from rocprofv3 log (number before _shader_engine_)
+    run_id=$(grep -m1 "_shader_engine_" "$rocprofv3_log_file" | sed 's/.*_\([0-9]\+\)_shader_engine_.*/\1/')
+    if [[ -z "$run_id" ]]; then
+        echo "Error: Could not extract run_id from $rocprofv3_log_file" >&2
         exit 1
     fi
-    
-    # Search for kernels matching both kernel shape AND MFMA shape (full kernel_str pattern)
-    # If not found, fall back to the winner kernel
-    kernel_indices=$(find_indices_for_kernel_shape $non_cms_tmp_hipblaslt_results "${kernel}_MI${mfma_shape}")
-    if [[ -n "$kernel_indices" ]]; then
-        kernel_count=$(echo $kernel_indices | wc -w)
-        if [[ "$kernel_count" -eq 1 ]]; then
-            # Only one kernel found, use it automatically
-            chosen_index=$kernel_indices
-            kernel_name=$(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $chosen_index)
-            echo "Found single matching kernel, using it automatically:"
-            echo "$chosen_index: $kernel_name"
-        else
-            # Print all matching kernels and ask user to specify which one to use.
-            for kernel_index in $kernel_indices; do            
-                kernel_name=$(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $kernel_index)
-                echo "$kernel_index: $kernel_name"
-            done
-            echo "--------------------------------"
-
-            # Ask the user to specify solution index they want to go with.
-            while true; do
-                read -p "Enter the solution index to use: " chosen_index
-                # Check if the chosen index is in the list of valid kernel indices
-                valid=false
-                for idx in $kernel_indices; do
-                    if [[ "$chosen_index" == "$idx" ]]; then
-                        valid=true
-                        break
-                    fi
-                done
-                if [[ "$valid" == "true" ]]; then
-                    echo "Selected solution index: $chosen_index"
-                    break
-                else
-                    echo "Error: '$chosen_index' is not a valid solution index. Please choose from: $kernel_indices" >&2
-                fi
-            done
-        fi
+    # Copy trace folder to submission directory
+    trace_folder=$(find "$trace_dir" -maxdepth 1 -type d -name "ui_output_agent_${run_id}*" | head -n 1)
+    if [[ -n "$trace_folder" ]]; then
+        target_dir=$submission_dir/"Baseline - Tensile"
+        if [[ -d "$target_dir" ]]; then rm -r "$target_dir"; fi
+        cp -r "$trace_folder" "$target_dir"
     else
-        chosen_index=$(find_winner_index $non_cms_tmp_hipblaslt_results)
-        if [[ -z "$chosen_index" ]]; then
-            echo "Error: No kernels found matching full pattern ${kernel_str}, and no winner kernel found in $non_cms_tmp_hipblaslt_results" >&2
+        echo "Warning: Could not find ui_output_agent_${run_id}* folder in $trace_dir" >&2
+    fi
+
+    echo "Baseline - Tensile GFLOPS: $(print_gflops_from_tensile_log $tensile_log_file)"
+
+    # 3. Run non-cms through hipblaslt-bench to get baseline performance (BH).
+    # If chosen_index was provided via -c/--chosen-index, skip discovery and use it directly.
+    if [[ -z "$chosen_index" ]]; then
+        export non_cms_tmp_hipblaslt_results=$baseline_dir/non_cms_hipblaslt-bench_all.txt
+        export hipblaslt_log_file=$baseline_dir/hipblaslt-bench.log
+        # Run a very fast iteration to find all kernels of the right shape.
+        echo "Running hipblaslt-bench to find all potential kernels for shape..."
+        hipblaslt-bench --function matmul \
+            --sizem $M --sizen $N --sizek $K  \
+            --transA $transA --transB $transB \
+            --algo_method all --api_method cpp \
+            --iters 1 --cold_iters 1 \
+            --alpha 1 --beta 0  --initialization trig_float --a_type bf16_r --b_type bf16_r --c_type bf16_r --d_type bf16_r --compute_type f32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
+            > $non_cms_tmp_hipblaslt_results 2> $hipblaslt_log_file
+        if [[ $? -ne 0 ]]; then
+            print_error_with_log "hipblaslt-bench failed to run for non-CMS kernel" "$hipblaslt_log_file"
             exit 1
         fi
-        echo ""
-        echo "No kernels found matching full pattern ${kernel_str}, falling back to winner. with solution index."
-        echo "Winner kernel $chosen_index: $(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $chosen_index)"
+        
+        # Search for kernels matching both kernel shape AND MFMA shape (full kernel_str pattern)
+        # If not found, fall back to the winner kernel
+        kernel_indices=$(find_indices_for_kernel_shape $non_cms_tmp_hipblaslt_results "${kernel}_MI${mfma_shape}")
+        if [[ -n "$kernel_indices" ]]; then
+            kernel_count=$(echo $kernel_indices | wc -w)
+            if [[ "$kernel_count" -eq 1 ]]; then
+                # Only one kernel found, use it automatically
+                chosen_index=$kernel_indices
+                kernel_name=$(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $chosen_index)
+                echo "Found single matching kernel, using it automatically:"
+                echo "$chosen_index: $kernel_name"
+            else
+                # Print all matching kernels and ask user to specify which one to use.
+                for kernel_index in $kernel_indices; do            
+                    kernel_name=$(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $kernel_index)
+                    echo "$kernel_index: $kernel_name"
+                done
+                echo "--------------------------------"
+
+                # Ask the user to specify solution index they want to go with.
+                while true; do
+                    read -p "Enter the solution index to use: " chosen_index
+                    # Check if the chosen index is in the list of valid kernel indices
+                    valid=false
+                    for idx in $kernel_indices; do
+                        if [[ "$chosen_index" == "$idx" ]]; then
+                            valid=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid" == "true" ]]; then
+                        echo "Selected solution index: $chosen_index"
+                        break
+                    else
+                        echo "Error: '$chosen_index' is not a valid solution index. Please choose from: $kernel_indices" >&2
+                    fi
+                done
+            fi
+        else
+            chosen_index=$(find_winner_index $non_cms_tmp_hipblaslt_results)
+            if [[ -z "$chosen_index" ]]; then
+                echo "Error: No kernels found matching full pattern ${kernel_str}, and no winner kernel found in $non_cms_tmp_hipblaslt_results" >&2
+                exit 1
+            fi
+            echo ""
+            echo "No kernels found matching full pattern ${kernel_str}, falling back to winner. with solution index."
+            echo "Winner kernel $chosen_index: $(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $chosen_index)"
+        fi
+    else
+        echo "Using provided solution index: $chosen_index (skipping discovery)"
     fi
     # Rerun hipblaslt-bench with real iters and cold iters to get the actual performance.
-    output_file=$baseline_dir/non_cms_hipblaslt-bench_${chosen_index}.txt
-    hipblaslt-bench --function matmul \
-        --sizem $M --sizen $N --sizek $K  \
+    # TODO: Stop hardcoding dtypes.
+    for _k in 4096 8192; do
+        export output_file=$baseline_dir/"non_cms_hipblaslt-bench_${chosen_index}_${_k}.log"
+        hipblaslt-bench --function matmul \
+        --sizem $M --sizen $N --sizek $_k  \
         --transA $transA --transB $transB \
         --algo_method index --solution_index $chosen_index \
         --iters 5000 --cold_iters 5000 \
-        --alpha 1 --beta 0  --initialization trig_float --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type xf32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
-        | tee $output_file
-    print_gflops_from_hipblaslt_bench "$output_file"
-    
+        --alpha 1 --beta 0  --initialization trig_float --a_type bf16_r --b_type bf16_r --c_type bf16_r --d_type bf16_r --compute_type f32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
+        > $output_file
+        echo "Non-CMS - Hipblaslt-bench K=$_k GFLOPS: $(print_gflops_from_hipblaslt_bench $output_file)"
+        cp $output_file $submission_dir/"Baseline - Hipblaslt-bench K=$_k.log"
+    done 
 
-    # TODO: Trace and zip up trace.
     exit 0
 elif [[ "$mode" == "cms-fast" ]]; then
     export trace_dir=$out_dir/traces
-    mkdir -p $trace_dir
+    export submission_dir=$out_dir/submission
+    mkdir -p $trace_dir $submission_dir
+
     # 1. Run through Tensile to generate kernel
     export tensile_log_file=$trace_dir/tensile.log
     if [[ -f "$tensile_log_file" ]]; then rm "$tensile_log_file"; fi
 
     echo "Running Tensile..."
-    CU=256 Tensile $yaml_file $out_dir &>> $tensile_log_file
+    CU=256 $Tensile $yaml_file $out_dir &>> $tensile_log_file
     if [[ $? -ne 0 ]]; then
         print_error_with_log "Tensile failed to run for CMS kernel" "$tensile_log_file"
         exit 1
     fi
+    cp $tensile_log_file $submission_dir/"CMS - Tensile.log"
 
     # 2. Benchmark
     export rocprofv3_log_file=$trace_dir/rocprofv3.log
     if [[ -f "$rocprofv3_log_file" ]]; then rm "$rocprofv3_log_file"; fi
 
     export run_script=$(find $out_dir -name "run.sh")
-    # TODO: Hardcoded iteration range. Need cold iters and iters from the yaml file.
     echo "Running rocprofv3..."
     rocprofv3 --att \
         --att-activity 10 \
@@ -444,14 +480,23 @@ elif [[ "$mode" == "cms-fast" ]]; then
     fi
 
     # 3. Print and generate stats
-    echo "Analyzing Tensile log..."
-    print_gflops_from_tensile_log "$tensile_log_file"
+    echo "CMS - Tensile GFLOPS: $(print_gflops_from_tensile_log $tensile_log_file)"
 
     # Extract run_id from rocprofv3 log (number before _shader_engine_)
     run_id=$(grep -m1 "_shader_engine_" "$rocprofv3_log_file" | sed 's/.*_\([0-9]\+\)_shader_engine_.*/\1/')
     if [[ -z "$run_id" ]]; then
         echo "Error: Could not extract run_id from $rocprofv3_log_file" >&2
         exit 1
+    fi
+    
+    # Copy one of the trace folders to submission directory
+    trace_folder=$(find "$trace_dir" -maxdepth 1 -type d -name "ui_output_agent_${run_id}*" | head -n 1)
+    if [[ -n "$trace_folder" ]]; then
+        target_dir=$submission_dir/"CMS - Tensile"
+        if [[ -d "$target_dir" ]]; then rm -r "$target_dir"; fi
+        cp -r "$trace_folder" "$target_dir"
+    else
+        echo "Warning: Could not find ui_output_agent_${run_id}* folder in $trace_dir" >&2
     fi
 
     # 5. Run analyze.py on the csv files in the traces directory
@@ -465,7 +510,30 @@ elif [[ "$mode" == "cms-fast" ]]; then
         --output-dir $figures_dir \
         --output-latency-json
 
-    # TODO: PMC
+    # 6. Run hipblaslt-bench
+    export tensile_libout_dir=$out_dir/lib_out
+    mkdir -p $tensile_libout_dir
+    export tensile_create_lib_log_file=$out_dir/tensile_create_library.log
+    $TensileCreateLibrary --code-object-version=5 --cxx-compiler=amdclang++ \
+      --library-format=msgpack --architecture gfx950 \
+      $out_dir/3_LibraryLogic \
+      $tensile_libout_dir \
+      HIP &>> $tensile_create_lib_log_file
+
+    for _k in 4096 8192; do
+        export output_file=$out_dir/"cms_hipblaslt-bench_${_k}.log"
+        HIPBLASLT_TENSILE_LIBPATH=$tensile_libout_dir/library hipblaslt-bench --function matmul \
+        --sizem $M --sizen $N --sizek $_k  \
+        --transA $transA --transB $transB \
+        --algo_method index --solution_index 0 \
+        --iters 5000 --cold_iters 5000 \
+        --alpha 1 --beta 0  --initialization trig_float --a_type bf16_r --b_type bf16_r --c_type bf16_r --d_type bf16_r --compute_type f32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
+        > $output_file
+        
+        echo "CMS - Hipblaslt-bench K=$_k GFLOPS: $(print_gflops_from_hipblaslt_bench $output_file)"
+        cp $output_file $submission_dir/"CMS - Hipblaslt-bench K=$_k.log"
+    done 
+
     exit 0
 elif [[ "$mode" == "cms" ]]; then
     # Run through Tensile.
@@ -497,7 +565,7 @@ elif [[ "$mode" == "cms" ]]; then
         --transA N --transB T \
         --algo_method index --solution_index 0 \
         --iters 5000 --cold_iters 5000 \
-        --alpha 1 --beta 0  --initialization trig_float  --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type xf32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
+        --alpha 1 --beta 0  --initialization trig_float  --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type f32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
         > $output_file 2> $hipblaslt_log_file
     if [[ $? -ne 0 ]]; then
         print_error_with_log "hipblaslt-bench failed to run for CMS kernel" "$hipblaslt_log_file"
