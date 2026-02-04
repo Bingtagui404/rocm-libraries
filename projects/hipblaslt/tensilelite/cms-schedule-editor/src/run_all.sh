@@ -251,6 +251,19 @@ print_gflops_from_tensile_log() {
     fi
 }
 
+# Look through hipblaslt-bench output and print out the gflops from the last result.
+print_gflops_from_hipblaslt_bench() {
+    local output_file="$1"
+    # Data lines start with whitespace and contain comma-separated values
+    # hipblaslt-Gflops is field 37 in the CSV
+    local gflops=$(grep -E '^\s+[TN],' "$output_file" | tail -1 | cut -d',' -f37)
+    if [[ -n "$gflops" ]]; then
+        echo "GFLOPS: $gflops"
+    else
+        echo "Warning: Could not extract GFLOPS from hipblaslt-bench output" >&2
+    fi
+}
+
 # Get M, N, K from "- Exact: [M, N, _, K]" line
 export M N K; read M N _ K <<< $(grep -oE 'Exact:\s*\[\s*[0-9]+\s*,\s*[0-9]+\s*,\s*[0-9]+\s*,\s*[0-9]+\s*\]' "$yaml_file" | grep -oE '[0-9]+' | tr '\n' ' ')
 
@@ -279,6 +292,7 @@ export kernel_str="MT${kernel}_MI${mfma_shape}"
 # TODO: Also measure frequencies.
 # Mode Baseline: Find baseline performance for non-CMS kernel
 if [[ "$mode" == "baseline" ]]; then
+    # TODO: create folder containing baseline results
     export baseline_dir=${out_dir}_non_cms
     mkdir -p $baseline_dir
     
@@ -299,25 +313,22 @@ if [[ "$mode" == "baseline" ]]; then
     fi
     export run_script=$(find $baseline_dir -name "run.sh")
 
-    # TODO: Hardcoded iteration range
     export rocprofv3_log_file=$baseline_dir/traces/rocprofv3.log
     rocprofv3 --att \
         --att-activity 10 \
         --att-target-cu 0 \
         --kernel-include-regex Cijk \
         -d $baseline_dir/traces \
-        --kernel-iteration-range 20-120 \
         --output-format csv \
         -- $run_script &>> $rocprofv3_log_file
     if [[ $? -ne 0 ]]; then
         print_error_with_log "rocprofv3 failed to run for non-CMS kernel" "$rocprofv3_log_file"
         exit 1
     fi
+    # TODO: zip up the trace
 
     print_gflops_from_tensile_log $tensile_log_file
-    # TODO: 2. Pull traces, PMC, and efficiency for BT.
     # TODO: Get mainloop efficiency script from https://github.com/ROCm/hipblaslt-tools/
-    exit 0
 
     # 3. Run non-cms through hipblaslt-bench to get baseline performance (BH).
     export non_cms_tmp_hipblaslt_results=$baseline_dir/non_cms_hipblaslt-bench_all.txt
@@ -375,27 +386,28 @@ if [[ "$mode" == "baseline" ]]; then
             done
         fi
     else
-        # TODO: If no kernels found matching full pattern, fall back to winner. Winner must be run wiht more iterations to get something meaningfull..
         chosen_index=$(find_winner_index $non_cms_tmp_hipblaslt_results)
         if [[ -z "$chosen_index" ]]; then
             echo "Error: No kernels found matching full pattern ${kernel_str}, and no winner kernel found in $non_cms_tmp_hipblaslt_results" >&2
             exit 1
         fi
+        echo ""
         echo "No kernels found matching full pattern ${kernel_str}, falling back to winner. with solution index."
         echo "Winner kernel $chosen_index: $(find_kernel_name_for_solution_index $non_cms_tmp_hipblaslt_results $chosen_index)"
     fi
-    # For each kernel, rerun hipblaslt-bench with real iters and cold iters to get the actual performance.
-    output_file=$baseline_dir/non_cms_hipblaslt-bench_${kernel_index}.txt
-    # TODO: 4. Trace, PMC, and efficiency for hipblaslt-bench for chosen kernel.
+    # Rerun hipblaslt-bench with real iters and cold iters to get the actual performance.
+    output_file=$baseline_dir/non_cms_hipblaslt-bench_${chosen_index}.txt
+    hipblaslt-bench --function matmul \
+        --sizem $M --sizen $N --sizek $K  \
+        --transA $transA --transB $transB \
+        --algo_method index --solution_index $chosen_index \
+        --iters 5000 --cold_iters 5000 \
+        --alpha 1 --beta 0  --initialization trig_float --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type xf32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
+        | tee $output_file
+    print_gflops_from_hipblaslt_bench "$output_file"
+    
 
-    # hipblaslt-bench --function matmul \
-    #     --sizem $M --sizen $N --sizek $K  \
-    #     --transA $transA --transB $transB \
-    #     --algo_method index --solution_index $kernel_index \
-    #     --iters 5000 --cold_iters 5000 \
-    #     --alpha 1 --beta 0  --initialization trig_float --a_type f32_r --b_type f32_r --c_type f32_r --d_type f32_r --compute_type xf32_r --use_gpu_timer --scaleA 0 --scaleB 0 --stride_a 0 --stride_b 0 --stride_c 0 --stride_d 0 --scale_type f32_r --bias_type f32_r --print_kernel_info -v \
-    #     | tee $output_file
-    # TODO: 
+    # TODO: Trace and zip up trace.
     exit 0
 elif [[ "$mode" == "cms-fast" ]]; then
     export trace_dir=$out_dir/traces
