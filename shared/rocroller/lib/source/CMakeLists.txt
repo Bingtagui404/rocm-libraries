@@ -19,6 +19,7 @@ target_sources(rocroller
         "${CMAKE_CURRENT_SOURCE_DIR}/Error.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ExecutableKernel.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Expression.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Expression_canBroadcastValueCount.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Expression_contains.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Expression_creation.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Expression_evaluate.cpp"

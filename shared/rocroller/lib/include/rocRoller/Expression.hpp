@@ -1011,6 +1011,9 @@ namespace rocRoller
         std::unordered_set<std::string>
             referencedKernelArguments(Expression const& expr, RegisterTagManager const& tagManager);
 
+        bool canBroadcastValueCount(Expression const& expr);
+        bool canBroadcastValueCount(ExpressionPtr const& expr);
+
     } // namespace Expression
 } // namespace rocRoller
 

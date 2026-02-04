@@ -107,7 +107,7 @@ namespace RemoveImplicitSchedulingTest
             graph = transform<LowerTensorContraction>(graph, params, context.get());
             graph = transform<Simplify>(graph);
             graph = transform<ConstantPropagation>(graph);
-            graph = transform<FuseExpressions>(graph);
+            graph = transform<InlineExpressions>(graph);
             graph = transform<ConnectWorkgroups>(graph, context.get());
             graph = transform<UnrollLoops>(graph, params, context.get());
             graph = transform<FuseLoops>(graph);

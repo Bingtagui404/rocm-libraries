@@ -415,6 +415,11 @@ namespace rocRoller
                 }
                 else
                 {
+                    AssertFatal(dest->valueCount() == valueCount,
+                                "destination value count is incorrect",
+                                ShowValue(dest->valueCount()),
+                                ShowValue(valueCount));
+
                     // TODO Destination/result packing mismatch
                     //
                     // This was added to catch the case where:
