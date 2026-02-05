@@ -347,13 +347,23 @@ if [[ "$mode" == "baseline" ]]; then
     fi
     # Copy trace folder to submission directory
     trace_folder=$(find "$trace_dir" -maxdepth 1 -type d -name "ui_output_agent_${run_id}*" | head -n 1)
+    target_dir=$submission_dir/"Baseline - Tensile"
     if [[ -n "$trace_folder" ]]; then
-        target_dir=$submission_dir/"Baseline - Tensile"
         if [[ -d "$target_dir" ]]; then rm -r "$target_dir"; fi
+        mkdir -p "$target_dir"
         cp -r "$trace_folder" "$target_dir"
     else
         echo "Warning: Could not find ui_output_agent_${run_id}* folder in $trace_dir" >&2
+        exit 1
     fi
+    # Copy matching dispatch CSV file to submission directory
+    dispatch_suffix=$(basename "$trace_folder" | grep -oE '_dispatch_[0-9]+$')
+    csv_file=$(find "$trace_dir" -maxdepth 1 -name "*${dispatch_suffix}.csv" | head -n 1)
+    if [[ -z "$csv_file" ]]; then
+        echo "Error: Could not find CSV file matching *${dispatch_suffix}.csv in $trace_dir" >&2
+        exit 1
+    fi
+    cp "$csv_file" "$target_dir"
 
     echo "Baseline - Tensile GFLOPS: $(print_gflops_from_tensile_log $tensile_log_file)"
 
@@ -494,10 +504,21 @@ elif [[ "$mode" == "cms-fast" ]]; then
     if [[ -n "$trace_folder" ]]; then
         target_dir=$submission_dir/"CMS - Tensile"
         if [[ -d "$target_dir" ]]; then rm -r "$target_dir"; fi
+        mkdir -p "$target_dir"
         cp -r "$trace_folder" "$target_dir"
     else
         echo "Warning: Could not find ui_output_agent_${run_id}* folder in $trace_dir" >&2
+        exit 1
     fi
+    # Copy matching dispatch CSV file to submission directory
+    dispatch_suffix=$(basename "$trace_folder" | grep -oE '_dispatch_[0-9]+$')
+    csv_file=$(find "$trace_dir" -maxdepth 1 -name "*${dispatch_suffix}.csv" | head -n 1)
+    if [[ -z "$csv_file" ]]; then
+        echo "Error: Could not find CSV file matching *${dispatch_suffix}.csv in $trace_dir" >&2
+        exit 1
+    fi
+    cp "$csv_file" "$target_dir"
+
 
     # 5. Run analyze.py on the csv files in the traces directory
     export figures_dir=$out_dir/figures
