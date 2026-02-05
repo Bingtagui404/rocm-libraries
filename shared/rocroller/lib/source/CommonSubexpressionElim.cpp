@@ -763,6 +763,10 @@ namespace rocRoller
                 auto root = tree.back();
                 if(canBroadcastValueCount(root.expr))
                 {
+                    if(root.deps.size() != 2)
+                    {
+                        return 1;
+                    }
                     // Get value counts of children
                     std::vector<int> children(root.deps.begin(), root.deps.end());
                     auto             valueCount1 = tree.at(children.at(0)).reg->valueCount();
