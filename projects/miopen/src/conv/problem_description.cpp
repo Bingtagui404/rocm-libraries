@@ -133,34 +133,61 @@ void ProblemDescription::HeuristicUpdateLayouts()
     static const std::vector<LayoutValidationMode> validation_modes = {
         strict, LayoutValidationMode::IgnoreDegenerateStrides};
 
+    MIOPEN_LOG_I("HeuristicUpdateLayouts: BEFORE - in_layout='" << in_layout 
+                 << "', weights_layout='" << weights_layout 
+                 << "', out_layout='" << out_layout << "'");
+    
+    // Log tensor strides for debugging
+    const auto& in_strides = in.GetStrides();
+    const auto& wei_strides = weights.GetStrides();
+    const auto& out_strides = out.GetStrides();
+    MIOPEN_LOG_I("HeuristicUpdateLayouts: in_strides=" 
+                 << (in_strides.size() >= 4 ? std::to_string(in_strides[0]) + "," + std::to_string(in_strides[1]) + "," + std::to_string(in_strides[2]) + "," + std::to_string(in_strides[3]) : "?")
+                 << ", wei_strides="
+                 << (wei_strides.size() >= 4 ? std::to_string(wei_strides[0]) + "," + std::to_string(wei_strides[1]) + "," + std::to_string(wei_strides[2]) + "," + std::to_string(wei_strides[3]) : "?")
+                 << ", out_strides="
+                 << (out_strides.size() >= 4 ? std::to_string(out_strides[0]) + "," + std::to_string(out_strides[1]) + "," + std::to_string(out_strides[2]) + "," + std::to_string(out_strides[3]) : "?"));
+
     // If we have preset layouts that are valid, and they are consistent with each other, then we do
     // not need to change them.
+    /*
     if(!in_layout.empty() && in_layout == out_layout && in_layout == weights_layout &&
        std::find(supported_layouts.begin(), supported_layouts.end(), in_layout) !=
            supported_layouts.end() &&
        in.IsPossibleLayout4D5D(in_layout, strict) && out.IsPossibleLayout4D5D(out_layout, strict) &&
        weights.IsPossibleLayout4D5D(weights_layout, strict))
-    {
+    {                in_layout      = layout;
+                weights_layout = layout;
+                out_layout     = layout;
         return;
     }
-
+*/
     // Check if we can find a consistent layout across all tensors with the strict mode first,
     // then try ignoring degenerate strides afterwards.
     for(auto& mode : validation_modes)
     {
         for(const std::string& layout : supported_layouts)
         {
-            if(in.IsPossibleLayout4D5D(layout, mode) && out.IsPossibleLayout4D5D(layout, mode) &&
-               weights.IsPossibleLayout4D5D(layout, mode))
+            bool in_ok = in.IsPossibleLayout4D5D(layout, mode);
+            bool out_ok = out.IsPossibleLayout4D5D(layout, mode);
+            bool wei_ok = weights.IsPossibleLayout4D5D(layout, mode);
+            
+            MIOPEN_LOG_I("HeuristicUpdateLayouts: Testing layout='" << layout 
+                         << "' mode=" << (mode == strict ? "strict" : "ignore_degenerate")
+                         << " -> in_ok=" << in_ok << ", out_ok=" << out_ok << ", wei_ok=" << wei_ok);
+            
+            if(in_ok && out_ok && wei_ok)
             {
                 in_layout      = layout;
                 weights_layout = layout;
                 out_layout     = layout;
+                MIOPEN_LOG_I("HeuristicUpdateLayouts: MATCHED layout='" << layout << "'");
                 return;
             }
         }
     }
 
+    MIOPEN_LOG_I("HeuristicUpdateLayouts: No consistent layout found, leaving as-is");
     // If we did not find consistent layout, leave them as-is
 }
 

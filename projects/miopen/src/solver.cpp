@@ -722,6 +722,25 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
              miopenConvolutionAlgoImplicitGEMM);
 
     Register(registry, ++id, Primitive::Normalization, layernorm::LayernormBackward().SolverDbId());
+
+    // Transposed Winograd solvers for NHWC layout support
+    RegisterWithSolver(
+        registry, ++id, conv::TransposedConvBinWinograd3x3U{}, miopenConvolutionAlgoWinograd);
+    MIOPEN_LOG_I("Registering TransposedConvBinWinograd3x3U with id=" << id);
+    RegisterWithSolver(
+        registry, ++id, conv::TransposedConvBinWinogradRxS{}, miopenConvolutionAlgoWinograd);
+    MIOPEN_LOG_I("Registering TransposedConvBinWinogradRxS with id=" << id);
+    RegisterWithSolver(
+        registry, ++id, conv::TransposedConvBinWinogradRxSf2x3g1{}, miopenConvolutionAlgoWinograd);
+    MIOPEN_LOG_I("Registering TransposedConvBinWinogradRxSf2x3g1 with id=" << id);
+    //RegisterWithSolver(
+    //    registry, ++id, conv::TransposedConvMPBidirectWinograd{}, miopenConvolutionAlgoWinograd);
+    //RegisterWithSolver(
+    //    registry, ++id, conv::TransposedConvWinograd3x3MultipassWrW{}, miopenConvolutionAlgoWinograd);
+    //RegisterWithSolver(
+    //    registry, ++id, conv::TransposedConvWinoFuryRxS{}, miopenConvolutionAlgoWinograd);
+    //RegisterWithSolver(
+    //    registry, ++id, conv::TransposedConvWinoRageRxS{}, miopenConvolutionAlgoWinograd);
     // IMPORTANT: New solvers should be added to the end of the function, and don't leave a white
     // space between this comment and the newly registered solver(s)!
 }

@@ -655,45 +655,97 @@ template <int Winodata, int Winofilter>
 static bool IsApplicableBase(const ExecutionContext& ctx, const ProblemDescription& problem)
 {
     if(!problem.Is2d())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Not a 2D problem");
         return false;
+    }
     if(problem.HasNonPackedTensors())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Has non-packed tensors");
         return false;
+    }
     if(!problem.AllTensorsDimsFitIntoInt())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Tensor dims don't fit into int");
         return false;
+    }
     if(!(problem.IsFp32() || problem.IsFp16()))
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Not FP32 or FP16");
         return false;
+    }
     if(problem.IsTensorsCasted())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Tensors are casted");
         return false;
+    }
     if(!ctx.use_asm_kernels)
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: ASM kernels not enabled");
         return false;
+    }
     if(!ctx.rmv.IsV3())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: ROCm metadata version is not V3");
         return false;
+    }
 
     const auto& target = ctx.GetStream().GetTargetProperties();
     if(target.isXnackEnabled())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Xnack is enabled");
         return false;
+    }
 
     const auto name = ctx.GetStream().GetDeviceName();
     if(!(StartsWith(name, "gfx9") || StartsWith(name, "gfx10") || StartsWith(name, "gfx11") ||
          StartsWith(name, "gfx12")))
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Unsupported device '" << name << "'");
         return false;
+    }
     if(problem.IsFp16() &&
        !(name == "gfx906" || name == "gfx908" || name == "gfx90a" || name == "gfx942" ||
          StartsWith(name, "gfx95") || name == "gfx1011" || name == "gfx1012" ||
          StartsWith(name, "gfx103") || StartsWith(name, "gfx11") || StartsWith(name, "gfx12")))
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: FP16 not supported on device '" << name << "'");
         return false;
+    }
 
     if(name == "gfx90a" && problem.IsGfx90aFp16altRequired())
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: gfx90a FP16 alt required");
         return false;
+    }
+
+    // Use IsPossibleLayout4D5D to check actual tensor strides rather than cached layout string
+    // This allows transposed solvers to work correctly when they modify tensor strides
+    static const auto strict = TensorDescriptor::LayoutValidationMode::StrictDecreasingStrides;
 
     // clang-format off
-    if (!((problem.GetKernelStrideW() == 1 || problem.GetKernelStrideW() == 2)
-        && problem.GetKernelStrideW() == problem.GetKernelStrideH()
-        && problem.GetDilationW() == 1
-        && problem.GetDilationH() == 1
-        && problem.GetBias() == 0
-        && problem.GetInLayout() == "NCHW"))
+    const bool stride_w_ok = (problem.GetKernelStrideW() == 1 || problem.GetKernelStrideW() == 2);
+    const bool stride_h_match = (problem.GetKernelStrideW() == problem.GetKernelStrideH());
+    const bool dilation_w_ok = (problem.GetDilationW() == 1);
+    const bool dilation_h_ok = (problem.GetDilationH() == 1);
+    const bool bias_ok = (problem.GetBias() == 0);
+    const bool layout_ok = problem.GetIn().IsPossibleLayout4D5D("NCHW", strict);
+    
+    MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: Detailed checks - "
+                 << "stride_w_ok=" << stride_w_ok << " (StrideW=" << problem.GetKernelStrideW() << "), "
+                 << "stride_h_match=" << stride_h_match << " (StrideH=" << problem.GetKernelStrideH() << "), "
+                 << "dilation_w_ok=" << dilation_w_ok << " (DilationW=" << problem.GetDilationW() << "), "
+                 << "dilation_h_ok=" << dilation_h_ok << " (DilationH=" << problem.GetDilationH() << "), "
+                 << "bias_ok=" << bias_ok << " (Bias=" << problem.GetBias() << "), "
+                 << "layout_ok=" << layout_ok << " (InLayout='" << problem.GetInLayout() << "', strides=" 
+                 << problem.GetIn().GetStrides()[0] << "," << problem.GetIn().GetStrides()[1] << "," 
+                 << problem.GetIn().GetStrides()[2] << "," << problem.GetIn().GetStrides()[3] << ")");
+    
+    if (!(stride_w_ok && stride_h_match && dilation_w_ok && dilation_h_ok && bias_ok && layout_ok))
+    {
+        MIOPEN_LOG_I("IsApplicableBase<" << Winodata << "," << Winofilter << ">: FAILED - One or more checks not met");
         return false;
+    }
         // clang-format on
 
 #if WORKAROUND_ISSUE_2492_GRANULARITY_LOSS

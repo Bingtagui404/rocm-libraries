@@ -272,6 +272,10 @@ bool ConvBinWinogradRxS::IsApplicable(const ExecutionContext& ctx,
         }
     }
 
+    // Use IsPossibleLayout4D5D to check actual tensor strides rather than cached layout string
+    // This allows transposed solvers to work correctly when they modify tensor strides
+    static const auto strict = TensorDescriptor::LayoutValidationMode::StrictDecreasingStrides;
+
     // clang-format off
     if (! (problem.GetKernelStrideW() <= 2 // -u inp_u 1 or 2
         && problem.GetKernelStrideW() == problem.GetKernelStrideH()
@@ -279,7 +283,7 @@ bool ConvBinWinogradRxS::IsApplicable(const ExecutionContext& ctx,
         && problem.GetDilationH() == 1
         && problem.GetBias() == 0
         && problem.GetGroupCount() == 1
-        && problem.GetInLayout() == "NCHW"))
+        && problem.GetIn().IsPossibleLayout4D5D("NCHW", strict)))
         return false;
     // clang-format on
 

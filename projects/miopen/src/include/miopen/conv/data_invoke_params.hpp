@@ -29,7 +29,7 @@
 #include <miopen/scalar.hpp>
 #include <miopen/invoke_params.hpp>
 #include <miopen/conv/tensors.hpp>
-
+#include <miopen/conv/problem_description.hpp>
 namespace miopen {
 namespace conv {
 
@@ -76,6 +76,81 @@ struct DataInvokeParams : InvokeParams
 
     std::size_t GetWorkspaceSize() const { return workSpaceSize; }
     Data_t GetWorkspace() const { return workSpace; }
+};
+
+struct TransposeConvInvokeParams : InvokeParams
+{
+    // Flat tensor descriptors (required by TransposingSolver member pointers)
+    TensorDescriptor inDesc;
+    TensorDescriptor wDesc;
+    TensorDescriptor outDesc;
+
+    // Flat data pointers (required by TransposingSolver member pointers)
+    ConstData_t in = nullptr;
+    ConstData_t w  = nullptr;
+    Data_t out     = nullptr;
+
+    // Workspace
+    Data_t workspace          = nullptr;
+    std::size_t workspaceSize = 0;
+
+    // Additional conv params
+    bool gfx90aFp16alt = false;
+    Scalar alpha{1.0};
+    Scalar beta{0.0};
+
+    TransposeConvInvokeParams() = default;
+
+    // Constructor from DataInvokeParams only (uses tensor descs from params.tensors)
+    explicit TransposeConvInvokeParams(const DataInvokeParams& params)
+        : InvokeParams{params.type},
+          inDesc(params.tensors.inDesc),
+          wDesc(params.tensors.wDesc),
+          outDesc(params.tensors.outDesc),
+          in(params.tensors.in),
+          w(params.tensors.w),
+          out(params.tensors.out),
+          workspace(params.workSpace),
+          workspaceSize(params.workSpaceSize),
+          gfx90aFp16alt(params.gfx90aFp16alt),
+          alpha(params.alpha),
+          beta(params.beta)
+    {
+    }
+
+    // Constructor from existing DataInvokeParams + ProblemDescription
+    TransposeConvInvokeParams(const DataInvokeParams& params, const ProblemDescription& problem)
+        : InvokeParams{params.type},
+          inDesc(problem.GetIn()),
+          wDesc(problem.GetWeights()),
+          outDesc(problem.GetOut()),
+          in(params.tensors.in),
+          w(params.tensors.w),
+          out(params.tensors.out),
+          workspace(params.workSpace),
+          workspaceSize(params.workSpaceSize),
+          gfx90aFp16alt(params.gfx90aFp16alt),
+          alpha(params.alpha),
+          beta(params.beta)
+    {
+    }
+
+    std::size_t GetWorkspaceSize() const { return workspaceSize; }
+    Data_t GetWorkspace() const { return workspace; }
+
+    /// Convert to DataInvokeParams for inner solver invocation.
+    /// Inner solvers (e.g., Winograd) expect DataInvokeParams.
+    DataInvokeParams ToDataInvokeParams() const
+    {
+        return DataInvokeParams{
+            type,
+            ConvDataTensors{inDesc, in, wDesc, w, outDesc, out},
+            workspace,
+            workspaceSize,
+            gfx90aFp16alt,
+            alpha,
+            beta};
+    }
 };
 
 } // namespace conv

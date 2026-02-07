@@ -35,6 +35,8 @@
 #include <miopen/miopen.h>
 #include <miopen/performance_config.hpp>
 #include <miopen/solver.hpp>
+#include <miopen/utility/transposing_solver.hpp>
+#include <miopen/conv/data_invoke_params.hpp>
 
 #include <initializer_list>
 #include <string>
@@ -4939,7 +4941,162 @@ private:
 
     size_t GetCKMaxWorkspaceSize(const miopen::conv::ProblemDescription& problem) const;
 };
+template <class Inner>
+struct ConvWinogradNHWCTransposingSolver
+    : TransposingSolver<ConvWinogradNHWCTransposingSolver<Inner>,
+                        ConvSolver,
+                        miopen::conv::ProblemDescription,
+                        miopen::conv::TransposeConvInvokeParams,
+                        Inner>
+{
+    using Problem      = miopen::conv::ProblemDescription;
+    using InvokeParams = miopen::conv::TransposeConvInvokeParams;
+    using Base         = TransposingSolver<ConvWinogradNHWCTransposingSolver<Inner>,
+                                           ConvSolver,
+                                           Problem,
+                                           InvokeParams,
+                                           Inner>;
 
+    /// Convert from API params (DataInvokeParams) to TransposeConvInvokeParams.
+    /// The API passes DataInvokeParams, but TransposingSolver works with TransposeConvInvokeParams.
+    static InvokeParams ConvertFromApiParams(const AnyInvokeParams& any_params)
+    {
+        const auto& data_params = any_params.CastTo<miopen::conv::DataInvokeParams>();
+        return InvokeParams{data_params};
+    }
+
+    /// Convert TransposeConvInvokeParams to DataInvokeParams for inner solver.
+    /// Inner Winograd solvers expect DataInvokeParams, not TransposeConvInvokeParams.
+    static AnyInvokeParams ConvertForInnerSolver(const InvokeParams& params)
+    {
+        return params.ToDataInvokeParams();
+    }
+
+    /// Override Transpose to recompute layout strings after transposing tensors.
+    /// This is needed because conv::ProblemDescription caches layout strings at construction,
+    /// and they must be updated to reflect the new NCHW-like strides after transposition.
+    inline static Problem Transpose(const Problem& problem)
+    {
+        MIOPEN_LOG_I("ConvWinogradNHWCTransposingSolver::Transpose: BEFORE Base::Transpose - in_layout='"
+                     << problem.GetInLayout() << "'");
+        auto transposed_problem = Base::Transpose(problem);
+        MIOPEN_LOG_I("ConvWinogradNHWCTransposingSolver::Transpose: AFTER Base::Transpose, BEFORE HeuristicUpdateLayouts - in_layout='"
+                     << transposed_problem.GetInLayout() << "', in_strides="
+                     << transposed_problem.GetIn().GetStrides()[0] << "," 
+                     << transposed_problem.GetIn().GetStrides()[1] << ","
+                     << transposed_problem.GetIn().GetStrides()[2] << ","
+                     << transposed_problem.GetIn().GetStrides()[3]);
+        // Trigger layout recomputation by calling HeuristicUpdateLayouts
+        // Now that the early return is removed, this should properly update the layout strings
+        transposed_problem.HeuristicUpdateLayouts();
+        MIOPEN_LOG_I("ConvWinogradNHWCTransposingSolver::Transpose: AFTER HeuristicUpdateLayouts - in_layout='"
+                     << transposed_problem.GetInLayout() << "'");
+        return transposed_problem;
+    }
+
+    inline static auto GetTransposes()
+    {
+        auto ret = std::array<ProblemTensorTransposeDescriptor<Problem, InvokeParams>, 3>{{
+            {
+                &Problem::GetIn,
+                &Problem::GetIn,
+                &InvokeParams::inDesc,
+                {&InvokeParams::in},
+                "NCHW",  // Input: transpose from NHWC to NCHW for inner solver
+                true,
+            },
+            {
+                &Problem::GetWeights,
+                &Problem::GetWeights,
+                &InvokeParams::wDesc,
+                {&InvokeParams::w},
+                "NCHW",  // Weights: transpose from NHWC to NCHW for inner solver
+                true,
+            },
+            {
+                &Problem::GetOut,
+                &Problem::GetOut,
+                &InvokeParams::outDesc,
+                {},
+                "NCHW",  // Output: inner solver produces NCHW, transpose to NHWC after
+                false,
+            },
+        }};
+
+        // Before C++20 you can't aggregate initialize non-first union element
+        ret[2].as_output = &InvokeParams::out;
+
+        return ret;
+    }
+};
+
+struct TransposedConvBinWinograd3x3U final : ConvWinogradNHWCTransposingSolver<ConvBinWinograd3x3U>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvBinWinograd3x3U>();
+    }
+};
+
+struct TransposedConvBinWinogradRxS final : ConvWinogradNHWCTransposingSolver<ConvBinWinogradRxS>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvBinWinogradRxS>();
+    }
+};
+
+struct TransposedConvBinWinogradRxSf2x3g1 final
+    : ConvWinogradNHWCTransposingSolver<ConvBinWinogradRxSf2x3g1>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvBinWinogradRxSf2x3g1>();
+    }
+};
+/*
+template <int WinoDataH, int WinoFilterH, int WinoDataW = WinoDataH, int WinoFilterW = WinoFilterH>
+struct TransposedConvMPBidirectWinograd final
+    : ConvWinogradNHWCTransposingSolver<ConvMPBidirectWinograd>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<
+            TransposedConvMPBidirectWinograd<WinoDataH, WinoFilterH, WinoDataW, WinoFilterW>>();
+    }
+};
+
+template <int WinoDataH, int WinoFilterH, int WinoDataW = WinoDataH, int WinoFilterW = WinoFilterH>
+struct TransposedConvWinograd3x3MultipassWrW final
+    : ConvWinogradNHWCTransposingSolver<ConvWinograd3x3MultipassWrW>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvWinograd3x3MultipassWrW<WinoDataH,
+                                                                   WinoFilterH,
+                                                                   WinoDataW,
+                                                                   WinoFilterW>>();
+    }
+};
+
+template <uint32_t Winodata, uint32_t Winofilter>
+struct TransposedConvWinoFuryRxS final : ConvWinogradNHWCTransposingSolver<ConvWinoFuryRxS>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvWinoFuryRxS<Winodata, Winofilter>>();
+    }
+};
+
+template <uint32_t Winodata, uint32_t Winofilter>
+struct TransposedConvWinoRageRxS final : ConvWinogradNHWCTransposingSolver<ConvWinoRageRxS>
+{
+    const std::string& SolverDbId() const override
+    {
+        return GetSolverDbId<TransposedConvWinoRageRxS<Winodata, Winofilter>>();
+    }
+};
+*/
 // Test helper functions for metadata validation
 // These functions return all CK kernel TypeStrings without problem-based filtering
 // Declared here but implemented in the respective solver .cpp files

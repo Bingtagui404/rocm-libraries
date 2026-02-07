@@ -140,7 +140,14 @@ static auto GetWindogradSolvers()
         miopen::solver::conv::ConvMPBidirectWinograd_xdlops<5, 3>,
         miopen::solver::conv::ConvMPBidirectWinograd_xdlops<6, 3>,
         miopen::solver::conv::ConvWinoFuryRxS<2, 3>,
-        miopen::solver::conv::ConvWinoRageRxS<2, 3>>{};
+        miopen::solver::conv::ConvWinoRageRxS<2, 3>,
+        // Transposed Winograd solvers for NHWC layout support
+        miopen::solver::conv::TransposedConvBinWinograd3x3U,
+        miopen::solver::conv::TransposedConvBinWinogradRxS,
+        miopen::solver::conv::TransposedConvBinWinogradRxSf2x3g1
+        //,miopen::solver::conv::TransposedConvWinoFuryRxS,
+        //miopen::solver::conv::TransposedConvWinoRageRxS>
+        >{};
 }
 
 static auto GetImplicitGemmWrWSolvers()
@@ -182,7 +189,14 @@ static auto GetWindogradWrWSolvers()
         miopen::solver::conv::ConvWinograd3x3MultipassWrW<5, 3>,
         miopen::solver::conv::ConvWinograd3x3MultipassWrW<5, 4>,
         miopen::solver::conv::ConvWinoFuryRxS<2, 3>,
-        miopen::solver::conv::ConvWinoRageRxS<2, 3>>{};
+        miopen::solver::conv::ConvWinoRageRxS<2, 3>,
+        // Transposed Winograd solvers for NHWC layout support
+        miopen::solver::conv::TransposedConvBinWinograd3x3U,
+        miopen::solver::conv::TransposedConvBinWinogradRxS,
+        miopen::solver::conv::TransposedConvBinWinogradRxSf2x3g1
+        //,miopen::solver::conv::TransposedConvWinoFuryRxS,
+        //miopen::solver::conv::TransposedConvWinoRageRxS>
+        >{};
 }
 
 static auto GetBwdWrW2DSolvers()
