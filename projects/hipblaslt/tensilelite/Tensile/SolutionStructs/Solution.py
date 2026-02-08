@@ -819,7 +819,7 @@ class Solution(collections.abc.Mapping):
 
     # x2 DTL is not supported
     if numBytesPerLoad == 8:
-      printWarning("can't use DirectToLds with b64 buffer load, using non DirectToLds version instead")
+      # printWarning("can't use DirectToLds with b64 buffer load, using non DirectToLds version instead")
       return False
 
     if numBytesPerLoad == 16 and not canDTLx4:

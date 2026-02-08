@@ -266,12 +266,12 @@ namespace TensileLite
                 // Convert m_syncDurations to std::vector<double> for timing calculation
                 std::vector<double> syncDurationsMs;
                 syncDurationsMs.reserve(m_syncDurationCount);
-                std::cout << "\nper-run-timer";
+                // std::cout << "\nper-run-timer";
                 for(size_t i = 0; i < m_syncDurationCount; i++){
                     syncDurationsMs.push_back(m_syncDurations[i].count());
-                    std::cout << "," << m_syncDurations[i].count() * 1000 * static_cast<double>(m_syncDurationCount) / static_cast<double>(m_numEnqueuesInSolution);
+                    // std::cout << "," << m_syncDurations[i].count() * 1000 * static_cast<double>(m_syncDurationCount) / static_cast<double>(m_numEnqueuesInSolution);
                 }
-                std::cout << std::endl;
+                // std::cout << std::endl;
 
                 // Use Modified Z-Score to remove high outliers and get mean
                 double        trimmedMeanMs   = removeHighOutliersAndGetMean(syncDurationsMs, 2.0);

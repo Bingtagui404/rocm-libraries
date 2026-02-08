@@ -166,7 +166,7 @@ class KernelWriterAssembly(KernelWriter):
       code = self._getCustomKernelSource(kernel, CUSTOM_KERNEL_PATH) if isCustomKernelConfig(kernel) else self._getKernelSource(kernel)
       errcode = 0
     except RuntimeError as e:
-      printWarning(f"Failed to generate assembly source code for {kernel}: {e}")
+      # printWarning(f"Failed to generate assembly source code for {kernel}: {e}")
       code = ""
       errcode = -2
     return (errcode, code)
