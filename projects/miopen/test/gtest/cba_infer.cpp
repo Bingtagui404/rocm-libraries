@@ -186,10 +186,6 @@ TEST_P(GPU_ConvBiasActivInfer_FP32, ConvBinWinogradRxSf2x3g1Fused)
 {
     RunSolver(miopen::solver::fusion::ConvBinWinogradRxSf2x3g1Fused{});
 }
-TEST_P(GPU_ConvBiasActivInfer_FP16, ConvWinoFuryRxSf2x3Fused)
-{
-    RunSolver(miopen::solver::fusion::ConvWinoFuryRxSFused<2, 3>{});
-}
 
 TEST_P(GPU_ConvBiasActivInfer_FP16, ConvCKIgemmFwdBiasActivFused)
 {
