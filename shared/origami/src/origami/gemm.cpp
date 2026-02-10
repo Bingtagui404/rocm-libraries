@@ -835,6 +835,7 @@ double compute_tile_latency(const problem_t& problem,
   }
   // 5-1) Single-tile latency (apply penalty after finding the bottleneck)
   double L_tile_single = (std::max(L_compute, L_mem) * main_loop_efficiency * effective_tile_penalty) + L_cvt;
+  L_tile_single *= pow(0.95, real_occupancy);
   L_prologue *= effective_tile_penalty;
 
   // 6) Number of K-iterations (excluding epilogue), at least 1
@@ -919,6 +920,7 @@ double compute_total_latency(const problem_t& problem,
                                    + std::to_string(int(K)));
     info_logger.log_debug("batch", std::to_string(int(batch)));
     info_logger.log_debug("Macrotile", std::to_string(int(MT_M)) + "x" + std::to_string(int(MT_N)) + "x" + std::to_string(int(MT_K)));
+    info_logger.log_debug("MatrixInstruction", std::to_string(int(MI_M)) + "x" + std::to_string(int(MI_N)) + "x" + std::to_string(int(MI_K)));
     info_logger.log_debug("Element size A (bits)", std::to_string(int(a_bits)));
     info_logger.log_debug("Element size B (bits)", std::to_string(int(b_bits)));
   }
@@ -1026,6 +1028,7 @@ double compute_total_latency(const problem_t& problem,
   }
   if (debug)
   {
+    info_logger.log_debug("num_timesteps", num_timesteps);
     info_logger.log_debug("total_latency", total_latency);
     info_logger.print_debug_info();
     info_logger.clear_debug();
