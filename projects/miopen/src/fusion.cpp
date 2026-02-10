@@ -761,15 +761,9 @@ static auto GetFusedIGemmSolvers()
                                    solver::fusion::ConvCKIgemmFwdBiasResAddActivFused>{};
 }
 
-static auto GetFusedWinogradSolvers()
-{
-    return solver::SolverContainer<solver::fusion::ConvBinWinogradRxSFused>{};
-}
-
 static auto GetAllFusionSolvers()
 {
-    return GetFusedNonConvSolvers() + GetFusedDirectSolvers() + GetFusedIGemmSolvers() +
-           GetFusedWinogradSolvers();
+    return GetFusedNonConvSolvers() + GetFusedDirectSolvers() + GetFusedIGemmSolvers();
 }
 
 namespace debug {
@@ -884,7 +878,6 @@ static const std::vector<std::unique_ptr<ISolversFinder>>& GetFusionSolverFinder
         add(tmp, GetFusedNonConvSolvers(), "fusion");
         add(tmp, GetFusedDirectSolvers(), "miopenConvolutionFwdAlgoDirect");
         add(tmp, GetFusedIGemmSolvers(), "miopenConvolutionFwdAlgoImplicitGEMM");
-        add(tmp, GetFusedWinogradSolvers(), "miopenConvolutionFwdAlgoWinograd");
         return tmp;
     }();
     return finders;

@@ -267,7 +267,6 @@ set( MIOpen_Source
     solver/conv/gemm_wrw.cpp
     solver/conv/conv_ck_grouped_conv_fwd.cpp
     solver/conv_asm_1x1u_bias_activ_fused.cpp
-    solver/conv_bin_winoRxS_fused.cpp
     solver/conv_ck_igemm_grp_fwd_activ_fused.cpp
     solver/conv_ck_igemm_fwd_bias_activ_fused.cpp
     solver/conv_ck_igemm_grp_fwd_bias_activ_fused.cpp
@@ -405,10 +404,6 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/Conv_Winograd_v16_5_0_epilogue.inc
         kernels/Conv_Winograd_v16_5_0_prologue.inc
         kernels/Conv_Winograd_v16_5_0_stride1.inc
-        kernels/conv_3x3_wheel_alpha_v9_2_7_epilogue.inc
-        kernels/conv_3x3_wheel_alpha_v9_2_7_prologue.inc
-        kernels/conv_3x3_wheel_alpha_v9_2_7_gfx8_stride_2_dec.inc
-        kernels/conv_3x3_wheel_alpha_v9_2_7_gfx8.inc
         kernels/conv_3x3_wheel_alpha_v3_0b_epilogue.inc
         kernels/conv_3x3_wheel_alpha_v3_0b_prologue.inc
         kernels/conv_3x3_wheel_alpha_v3_0b.inc
@@ -638,8 +633,6 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/conv_3x3_wheel_alpha_v9_0_15.s
         kernels/conv_3x3_wheel_alpha_v7_0_3b.s
         kernels/conv_3x3_wheel_alpha_v3_0b.s
-        kernels/conv_3x3_wheel_alpha_v9_2_7.s
-        kernels/conv_3x3_wheel_alpha_v9_2_7_stride_2_dec.s
         kernels/Conv_Winograd_v21_1_3_fp16_dot2_f2x3_dilation2.s
         kernels/Conv_Winograd_v21_1_3_fp16_dot2_f2x3_stride1.s
         kernels/Conv_Winograd_v21_1_3_fp16_dot2_f2x3_stride2.s

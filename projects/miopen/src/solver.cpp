@@ -572,11 +572,7 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
         registry, ++id, conv::ConvHipImplicitGemmFwdXdlops{}, miopenConvolutionAlgoImplicitGEMM);
     RegisterWithSolver(
         registry, ++id, conv::ConvHipImplicitGemmBwdXdlops{}, miopenConvolutionAlgoImplicitGEMM);
-    Register(registry,
-             ++id,
-             Primitive::Fusion,
-             fusion::ConvBinWinogradRxSFused{}.SolverDbId(),
-             miopenConvolutionAlgoWinograd);
+    ++id; // Removed ConvBinWinogradRxSFused
     ++id; // Removed ConvBinWinogradRxSf2x3g1Fused
     Register(registry, ++id, Primitive::Fusion, fusion::BnFwdInferActivationFused{}.SolverDbId());
     Register(registry, ++id, Primitive::Fusion, fusion::BnFwdTrgActivationFused{}.SolverDbId());
