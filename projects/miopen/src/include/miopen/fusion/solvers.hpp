@@ -417,21 +417,6 @@ struct ConvBinWinogradRxSFused final : FusionSolverBase
                                          const FusionDescription&) const override;
 };
 
-struct ConvBinWinogradRxSf2x3g1Fused final : FusionSolverBase
-{
-    const std::string& SolverDbId() const override
-    {
-        return GetSolverDbId<ConvBinWinogradRxSf2x3g1Fused>();
-    }
-
-    MIOPEN_INTERNALS_EXPORT bool IsApplicable(const FusionContext& context,
-                                              const FusionDescription& problem) const override;
-    MIOPEN_INTERNALS_EXPORT ConvSolution
-    GetSolution(const FusionContext& context, const FusionDescription& problem) const override;
-    MIOPEN_INTERNALS_EXPORT float GetWti(const FusionContext&,
-                                         const FusionDescription&) const override;
-};
-
 struct BnFwdInferActivationFused final : FusionSolverBase
 {
     const std::string& SolverDbId() const override

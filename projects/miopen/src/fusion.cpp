@@ -763,8 +763,7 @@ static auto GetFusedIGemmSolvers()
 
 static auto GetFusedWinogradSolvers()
 {
-    return solver::SolverContainer<solver::fusion::ConvBinWinogradRxSFused,
-                                   solver::fusion::ConvBinWinogradRxSf2x3g1Fused>{};
+    return solver::SolverContainer<solver::fusion::ConvBinWinogradRxSFused>{};
 }
 
 static auto GetAllFusionSolvers()
