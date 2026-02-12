@@ -115,6 +115,11 @@ namespace rocRoller
                 auto sameDimensionLoadTiledNodes
                     = loadNodesReachableWithoutDimensionModifyingNodes(graph.control, nodeID);
 
+                Log::debug(
+                    "IdentifyParallelDimensions::StoreTiled: store {} has {} reachable loads",
+                    nodeID,
+                    sameDimensionLoadTiledNodes.size());
+
                 for(int loadID : sameDimensionLoadTiledNodes)
                 {
                     auto loadTile = graph.mapper.get<CoordinateGraph::MacroTile>(loadID);
@@ -122,12 +127,24 @@ namespace rocRoller
                         = graph.coordinates.getInputNodeIndices(loadTile, isConstructMacroTile)
                               .to<std::vector>();
 
+                    Log::debug("  pairing load {} dims (size={}) with store dims (size={})",
+                               loadID,
+                               loadDims.size(),
+                               storeDims.size());
+
                     AssertFatal(loadDims.size() == storeDims.size(),
                                 ShowValue(loadDims.size()),
                                 ShowValue(storeDims.size()));
 
                     for(size_t i = 0; i < loadDims.size(); i++)
+                    {
+                        Log::debug("    dimension pair: load[{}]={} ↔ store[{}]={}",
+                                   i,
+                                   loadDims.at(i),
+                                   i,
+                                   storeDims.at(i));
                         redundantArgs.push_back({loadDims.at(i), storeDims.at(i)});
+                    }
                 }
             }
 
@@ -202,6 +219,74 @@ namespace rocRoller
                     redundantArgs.push_back({*remainingADims.begin(), dTileDims.at(0)});
                     redundantArgs.push_back({*remainingBDims.begin(), dTileDims.at(1)});
                 }
+
+                // Handle block-scaled matrix multiplication scale tensors
+                // ScaleA dimensions: [M, K/blockSize]
+                // ScaleB dimensions: [K/blockSize, N]
+                auto maybeScaleA = graph.mapper.get(nodeID, NaryArgument::LHS_SCALE);
+                auto maybeScaleB = graph.mapper.get(nodeID, NaryArgument::RHS_SCALE);
+
+                if(maybeScaleA > 0)
+                {
+                    // maybeScaleA is a MacroTile coordinate tag (same as A, B above)
+                    auto scaleADims
+                        = graph.coordinates.getInputNodeIndices(maybeScaleA, isConstructMacroTile)
+                              .to<std::vector>();
+
+                    Log::debug("IdentifyParallelDimensions: Found ScaleA with {} dims",
+                               scaleADims.size());
+
+                    // ScaleA[0] (M dimension) should match A[0] and D[0]
+                    if(scaleADims.size() >= 1 && aTileDims.size() >= 1)
+                    {
+                        redundantArgs.push_back({scaleADims[0], aTileDims[0]});
+                        Log::debug("  matched ScaleA[0] with A[0] (M dimension)");
+                    }
+
+                    // If both scale tensors exist, match their K/blockSize dimensions
+                    if(maybeScaleB > 0 && scaleADims.size() >= 2)
+                    {
+                        auto scaleBDims
+                            = graph.coordinates
+                                  .getInputNodeIndices(maybeScaleB, isConstructMacroTile)
+                                  .to<std::vector>();
+
+                        Log::debug("IdentifyParallelDimensions: Found ScaleB with {} dims",
+                                   scaleBDims.size());
+
+                        // ScaleA[1] and ScaleB[0] both represent K/blockSize
+                        if(scaleBDims.size() >= 1)
+                        {
+                            redundantArgs.push_back({scaleADims[1], scaleBDims[0]});
+                            Log::debug(
+                                "  matched ScaleA[1] with ScaleB[0] (K/blockSize dimension)");
+                        }
+
+                        // ScaleB[1] (N dimension) should match B[1] and D[1]
+                        if(scaleBDims.size() >= 2 && bTileDims.size() >= 2)
+                        {
+                            redundantArgs.push_back({scaleBDims[1], bTileDims[1]});
+                            Log::debug("  matched ScaleB[1] with B[1] (N dimension)");
+                        }
+                    }
+                }
+                else if(maybeScaleB > 0)
+                {
+                    // Only ScaleB exists (B is scaled, A is not)
+                    auto scaleBDims
+                        = graph.coordinates.getInputNodeIndices(maybeScaleB, isConstructMacroTile)
+                              .to<std::vector>();
+
+                    Log::debug("IdentifyParallelDimensions: Found ScaleB with {} dims (no ScaleA)",
+                               scaleBDims.size());
+
+                    // ScaleB[1] (N dimension) should match B[1] and D[1]
+                    if(scaleBDims.size() >= 2 && bTileDims.size() >= 2)
+                    {
+                        redundantArgs.push_back({scaleBDims[1], bTileDims[1]});
+                        Log::debug("  matched ScaleB[1] with B[1] (N dimension)");
+                    }
+                }
             }
 
             void call(std::variant<int> nodeID, ControlGraph::Operation const& op)
@@ -256,6 +341,67 @@ namespace rocRoller
 
                     subDim->size = dimSize;
                     copy.coordinates.setElement(dim, *subDim);
+                }
+            }
+
+            // Update User coordinates to use merged SubDimension sizes
+            // After merging parallel SubDimensions above, output tensors (like matrix D in GEMM)
+            // may have User size expressions referencing SubDimension sizes that were merged.
+            // This pass recomputes User sizes using the merged SubDimension sizes, eliminating
+            // redundant kernel arguments for output tensor dimensions.
+            //
+            // Example: Matrix D's User initially references Tensor_D_size_0 and Tensor_D_size_1.
+            //          After merging, D's SubDimensions now use Tensor_A_size_0 (M) and
+            //          Tensor_B_size_1 (N). This pass updates D's User size expression to
+            //          reference those merged sizes, allowing Tensor_D_size_* to be eliminated.
+            for(auto userTag : copy.coordinates.getNodes())
+            {
+                auto user = copy.coordinates.get<CoordinateGraph::User>(userTag);
+                if(!user || !user->size)
+                    continue;
+
+                Log::debug("IdentifyParallelDimensions: Checking User {} for Join connections",
+                           userTag);
+
+                // Find SubDimensions connected via Join edges
+                // Pattern: SubDimensions → Join edge → User (output tensors)
+                auto subdims = copy.coordinates
+                                   .getInputNodeIndices(
+                                       userTag, CoordinateGraph::isEdge<CoordinateGraph::Join>)
+                                   .to<std::vector>();
+
+                Log::debug("  Found {} SubDimensions via Join edges", subdims.size());
+
+                if(subdims.empty())
+                    continue;
+
+                // Recompute User size using merged SubDimension expressions
+                // Formula: 1 + Σ(stride[i] * (size[i] - 1))
+                auto newSize  = Expression::literal(1u);
+                bool allValid = true;
+
+                for(auto subdimTag : subdims)
+                {
+                    auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
+                    if(!subdim || !subdim->size || !subdim->stride)
+                    {
+                        allValid = false;
+                        break;
+                    }
+
+                    auto contribution = subdim->stride * (subdim->size - Expression::literal(1u));
+                    newSize           = newSize + contribution;
+                }
+
+                if(allValid)
+                {
+                    user->size = newSize;
+                    copy.coordinates.setElement(userTag, *user);
+                    Log::debug(
+                        "IdentifyParallelDimensions: Updated User {} size expression using {} "
+                        "SubDimensions",
+                        userTag,
+                        subdims.size());
                 }
             }
 

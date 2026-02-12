@@ -87,8 +87,7 @@ namespace rocRoller
                                         || std::holds_alternative<MagicShifts>(*expr)
                                         || std::holds_alternative<MagicShiftAndSign>(*expr);
 
-                if(ignoreComplexity || isMagicOperation ||
-                   complexity(expr) >= m_minComplexity)
+                if(ignoreComplexity || isMagicOperation || complexity(expr) >= m_minComplexity)
                     return addLaunchEval(expr);
 
                 return nullptr;
