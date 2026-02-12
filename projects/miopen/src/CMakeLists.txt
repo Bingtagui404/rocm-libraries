@@ -38,11 +38,9 @@ endif()
 # 2.  How BF16 kernels (which are kind of mixed-precision now and expected to
 #     remain in the future)  perform final conversion (and rounding) of FP32
 #     to BF16 results. This affects the main functionality of the library.
-option( MIOPEN_USE_RNE_BFLOAT16 "Sets rounding scheme for bfloat16 type" ON )
-option( MIOPEN_FP8_IEEE_EXPONENT_BIAS "Sets the FP8 exponent bias to IEEE" OFF)
-option( MIOPEN_FP8_CLIPPING "Sets the FP8 clipping" ON)
-
-option( MIOPEN_FP8_CLIPPING "Sets the FP8 clipping" ON)
+option(MIOPEN_USE_RNE_BFLOAT16 "Sets rounding scheme for bfloat16 type" ON)
+option(MIOPEN_FP8_IEEE_EXPONENT_BIAS "Sets the FP8 exponent bias to IEEE" OFF)
+option(MIOPEN_FP8_CLIPPING "Sets the FP8 clipping" ON)
 
 configure_file("${PROJECT_SOURCE_DIR}/include/miopen/config.h.in" "${PROJECT_BINARY_DIR}/include/miopen/config.h")
 
@@ -988,14 +986,14 @@ if( MIOPEN_BACKEND STREQUAL "OpenCL")
     target_include_directories( MIOpen SYSTEM PUBLIC ${OPENCL_INCLUDE_DIRS} )
     target_link_libraries( MIOpen PUBLIC ${OPENCL_LIBRARIES} )
     list(APPEND PACKAGE_DEPENDS PACKAGE OpenCL)
-elseif(MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN_BACKEND STREQUAL "HIP")
+elseif(MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN_BACKEND STREQUAL "HIP" OR MIOPEN_BACKEND STREQUAL "HIPNOGPU")
     target_link_libraries( MIOpen PRIVATE hip::device )
     target_link_libraries( MIOpen INTERFACE hip::host )
     if(MIOPEN_USE_HIPRTC)
         if(WIN32)
             target_link_libraries( MIOpen PRIVATE hiprtc::hiprtc )
         else()
-            target_link_libraries( MIOpen PRIVATE hiprtc)
+            target_link_libraries( MIOpen PRIVATE hiprtc )
         endif()
     endif()
     if(ENABLE_HIP_WORKAROUNDS)
