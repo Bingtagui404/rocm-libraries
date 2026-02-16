@@ -259,6 +259,69 @@ void hipblaslt_init_device(ABC_dims                 abc,
                 return uniform_01<T>(idx);
             });
             break;
+        case hipblaslt_initialization::inf:
+            if constexpr(std::is_floating_point_v<T> || std::is_same_v<T, hipblasLtHalf>
+                         || std::is_same_v<T, hip_bfloat16>)
+            {
+                fill_batch(A, M, N, lda, stride, batch_count, [](size_t idx) -> T {
+                    return T(std::numeric_limits<float>::infinity());
+                });
+            }
+            else
+            {
+                hipblaslt_cerr << "hipblaslt_init_device: inf initialization only supported for "
+                                  "floating-point types"
+                               << std::endl;
+            }
+            break;
+        case hipblaslt_initialization::neg_zero:
+            if constexpr(std::is_floating_point_v<T> || std::is_same_v<T, hipblasLtHalf>
+                         || std::is_same_v<T, hip_bfloat16>)
+            {
+                fill_batch(A, M, N, lda, stride, batch_count, [](size_t idx) -> T {
+                    return T(-0.0);
+                });
+            }
+            else
+            {
+                hipblaslt_cerr << "hipblaslt_init_device: neg_zero only supported for "
+                                  "floating-point types"
+                               << std::endl;
+            }
+            break;
+        case hipblaslt_initialization::neg_inf:
+            if constexpr(std::is_floating_point_v<T> || std::is_same_v<T, hipblasLtHalf>
+                         || std::is_same_v<T, hip_bfloat16>)
+            {
+                fill_batch(A, M, N, lda, stride, batch_count, [](size_t idx) -> T {
+                    return T(-std::numeric_limits<float>::infinity());
+                });
+            }
+            else
+            {
+                hipblaslt_cerr << "hipblaslt_init_device: neg_inf only supported for "
+                                  "floating-point types"
+                               << std::endl;
+            }
+            break;
+        case hipblaslt_initialization::nan:
+            if constexpr(std::is_floating_point_v<T> || std::is_same_v<T, hipblasLtHalf>
+                         || std::is_same_v<T, hip_bfloat16>)
+            {
+                std::array<T, 100> rand_nans;
+                for(auto& r : rand_nans)
+                    r = T(hipblaslt_nan_rng());
+                fill_batch(A, M, N, lda, stride, batch_count, [rand_nans](size_t idx) -> T {
+                    return rand_nans[pseudo_random_device(idx) % rand_nans.size()];
+                });
+            }
+            else
+            {
+                hipblaslt_cerr << "hipblaslt_init_device: nan initialization only supported for "
+                                  "floating-point types"
+                               << std::endl;
+            }
+            break;
         default:
             hipblaslt_cerr << "Error type in hipblaslt_init_device" << std::endl;
             break;

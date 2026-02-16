@@ -62,6 +62,19 @@ Tests:
 - {name: alpha_beta_zero_NaN, category: pre_checkin, precision: *real_precisions,
    function: matmul, transA: N, transB: N, M: 256, N: 128, K:  64, alpha: [ .NaN, 2 ], beta: [ .NaN, 2 ] }
 
+# Special floating-point inputs (+0, -0, +Inf, -Inf, NaN) on 64x64, FP types only. Fast smoke.
+- name: matmul_special_fp_64x64
+  category: pre_checkin
+  function:
+    matmul: *floating_point_precisions_special_fp
+  matrix_size:
+    - { M: 64, N: 64, K: 64 }
+  transA: N
+  transB: N
+  alpha: 1.0
+  beta: 0.0
+  initialization: [ zero, neg_zero, inf, neg_inf, nan ]
+
 - name: matmul_one
   category: quick
   function:
