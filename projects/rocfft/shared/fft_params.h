@@ -31,6 +31,7 @@
 #include <omp.h>
 #endif
 #include <random>
+#include <set>
 #include <tuple>
 #include <unordered_set>
 #include <valarray>
@@ -562,6 +563,20 @@ public:
                 bricks.begin(), bricks.end(), [](const fft_brick& a, const fft_brick& b) {
                     return a.rank < b.rank;
                 });
+        }
+
+        bool has_only_one_brick_on_current_device_per_process() const
+        {
+            std::set<int> used_ranks;
+            for(const auto& brick : bricks)
+            {
+                if(used_ranks.find(brick.rank) != used_ranks.end())
+                    return false; // more than one brick on brick.rank
+                if(brick.device != 0)
+                    return false; // not "current" device on rank
+                used_ranks.insert(brick.rank);
+            }
+            return true;
         }
     };
 

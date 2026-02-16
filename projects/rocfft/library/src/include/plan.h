@@ -25,6 +25,8 @@
 #include <complex>
 #include <cstring>
 #include <list>
+#include <optional>
+#include <set>
 #include <vector>
 
 #include "../../../shared/array_predicate.h"
@@ -123,6 +125,29 @@ struct rocfft_field_t
      * once and only once by the field's bricks.
      */
     bool has_valid_tessellation() const;
+
+    /**
+     * @param[in] dim the index of the layouts' axis to be verified
+     * @return `true` iff the corresponding layout axis is not partial in any of
+     * the bricks' layouts.
+     * 
+     * @throw An `std::logic_error` is thrown if the field has no bricks. An
+     * `std::invalid_argument` is thrown if `dim` is out of range.
+     */
+    bool has_full_range_in_all_bricks_for_axis(size_t dim) const;
+
+    std::set<size_t> get_full_length_axes_in_all_bricks() const;
+
+    std::optional<rocfft_field_t> get_other_field_for(io_data_label           other_io,
+                                                      rocfft_transform_type   fft_type,
+                                                      rocfft_result_placement placement,
+                                                      bool other_real_innermost_length_is_odd
+                                                      = false) const;
+
+    bool operator==(const rocfft_field_t& other) const
+    {
+        return bricks == other.bricks;
+    }
 };
 
 struct rocfft_plan_description_t
@@ -415,42 +440,43 @@ private:
                                             const rocfft_location_t&   exec_plan_location,
                                             const std::vector<size_t>& antecedents);
 
+    struct field_representation_t
+    {
+        rocfft_field_t         field;
+        rocfft_array_type      array_type;
+        std::vector<BufferPtr> buffers;
+        std::string            group_name;
+        // comparisons
+        bool operator==(const field_representation_t& other) const
+        {
+            // group_name is irrelevant to logical comparisons of field representations
+            return field == other.field && array_type == other.array_type
+                   && buffers == other.buffers;
+        }
+        bool operator!=(const field_representation_t& other) const
+        {
+            return !(*this == other);
+        }
+    };
+
     // Transpose the input field to the output field by adding work items
     // to the plan.  Antecedents are provided as a vector of item
     // indexes, one per brick.  Final work item per brick (that future
     // per-brick operations can depend on) is returned in outputItems.
-    //
-    // transposeNumber identifies this particular transpose in the
-    // plan, for debugging.
-    void GlobalTranspose(size_t                     elem_size,
-                         const rocfft_field_t&      inField,
-                         const rocfft_field_t&      outField,
-                         std::vector<BufferPtr>&    input,
-                         std::vector<BufferPtr>&    output,
-                         const std::vector<size_t>& inputAntecedents,
-                         std::vector<size_t>&       outputItems,
-                         size_t                     transposeNumber);
+    std::vector<size_t> GlobalTranspose(const field_representation_t& input,
+                                        const field_representation_t& output,
+                                        const std::vector<size_t>&    antecedents);
 
     // default global all-to-all transpose
-    void GlobalTransposeA2A(size_t                     elem_size,
-                            const rocfft_field_t&      inField,
-                            const rocfft_field_t&      outField,
-                            std::vector<BufferPtr>&    input,
-                            std::vector<BufferPtr>&    output,
-                            const std::vector<size_t>& inputAntecedents,
-                            std::vector<size_t>&       outputItems,
-                            const std::string&         itemGroup);
+    std::vector<size_t> GlobalTransposeA2A(const field_representation_t& input,
+                                           const field_representation_t& output,
+                                           const std::vector<size_t>&    antecedents);
 
     // fallback case for global transpose that uses point-to-point
     // communications, for when all-to-all isn't possible.
-    void GlobalTransposeP2P(size_t                     elem_size,
-                            const rocfft_field_t&      inField,
-                            const rocfft_field_t&      outField,
-                            std::vector<BufferPtr>&    input,
-                            std::vector<BufferPtr>&    output,
-                            const std::vector<size_t>& inputAntecedents,
-                            std::vector<size_t>&       outputItems,
-                            const std::string&         itemGroup);
+    std::vector<size_t> GlobalTransposeP2P(const field_representation_t& input,
+                                           const field_representation_t& output,
+                                           const std::vector<size_t>&    antecedents);
 
     // Transform (complex-complex FFT) a whole field along specified
     // dimensions.  Input and output ptrs are provided as a vector of
@@ -464,14 +490,14 @@ private:
     // Work items are added to the plan.  Final work item per brick (that
     // future per-brick operations can depend on) is returned in
     // outputItems.
-    void C2CField(const rocfft_field_t&          field,
-                  const std::vector<size_t>&     fftDims,
-                  std::vector<BufferPtr>&        input,
-                  std::vector<BufferPtr>&        output,
-                  const std::optional<LoadOps>&  loadOps,
-                  const std::optional<StoreOps>& storeOps,
-                  const std::vector<size_t>&     inputAntecedents,
-                  std::vector<size_t>&           outputItems);
+    //    void C2CField(const rocfft_field_t&          field,
+    //                  const std::set<size_t>&        fftDims,
+    //                  const std::vector<BufferPtr>&  input,
+    //                  std::vector<BufferPtr>&        output,
+    //                  const std::optional<LoadOps>&  loadOps,
+    //                  const std::optional<StoreOps>& storeOps,
+    //                  const std::vector<size_t>&     inputAntecedents,
+    //                  std::vector<size_t>&           outputItems);
 
     // RAII struct to 'lease' a temp buffer from a multimap of per-device
     // buffers.  When this struct is destroyed, the buffer is returned to
@@ -573,6 +599,40 @@ private:
      */
     NodeMetaData get_single_dev_exec_plan_metadata(std::vector<TempBufferLease>& leased_io,
                                                    const rocfft_location_t& exec_plan_location);
+
+    enum class sub_fft_label
+    {
+        from_user_input_field,
+        // when/if rerouting unfriendly input field first (not done yet):
+        // from_temporary_input_field,
+        from_intermediary_field,
+        to_intermediary_field,
+        // when/if rerouting unfriendly output field first (not done yet):
+        // to_temporary_output_field,
+        to_user_output_field
+    };
+
+    struct sub_fft_t
+    {
+        rocfft_transform_type   fft_type;
+        rocfft_result_placement placement;
+        field_representation_t  input, output;
+        std::set<size_t>        len_dims;
+        std::optional<LoadOps>  load_ops  = std::nullopt;
+        std::optional<StoreOps> store_ops = std::nullopt;
+        sub_fft_label           label;
+    };
+
+    sub_fft_t create_sub_fft(const field_representation_t& sub_fft_field_with_buffers,
+                             const std::set<size_t>&       sub_fft_len_dims,
+                             sub_fft_label                 label,
+                             std::vector<TempBufferLease>& leased_buffers,
+                             bool                          prefer_in_place_if_possible);
+
+    std::vector<size_t> enqueue(const sub_fft_t& sub_fft, const std::vector<size_t>& antecedents);
+
+    template <io_data_label io>
+    field_representation_t get_user_field_representation(size_t field_idx = 0) const;
 };
 
 bool PlanPowX(ExecPlan& execPlan);

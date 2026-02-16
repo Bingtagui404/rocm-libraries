@@ -23,6 +23,44 @@
 
 #include "rocfft_hip.h"
 #include <cstdlib>
+#include <stdexcept>
+#include <string>
+
+namespace
+{
+    int device_hosting(const void* device_alloc)
+    {
+        if(!device_alloc)
+            throw std::invalid_argument("nullptr device_alloc have no location");
+        hipPointerAttribute_t attributes;
+        const auto            hip_status = hipPointerGetAttributes(&attributes, device_alloc);
+        if(hip_status != hipSuccess)
+            throw std::runtime_error("pointer attributes could not be determined (hip_status = "
+                                     + std::to_string(hip_status) + ")");
+        if(attributes.device == hipInvalidDeviceId)
+            throw std::invalid_argument("Invalid device ID fetched from pointer attributes (is it "
+                                        "a registered allocation?)");
+        return attributes.device;
+    }
+
+    //bool alloc_is_accessible_by_device(const void* device_alloc, int device_requesting_access)
+    //{
+    //    if(device_requesting_access < 0)
+    //        throw std::invalid_argument("Invalid device ID requesting access to allocation");
+    //    const auto hosting_device = device_hosting(device_alloc);
+    //    if(hosting_device == device_requesting_access)
+    //        return true;
+    //
+    //    int        tmp = -1; // must be set to 0,1 upon return
+    //    const auto hip_status
+    //        = hipDeviceCanAccessPeer(&tmp, device_requesting_access, hosting_device);
+    //    if(hip_status != hipSuccess || tmp < 0 || tmp > 1)
+    //        throw std::runtime_error("hipDeviceCanAccessPeer failed (hip_status: "
+    //                                 + std::to_string(hip_status) + ", tmp: " + std::to_string(tmp)
+    //                                 + ")");
+    //    return tmp; // implicit conversion to bool
+    //}
+}
 
 // Simple RAII class for GPU buffers.  T is the type of pointer that
 // data() returns

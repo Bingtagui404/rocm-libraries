@@ -315,7 +315,15 @@ public:
             return ret;
         }
         // default behavior is to feed rocfft with a work area if it needs one
-        if(workbuffersize > 0 && auto_allocate != fft_auto_allocation_on)
+        // (not done for multi-device cases yet because more developments needed,
+        //  internal allocations are done anyways, for now)
+        if(workbuffersize > 0 && auto_allocate != fft_auto_allocation_on
+           && (ifields.empty()
+               || (ifields.size() == 1
+                   && ifields[0].has_only_one_brick_on_current_device_per_process()))
+           && (ofields.empty()
+               || (ofields.size() == 1
+                   && ofields[0].has_only_one_brick_on_current_device_per_process())))
         {
             hipError_t hip_status = hipSuccess;
             hip_status            = wbuffer.alloc(workbuffersize);
@@ -532,45 +540,46 @@ public:
                         io_buffer_vec.push_back(multi_gpu_data.back().data());
                         if(placement == fft_placement_inplace)
                             mgpu_obuffers.push_back(multi_gpu_data.back().data());
-                    }
-                    if(io == fft_io::fft_io_in)
-                    {
-                        // copy cpu input data to device buffer(s)
-                        const auto input_data_host_offset = io_brick->lower_field_offset(
-                            cpu_ref_params.istride, cpu_ref_params.idist);
 
-                        // transpose input data to the brick's shape in host memory, then
-                        // memcpy (as is) into allocated device buffer
-                        std::vector<hostbuf> host_tmp(1);
-                        host_tmp.front().alloc(alloc_byte_size);
-
-                        std::vector<size_t> cpu_istrides_with_idist(cpu_ref_params.istride);
-                        cpu_istrides_with_idist.insert(cpu_istrides_with_idist.begin(),
-                                                       cpu_ref_params.idist);
-
-                        copy_buffers(input_data_host,
-                                     host_tmp,
-                                     io_brick->length(),
-                                     /* "nbatch" = */ 1,
-                                     cpu_ref_params.precision,
-                                     cpu_ref_params.itype,
-                                     cpu_istrides_with_idist,
-                                     /* "idist" = */ 0,
-                                     array_type,
-                                     io_brick->stride,
-                                     /* "odist" =  */ 0,
-                                     {input_data_host_offset},
-                                     /* "ooffset" = */ {0});
-
-                        // memcpy the transposed brick to the device
-                        if(hipMemcpy(io_buffer_vec.back(),
-                                     host_tmp.front().data(),
-                                     alloc_byte_size,
-                                     hipMemcpyHostToDevice)
-                           != hipSuccess)
+                        if(io == fft_io::fft_io_in)
                         {
-                            throw std::runtime_error(
-                                "rocfft_params::multi_gpu_prepare: hipMemcpy failed");
+                            // copy cpu input data to device buffer(s)
+                            const auto input_data_host_offset = io_brick->lower_field_offset(
+                                cpu_ref_params.istride, cpu_ref_params.idist);
+
+                            // transpose input data to the brick's shape in host memory, then
+                            // memcpy (as is) into allocated device buffer
+                            std::vector<hostbuf> host_tmp(1);
+                            host_tmp.front().alloc(alloc_byte_size);
+
+                            std::vector<size_t> cpu_istrides_with_idist(cpu_ref_params.istride);
+                            cpu_istrides_with_idist.insert(cpu_istrides_with_idist.begin(),
+                                                           cpu_ref_params.idist);
+
+                            copy_buffers(input_data_host,
+                                         host_tmp,
+                                         io_brick->length(),
+                                         /* "nbatch" = */ 1,
+                                         cpu_ref_params.precision,
+                                         cpu_ref_params.itype,
+                                         cpu_istrides_with_idist,
+                                         /* "idist" = */ 0,
+                                         array_type,
+                                         io_brick->stride,
+                                         /* "odist" =  */ 0,
+                                         {input_data_host_offset},
+                                         /* "ooffset" = */ {0});
+
+                            // memcpy the transposed brick to the device
+                            if(hipMemcpy(io_buffer_vec.back(),
+                                         host_tmp.front().data(),
+                                         alloc_byte_size,
+                                         hipMemcpyHostToDevice)
+                               != hipSuccess)
+                            {
+                                throw std::runtime_error(
+                                    "rocfft_params::multi_gpu_prepare: hipMemcpy failed");
+                            }
                         }
                     }
                 }

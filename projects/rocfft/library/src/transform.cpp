@@ -481,7 +481,12 @@ void ExecPlan::ExecuteAsync(const rocfft_plan                       plan,
     if(workBufSize > 0)
     {
         auto requiredWorkBufBytes = WorkBufBytes(real_type_size(rootPlan->precision));
-        if(!exec_info.workBuffer)
+
+        // We have missing logic (up to user level) for safe handling of multi-device
+        // cases right now: do not use user-provided buffers if they're not on the
+        // expected location (even if peer access is enabled)
+        if(!exec_info.workBuffer
+           || (mgpuPlan && device_hosting(exec_info.workBuffer) != location.device))
         {
             // user didn't provide a buffer, alloc one now
             if(autoAllocWorkBuf.alloc(requiredWorkBufBytes) != hipSuccess)

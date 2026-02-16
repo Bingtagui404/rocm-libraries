@@ -42,6 +42,7 @@ Documentation for rocFFT is available at
 * Fixed functional issues for multi-dimensional, multi-device transforms involving some unit length(s).
 * Fixed functional issues for multi-device transforms involving data divisions along the slowest-varying axis (only) for some bricks but not all.
 * Fixed functional issues for multi-device transforms setting no field on input or output.
+* Fixed potential sporadic incorrect results and/or execution-time crashes for single-process, multi-device use cases.
 
 ## rocFFT 1.0.36 for ROCm 7.2.0
 
