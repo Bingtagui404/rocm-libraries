@@ -4,10 +4,11 @@
 #pragma once
 
 #include <algorithm>
+#include <hipdnn_data_sdk/utilities/Constants.hpp>
 #include <hipdnn_data_sdk/utilities/StaticCast.hpp>
 #include <hipdnn_data_sdk/utilities/Tensor.hpp>
 #include <hipdnn_data_sdk/utilities/UtilsBfp16.hpp>
-#include <hipdnn_test_sdk/utilities/CpuFpReferenceUtilities.hpp>
+#include <hipdnn_test_sdk/utilities/detail/CpuFpReferenceUtilities.hpp>
 #include <numeric>
 #include <vector>
 
@@ -17,6 +18,7 @@ namespace hipdnn_test_sdk::utilities
 class CpuFpReferenceBatchnorm
 {
 public:
+    // Uses pre-computed invVariance from fwdTraining (epsilon already baked in as 1/sqrt(var+eps)).
     template <class XDataType,
               class ScaleBiasDataType,
               class MeanVarianceDataType,
@@ -59,7 +61,66 @@ public:
         };
 
         // Iterate all indices in parallel
-        auto parallelFunc = makeParallelTensorFunctor(batchnormFwdInferenceFunc, x.dims());
+        auto parallelFunc = hipdnn_test_sdk::detail::makeParallelTensorFunctor(
+            batchnormFwdInferenceFunc, x.dims());
+        parallelFunc(std::thread::hardware_concurrency());
+
+        y.memory().markHostModified(); // Mark y memory as modified on host
+    }
+
+    // Uses raw variance from fwdTraining runningVariance. Computes invVariance=1/sqrt(var+eps).
+    template <class XDataType,
+              class ScaleBiasDataType,
+              class MeanVarianceDataType,
+              class YDataType,
+              class ComputeDataType = MeanVarianceDataType>
+    static void fwdInferenceWithVariance(
+        const hipdnn_data_sdk::utilities::TensorBase<XDataType>& x,
+        const hipdnn_data_sdk::utilities::TensorBase<ScaleBiasDataType>& scale,
+        const hipdnn_data_sdk::utilities::TensorBase<ScaleBiasDataType>& bias,
+        const hipdnn_data_sdk::utilities::TensorBase<MeanVarianceDataType>& estimatedMean,
+        const hipdnn_data_sdk::utilities::TensorBase<MeanVarianceDataType>& variance,
+        hipdnn_data_sdk::utilities::TensorBase<YDataType>& y,
+        double epsilon = hipdnn_data_sdk::utilities::BATCHNORM_DEFAULT_EPSILON)
+    {
+        if(x.dims().size() < 2)
+        {
+            throw std::runtime_error(
+                "Batchnorm inference with variance requires at least 2D tensor (batch and "
+                "channel).");
+        }
+
+        auto epsilonCompute = hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(epsilon);
+
+        auto batchnormFwdInferenceWithVarianceFunc = [&](const std::vector<int64_t>& indices) {
+            auto cidx = indices[1];
+            auto mean = hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(
+                estimatedMean.getHostValue(0, cidx));
+            auto varianceValue = hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(
+                variance.getHostValue(0, cidx));
+
+            // Compute inv_variance = 1 / sqrt(variance + epsilon)
+            auto invVarianceValue = hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(1.0)
+                                    / sqrtInternal(varianceValue + epsilonCompute);
+
+            //There is some extra casting in here to deal with double -> float implicit casts.
+            auto inVal
+                = hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(x.getHostValue(indices));
+            ComputeDataType elemStd = inVal - mean;
+            ComputeDataType inhat = elemStd * invVarianceValue;
+
+            y.setHostValue(hipdnn_data_sdk::utilities::staticCast<YDataType>(
+                               (hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(
+                                    scale.getHostValue(0, cidx))
+                                * inhat)
+                               + hipdnn_data_sdk::utilities::staticCast<ComputeDataType>(
+                                   bias.getHostValue(0, cidx))),
+                           indices);
+        };
+
+        // Iterate all indices in parallel
+        auto parallelFunc = hipdnn_test_sdk::detail::makeParallelTensorFunctor(
+            batchnormFwdInferenceWithVarianceFunc, x.dims());
         parallelFunc(std::thread::hardware_concurrency());
 
         y.memory().markHostModified(); // Mark y memory as modified on host
@@ -187,7 +248,8 @@ public:
         auto nChannels = x.dims().at(1);
         std::vector<int64_t> parallelDims = {nChannels};
 
-        auto parallelFunc = makeParallelTensorFunctor(batchnormFwdTrainingFunc, parallelDims);
+        auto parallelFunc = hipdnn_test_sdk::detail::makeParallelTensorFunctor(
+            batchnormFwdTrainingFunc, parallelDims);
         parallelFunc(std::thread::hardware_concurrency());
 
         // Mark all modified tensors as host-modified
@@ -350,7 +412,8 @@ public:
         auto nChannels = x.dims().at(1);
         std::vector<int64_t> parallelDims = {nChannels};
 
-        auto parallelFunc = makeParallelTensorFunctor(batchnormBwdFunc, parallelDims);
+        auto parallelFunc
+            = hipdnn_test_sdk::detail::makeParallelTensorFunctor(batchnormBwdFunc, parallelDims);
         parallelFunc(std::thread::hardware_concurrency());
 
         dx.memory().markHostModified();

@@ -4,14 +4,52 @@
 #pragma once
 
 #include <hip/hip_fp16.h>
-#include <hipdnn_data_sdk/logging/Logger.hpp>
+#include <ostream>
 #include <string>
 
-#define HIPDNN_NAN_FP16 ushort_as_half(static_cast<unsigned short>(0x7FFFU))
+#define HIPDNN_NAN_FP16 \
+    hipdnn_data_sdk::utilities::fp16::ushort_as_half(static_cast<unsigned short>(0x7FFFU))
 
 inline __HOST_DEVICE__ half operator""_h(long double value)
 {
     return {static_cast<float>(value)};
+}
+
+inline __HOST_DEVICE__ half operator-(half a)
+{
+    auto r = static_cast<__half_raw>(a);
+    r.x ^= 0x8000u;
+    return r;
+}
+
+inline __HOST_DEVICE__ bool operator==(half a, half b)
+{
+    return static_cast<float>(a) == static_cast<float>(b);
+}
+
+inline __HOST_DEVICE__ bool operator!=(half a, half b)
+{
+    return static_cast<float>(a) != static_cast<float>(b);
+}
+
+inline __HOST_DEVICE__ bool operator<(half a, half b)
+{
+    return static_cast<float>(a) < static_cast<float>(b);
+}
+
+inline __HOST_DEVICE__ bool operator>(half a, half b)
+{
+    return static_cast<float>(a) > static_cast<float>(b);
+}
+
+inline __HOST_DEVICE__ bool operator<=(half a, half b)
+{
+    return static_cast<float>(a) <= static_cast<float>(b);
+}
+
+inline __HOST_DEVICE__ bool operator>=(half a, half b)
+{
+    return static_cast<float>(a) >= static_cast<float>(b);
 }
 
 namespace hipdnn_data_sdk::utilities::fp16
@@ -33,29 +71,26 @@ inline __HOST_DEVICE__ half habs(half num)
 
 inline __HOST_DEVICE__ bool hisnan(__half x)
 {
-    __half_raw hr = x;
+    auto hr = static_cast<__half_raw>(x);
     return (hr.x & 0x7FFFU) > 0x7C00u;
 }
 
 inline __HOST_DEVICE__ half hmax(const half a, const half b)
 {
-    if(hisnan(a) && !hisnan(b))
+    auto aNan = hisnan(a);
+    auto bNan = hisnan(b);
+
+    if(aNan || bNan)
     {
-        return b;
+        if(aNan && bNan)
+        {
+            return HIPDNN_NAN_FP16; // return canonical NaN
+        }
+
+        return aNan ? b : a;
     }
-    if(!hisnan(a) && hisnan(b))
-    {
-        return a;
-    }
-    if(hisnan(a) && hisnan(b))
-    {
-        return HIPDNN_NAN_FP16;
-    }
-    if(static_cast<__half_raw>(a).x > static_cast<__half_raw>(b).x)
-    {
-        return __half_raw{static_cast<__half_raw>(a).x};
-    }
-    return __half_raw{static_cast<__half_raw>(b).x};
+
+    return a > b ? a : b;
 }
 
 } // namespace hipdnn_data_sdk::utilities::fp16
@@ -80,12 +115,30 @@ inline __HOST_DEVICE__ half max(half a, half b)
 
 } // namespace std
 
-template <>
-struct fmt::formatter<half> : fmt::formatter<float>
+namespace hipdnn_data_sdk::utilities
 {
-    template <typename FormatContext>
-    auto format(half h, FormatContext& ctx) const
+
+/**
+ * @brief Wrapper for streaming half (fp16) to ostream
+ *
+ * Usage: std::cout << StreamFp16(value);
+ * Usage: HIPDNN_LOG_INFO("value: " << StreamFp16(half_val));
+ */
+class StreamFp16
+{
+public:
+    explicit StreamFp16(half val)
+        : _val(val)
     {
-        return fmt::formatter<float>::format(static_cast<float>(h), ctx);
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const StreamFp16& wrapper)
+    {
+        return os << static_cast<float>(wrapper._val);
+    }
+
+private:
+    half _val;
 };
+
+} // namespace hipdnn_data_sdk::utilities

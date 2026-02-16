@@ -176,6 +176,8 @@ typedef enum rocblaslt_epilogue_
     ROCBLASLT_EPILOGUE_GELU_BIAS          = 36,
     ROCBLASLT_EPILOGUE_RELU_AUX           = 130,
     ROCBLASLT_EPILOGUE_RELU_AUX_BIAS      = 134,
+    ROCBLASLT_EPILOGUE_DRELU              = 136,
+    ROCBLASLT_EPILOGUE_DRELU_BGRAD        = 152,
     ROCBLASLT_EPILOGUE_GELU_AUX           = 160,
     ROCBLASLT_EPILOGUE_GELU_AUX_BIAS      = 164,
     ROCBLASLT_EPILOGUE_DGELU              = 192,
@@ -465,7 +467,8 @@ struct RocblasltContractionProblem
         None = 0,
         Scalar,
         Vector,
-        Block
+        Block_32_UE8M0,
+        Block_32_UE8M0_32_8_EXT,
     };
 
     hipblasOperation_t trans_a;
@@ -535,10 +538,6 @@ struct RocblasltContractionProblem
     ScalingFormat scaleAType;
     ScalingFormat scaleBType;
 
-    size_t             scaleABlockRowSize;
-    size_t             scaleABlockColSize;
-    size_t             scaleBBlockRowSize;
-    size_t             scaleBBlockColSize;
     hipDataType        bias_type;
     hipDataType        aux_type;
     rocblaslt_epilogue epilogue;
@@ -601,10 +600,6 @@ struct RocblasltContractionProblem
                                 const void*            scaleAlphaVec,
                                 ScalingFormat          scaleAType,
                                 ScalingFormat          scaleBType,
-                                size_t                 scaleABlockRowSize,
-                                size_t                 scaleABlockColSize,
-                                size_t                 scaleBBlockRowSize,
-                                size_t                 scaleBBlockColSize,
                                 hipDataType            bias_type,
                                 hipDataType            aux_type,
                                 rocblaslt_epilogue     epilogue,

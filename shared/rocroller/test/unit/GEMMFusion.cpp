@@ -56,6 +56,9 @@
 
 namespace GEMMDriverTest
 {
+    using namespace rocRoller;
+    namespace SolutionParams = rocRoller::Parameters::Solution;
+
     struct GEMMFusionGPU : public CurrentGPUContextFixture
     {
         template <typename T>
@@ -163,15 +166,15 @@ namespace GEMMDriverTest
                                                   : std::vector<size_t>({});
 
             auto tagTensorA = command->addOperation(rocRoller::Operations::Tensor(
-                2, dataType, gemm.transA == "N" ? oneStridesN : oneStridesT)); // A
+                2, dataType, {}, gemm.transA == "N" ? oneStridesN : oneStridesT)); // A
             auto tagLoadA = command->addOperation(rocRoller::Operations::T_Load_Tiled(tagTensorA));
 
             auto tagTensorB = command->addOperation(rocRoller::Operations::Tensor(
-                2, dataType, gemm.transB == "N" ? oneStridesN : oneStridesT)); // B
+                2, dataType, {}, gemm.transB == "N" ? oneStridesN : oneStridesT)); // B
             auto tagLoadB = command->addOperation(rocRoller::Operations::T_Load_Tiled(tagTensorB));
 
             auto tagTensorC = command->addOperation(
-                rocRoller::Operations::Tensor(2, dataType, oneStridesN)); // C
+                rocRoller::Operations::Tensor(2, dataType, {}, oneStridesN)); // C
             auto tagLoadC = command->addOperation(rocRoller::Operations::T_Load_Tiled(tagTensorC));
 
             auto tagScalarAlpha
@@ -220,7 +223,7 @@ namespace GEMMDriverTest
             command->addOperation(std::move(execute));
 
             auto tagTensorRelu = command->addOperation(
-                rocRoller::Operations::Tensor(2, dataType, oneStridesN)); // E
+                rocRoller::Operations::Tensor(2, dataType, {}, oneStridesN)); // E
             command->addOperation(rocRoller::Operations::T_Store_Tiled(tagRelu, tagTensorRelu));
 
             Operations::OperationTag tagScratch[static_cast<int>(Operations::ScratchPolicy::Count)];
@@ -293,7 +296,9 @@ namespace GEMMDriverTest
                 {gemm.macM, gemm.macN},
                 LayoutType::MATRIX_ACCUMULATOR,
                 {gemm.waveM, gemm.waveN, gemm.waveK, gemm.waveB},
-                gemm.storeLDSD ? MemoryType::WAVE_LDS : MemoryType::WAVE);
+                (gemm.storePath == SolutionParams::StorePath::VGPRToGlobalMemoryViaLDSWithBuffer)
+                    ? MemoryType::WAVE_LDS
+                    : MemoryType::WAVE);
 
             params->setDimensionInfo(tagLoadA, macTileA);
             params->setDimensionInfo(tagLoadB, macTileB);

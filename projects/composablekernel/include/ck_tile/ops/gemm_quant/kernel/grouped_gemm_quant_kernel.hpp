@@ -387,8 +387,8 @@ struct QuantGroupedGemmKernel
             Base::MakeABlockWindow(a_ptr, kargs, splitk_batch_offset.splitted_k, block_idx_m);
         const auto& b_block_window =
             Base::MakeBBlockWindow(b_ptr, kargs, splitk_batch_offset.splitted_k, block_idx_n);
-        const auto& bq_block_window =
-            Base::MakeBQBlockWindow(bq_ptr, kargs, block_idx_m, block_idx_n);
+        const auto& bq_block_window = Base::MakeBQBlockWindow(
+            bq_ptr, kargs, splitk_batch_offset.bq_group_offset, block_idx_m, block_idx_n);
 
         const index_t num_loop = __builtin_amdgcn_readfirstlane(
             TilePartitioner::GetLoopNum(splitk_batch_offset.splitted_k));
@@ -453,8 +453,8 @@ struct QuantGroupedGemmKernel
             Base::MakeBBlockWindow(b_ptr, kargs, splitk_batch_offset.splitted_k, block_idx_n);
         const auto& aq_block_window =
             Base::MakeAQBlockWindow(aq_ptr, kargs, block_idx_m, block_idx_n);
-        const auto& bq_block_window =
-            Base::MakeBQBlockWindow(bq_ptr, kargs, block_idx_m, block_idx_n);
+        const auto& bq_block_window = Base::MakeBQBlockWindow(
+            bq_ptr, kargs, splitk_batch_offset.bq_group_offset, block_idx_m, block_idx_n);
 
         // Get hot-loop and tail configuration
         const index_t num_loop = __builtin_amdgcn_readfirstlane(
@@ -484,6 +484,17 @@ struct QuantGroupedGemmKernel
                                                           tail_num,
                                                           smem_ptr);
             }
+            else if constexpr(kQuantType == QuantType::ABQuantGrouped)
+            {
+                return GemmPipeline{}.template operator()(a_block_window,
+                                                          b_block_window,
+                                                          aq_block_window,
+                                                          bq_block_window,
+                                                          num_loop,
+                                                          has_hot_loop,
+                                                          tail_num,
+                                                          smem_ptr);
+            }
             else if constexpr(kQuantType == QuantType::RowColQuant ||
                               kQuantType == QuantType::TensorQuant)
             {
@@ -499,7 +510,8 @@ struct QuantGroupedGemmKernel
                 c_ptr, kargs, block_idx_m, block_idx_n);
 
             if constexpr(kQuantType == QuantType::AQuantGrouped ||
-                         kQuantType == QuantType::BQuantGrouped)
+                         kQuantType == QuantType::BQuantGrouped ||
+                         kQuantType == QuantType::ABQuantGrouped)
             {
                 EpiloguePipeline{}(c_block_window, c_block_tile, c_block_window, smem_ptr);
             }
@@ -527,7 +539,8 @@ struct QuantGroupedGemmKernel
                     c_ptr, kargs, block_idx_m, block_idx_n);
 
             if constexpr(kQuantType == QuantType::AQuantGrouped ||
-                         kQuantType == QuantType::BQuantGrouped)
+                         kQuantType == QuantType::BQuantGrouped ||
+                         kQuantType == QuantType::ABQuantGrouped)
             {
                 EpiloguePipeline{}(c_block_window, c_block_tile, c_block_window, smem_ptr);
             }
