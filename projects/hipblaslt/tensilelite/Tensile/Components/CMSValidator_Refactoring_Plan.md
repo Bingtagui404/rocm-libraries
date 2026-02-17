@@ -10,11 +10,9 @@ This document outlines architectural improvements for the CMSValidator module an
 2. [Recommendations](#recommendations)
    - [R1: Split File Into Modules](#r1-split-file-into-modules)
    - [R2: Replace Float Indices with Composite Key](#r2-replace-float-indices-with-composite-key)
-   - [R3: Make Mutation Order Explicit](#r3-make-mutation-order-explicit)
    - [R4: Extract Magic Numbers to Constants](#r4-extract-magic-numbers-to-constants)
    - [R5: Define Typed Context](#r5-define-typed-context)
    - [R6: Use Registry Pattern for Pack Handling](#r6-use-registry-pattern-for-pack-handling)
-   - [R7: Define Formal ValidationPass Interface](#r7-define-formal-validationpass-interface)
    - [R8: Centralize Error Messages](#r8-centralize-error-messages)
    - [R9: Clarify Validation Logic Location](#r9-clarify-validation-logic-location)
    - [R10: Separate Timeline Responsibilities](#r10-separate-timeline-responsibilities)
@@ -31,11 +29,9 @@ This document outlines architectural improvements for the CMSValidator module an
 |---|-------|----------|----------|
 | 1 | 2100+ line file with mixed responsibilities | High | Maintainability |
 | 2 | Float indices risk precision bugs | High | Correctness |
-| 3 | Order-dependent mutations | High | Correctness |
 | 4 | Magic numbers throughout | Medium | Maintainability |
 | 5 | Untyped `context: dict` | Medium | Type Safety |
 | 6 | Nested conditionals for pack modes | Medium | Extensibility |
-| 7 | No formal validation pass interface | Low | Extensibility |
 | 8 | Inline error message construction | Low | Maintainability |
 | 9 | Mixed validation logic locations | Medium | Clarity |
 | 10 | Timeline class has too many jobs | Medium | Maintainability |
@@ -54,21 +50,13 @@ This document outlines architectural improvements for the CMSValidator module an
 **Target State**:
 ```
 Tensile/Components/CMSValidator/
-├── __init__.py              # Public API: isValid(), ValidationResult
+├── __init__.py              # Public API: isValid(), TIMELINE_PASSES, structural_checks
 ├── instructions.py          # ValidatorInstruction base + all subclasses
-├── timeline.py              # Timeline class
+├── timeline.py              # Timeline class + create_unified_timeline()
 ├── constants.py             # All magic numbers as named constants
-├── context.py               # ValidationContext dataclass
+├── context.py               # ValidatorPassContext + ValidationContext dataclasses
 ├── errors.py                # Error message templates
-├── passes/
-│   ├── __init__.py          # Pass registry, run_all_passes()
-│   ├── base.py              # ValidationPass protocol
-│   ├── instruction_count.py
-│   ├── ordering.py
-│   ├── local_reads.py
-│   ├── global_reads.py
-│   ├── packs.py
-│   └── scc_overlap.py
+├── passes.py                # add_*_constraints() functions, verify_*() structural checks
 ├── pack_handlers/
 │   ├── __init__.py          # get_pack_handler() factory
 │   ├── base.py              # PackHandler ABC
@@ -152,82 +140,6 @@ class SchedulePosition:
 
 ---
 
-### R3: Unified Timeline with Progressive Constraint Addition
-
-**Current State**:
-```python
-# Each pass creates its own Timeline with a subset of instruction types
-def verify_lrs_finished_before_vmfma(...):
-    timeline = Timeline(["LRA0", "LRB0", ...], ...)  # Subset
-    set_lr_needed_by_for_VMFMA(timeline, ...)
-    apply_swaits(timeline)
-    return validate_timeline(timeline)
-
-def verify_grs_not_too_early(...):
-    timeline = Timeline(["GRA", "GRB", ...], ...)    # Different subset
-    apply_swaits(timeline)                           # Called again!
-    set_gr_must_start_after_from_lr0s(...)
-    return validate_timeline(timeline)
-```
-
-**Problems**:
-1. Timeline created 4 times with different instruction subsets
-2. Transformations like `apply_swaits` called redundantly
-3. Order dependencies are implicit and error-prone
-
-**Target State** (Unified Timeline):
-```python
-def isValid(scheduleInfo, context):
-    for code_path in range(scheduleInfo.numCodePaths):
-        # Structural checks (no Timeline needed)
-        if error := verify_correct_number_of_instructions(...): return error
-        if error := verify_ascending_order(...): return error
-
-        # Create SINGLE Timeline with ALL instruction types
-        timeline = create_unified_timeline(scheduleInfo, kernel, code_path)
-
-        # Pass 3: Add LocalRead constraints, then validate
-        add_local_read_constraints(timeline, kernel, mfma_reorder)
-        if error := validate_timeline(timeline):
-            return False, error
-
-        # Pass 4: Add Pack constraints, then validate
-        add_pack_constraints(timeline, kernel, mfma_reorder)
-        if error := validate_timeline(timeline):
-            return False, error
-
-        # Pass 5: Add GR-not-too-early constraints, then validate
-        add_gr_not_too_early_constraints(timeline, swap_global_read_order)
-        if error := validate_timeline(timeline):
-            return False, error
-
-        # Pass 6: Add GR-finish-before-LR constraints, then validate
-        add_gr_finish_before_lr_constraints(timeline, swap_global_read_order)
-        if error := validate_timeline(timeline):
-            return False, error
-
-        # More structural checks
-        if error := verify_scc_overlap(...): return error
-        if error := verify_gr_inc_order(...): return error
-
-    return True, ""
-```
-
-**Key Insight**: Instruction `validate()` methods already handle unset constraints gracefully:
-- `LocalRead.validate()`: `if self.needed_by.issued_at == float('inf'): return None`
-- `GlobalRead._validate_must_start_after()`: `if self.must_start_after.done_idx() == float('-inf'): return None`
-
-This means calling `validate_timeline()` after each pass works correctly - instructions with unset constraints pass, instructions with set constraints get validated.
-
-**Benefits**:
-- Single Timeline creation per code path (not 4)
-- Each transformation called exactly once
-- Clear pass ordering enforced by code structure
-- Constraints accumulate; final Timeline represents fully validated schedule
-- Reuses existing `validate_timeline()` function unchanged
-
----
-
 ### R4: Extract Magic Numbers to Constants
 
 **Current State**:
@@ -280,11 +192,21 @@ class LoopNames:
 
 ### R5: Define Typed Context
 
+> **Note**: `ValidatorPassContext` already provides typed access for timeline-based passes. The remaining work is to replace the top-level `context: dict` parameter in `isValid()` and the structural check functions with a full `ValidationContext`.
+
 **Current State**:
 ```python
+# isValid() still takes an untyped dict:
 def isValid(scheduleInfo: 'ScheduleInfo', context: dict) -> tuple[bool, str]:
     kernel = context["kernel"]
     idMap = context.get("idMap")  # Optional? Unknown structure
+
+# But timeline passes already use a typed context:
+@dataclass
+class ValidatorPassContext:
+    kernel: 'Solution'
+    mfma_reorder: list[int]
+    swap_global_read_order: bool
 ```
 
 **Target State**:
@@ -447,61 +369,6 @@ def _handle_fp8(ctx: PackContext) -> None:
 
 ---
 
-### R7: Keep Functions, Not Classes for Passes
-
-**Current State**:
-```python
-# Functions with implicit contract
-def verify_lrs_finished_before_vmfma(schedule_info, context, code_path):
-    ...
-    return True, ""
-```
-
-**Recommendation**: Keep using functions rather than introducing a formal ValidationPass class/protocol.
-
-**Rationale**:
-- The unified timeline approach (R3) already provides clear structure
-- Functions are simpler and match the existing codebase style
-- No need for class boilerplate when functions work well
-- The pass ordering is explicit in the `isValid()` function itself
-
-**Target State** (with R3 unified timeline):
-```python
-# Constraint-adding functions (new)
-def add_local_read_constraints(timeline: Timeline, kernel, mfma_reorder) -> None:
-    """Add LR.needed_by and LR.guaranteed_by constraints."""
-    set_lr_needed_by_for_VMFMA(timeline, kernel, mfma_reorder)
-    apply_swaits(timeline)
-    apply_barriers(timeline)
-
-def add_pack_constraints(timeline: Timeline, kernel, mfma_reorder) -> None:
-    """Add Pack constraints."""
-    hook_up_packs(timeline, kernel, mfma_reorder)
-    estimate_quad_cycles(timeline, kernel)
-
-def add_gr_not_too_early_constraints(timeline: Timeline, swap_global_read_order) -> None:
-    """Add GR.must_start_after constraints."""
-    set_gr_must_start_after_from_lr0s(timeline, swap_global_read_order)
-    apply_must_start_after_barriers(timeline)
-
-def add_gr_finish_before_lr_constraints(timeline: Timeline, swap_global_read_order) -> None:
-    """Add GR.needed_by constraints."""
-    set_gr_needed_by_from_lrs(timeline, swap_global_read_order)
-
-# Structural check functions (keep existing)
-def verify_correct_number_of_instructions(schedule_info, context, code_path) -> tuple[bool, str]: ...
-def verify_ascending_order(schedule_info, context, code_path) -> tuple[bool, str]: ...
-def verify_scc_overlap(schedule_info, context, code_path) -> tuple[bool, str]: ...
-def verify_gr_inc_order(schedule_info, context, code_path) -> tuple[bool, str]: ...
-```
-
-**Benefits**:
-- No new abstractions to learn
-- Explicit ordering in `isValid()` is clear and auditable
-- Easy to add new passes: just add a function and call it in the right place
-
----
-
 ### R8: Centralize Error Messages
 
 **Current State**:
@@ -601,6 +468,8 @@ def validate(self) -> Optional[str]:
 ---
 
 ### R9: Clarify Validation Logic Location
+
+> **Note**: The unified timeline already achieves the key structural goal: passes only set up constraints and call `validate_timeline()`, which delegates to each instruction's `validate()` method. The remaining work is ensuring all validation logic lives in instruction classes (not in standalone functions) and adding helper methods.
 
 **Current State**: Mixed - some validation in `Instruction.validate()`, some in standalone functions.
 
@@ -1026,9 +895,8 @@ touch Tensile/Components/CMSValidator/utils/__init__.py
 - Keep transformation functions with Timeline for now
 
 **Step 6**: Extract validation passes
-- Create one file per pass in `passes/`
-- Move each `verify_*` function to appropriate file
-- Create `passes/__init__.py` with pass registry
+- Move `add_*_constraints()` functions, `TIMELINE_PASSES`, and `verify_*` structural checks to `passes.py`
+- Move `ValidatorPassContext` to `context.py`
 
 **Step 7**: Update main module
 - `CMSValidator/__init__.py` exports `isValid`, `ValidationResult`
@@ -1118,103 +986,6 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 
 ---
 
-### Plan for R3: Unified Timeline with Progressive Constraint Addition
-
-**Estimated Effort**: Medium (1 day)
-
-**Step 1**: Add `create_unified_timeline()` function
-```python
-ALL_INSTRUCTION_NAMES = [
-    "LRA0", "LRB0", "LRA1", "LRB1", "LRA3", "LRB3",
-    "GRA", "GRB",
-    "PackA0", "PackB0", "PackA1", "PackB1", "PackA3", "PackB3",
-    "SYNC", "SNOP",
-]
-
-def create_unified_timeline(schedule_info, kernel, code_path) -> Timeline:
-    """Create a single Timeline with all instruction types."""
-    available = set(schedule_info.optSchedule.keys())
-    names = [n for n in ALL_INSTRUCTION_NAMES if n in available]
-    return Timeline(names, code_path, schedule_info, kernel)
-```
-
-**Step 2**: Add constraint-adding wrapper functions
-```python
-def add_local_read_constraints(timeline, kernel, mfma_reorder) -> None:
-    set_lr_needed_by_for_VMFMA(timeline, kernel, mfma_reorder)
-    apply_swaits(timeline)  # Sets guaranteed_by for BOTH LRs and GRs
-    apply_barriers(timeline)
-
-def add_pack_constraints(timeline, kernel, mfma_reorder) -> None:
-    if kernel.get("UseF32XEmulation") and not kernel.get("UseDirect32XEmulation"):
-        return  # Skip - not supported
-    hook_up_packs(timeline, kernel, mfma_reorder)
-    estimate_quad_cycles(timeline, kernel)
-
-def add_gr_not_too_early_constraints(timeline, swap_global_read_order) -> None:
-    set_gr_must_start_after_from_lr0s(timeline, swap_global_read_order)
-    apply_must_start_after_barriers(timeline)
-
-def add_gr_finish_before_lr_constraints(timeline, swap_global_read_order) -> None:
-    set_gr_needed_by_from_lrs(timeline, swap_global_read_order)
-```
-
-**Step 3**: Rewrite `isValid()` to use unified timeline
-```python
-def isValid(scheduleInfo, context):
-    kernel = context["kernel"]
-    mfma_reorder = scheduleInfo.mfmaReorder or []
-    swap = kernel.get("SwapGlobalReadOrder", False)
-
-    for code_path in range(scheduleInfo.numCodePaths):
-        # Structural checks
-        status, msg = verify_correct_number_of_instructions(...)
-        if not status: return False, f"Code path {code_path}: {msg}"
-        status, msg = verify_ascending_order(...)
-        if not status: return False, f"Code path {code_path}: {msg}"
-
-        # Create unified timeline
-        timeline = create_unified_timeline(scheduleInfo, kernel, code_path)
-
-        # Add constraints and validate after each
-        add_local_read_constraints(timeline, kernel, mfma_reorder)
-        if error := validate_timeline(timeline):
-            return False, f"Code path {code_path}: {error}"
-
-        add_pack_constraints(timeline, kernel, mfma_reorder)
-        if error := validate_timeline(timeline):
-            return False, f"Code path {code_path}: {error}"
-
-        add_gr_not_too_early_constraints(timeline, swap)
-        if error := validate_timeline(timeline):
-            return False, f"Code path {code_path}: {error}"
-
-        add_gr_finish_before_lr_constraints(timeline, swap)
-        if error := validate_timeline(timeline):
-            return False, f"Code path {code_path}: {error}"
-
-        # More structural checks
-        status, msg = verify_scc_overlap(...)
-        if not status: return False, f"Code path {code_path}: {msg}"
-        status, msg = verify_gr_inc_order(...)
-        if not status: return False, f"Code path {code_path}: {msg}"
-
-    return True, ""
-```
-
-**Step 4**: Remove old `verify_*` functions that created their own Timelines
-- `verify_lrs_finished_before_vmfma()` - replaced by pass 3
-- `verify_packs_start_and_end_at_correct_indices()` - replaced by pass 4
-- `verify_grs_not_too_early()` - replaced by pass 5
-- `verify_grs_finish_before_lrs()` - replaced by pass 6
-
-**Step 5**: Run tests to verify no regressions
-```bash
-pytest Tensile/Tests/unit/test_CMSValidator*.py -v
-```
-
----
-
 ### Plan for R4: Extract Magic Numbers to Constants
 
 **Estimated Effort**: Small (2-4 hours)
@@ -1241,7 +1012,10 @@ grep -n "== 24\|== 10\|== 4\|== 20\|< 4\|< 20\|>= 4" CMSValidator.py
 
 **Estimated Effort**: Small (2-4 hours)
 
-**Step 1**: Create context.py with ValidationContext dataclass (see R5 above)
+> **Note**: `ValidatorPassContext` already provides typed access for timeline-based passes. This plan extends typed context to the `isValid()` entry point and structural checks. Consider whether `ValidationContext` should subsume or wrap `ValidatorPassContext`.
+
+**Step 1**: Create ValidationContext dataclass (see R5 above)
+- Decide relationship to `ValidatorPassContext`: either `ValidationContext` contains a `ValidatorPassContext`, or `ValidatorPassContext` is merged into `ValidationContext`
 
 **Step 2**: Update isValid() signature
 ```python
@@ -1261,9 +1035,9 @@ def from_dict(cls, d: dict) -> 'ValidationContext':
     )
 ```
 
-**Step 4**: Update internal functions to use ValidationContext
+**Step 4**: Update structural check functions to use ValidationContext
 - Replace `context["kernel"]` with `context.kernel`
-- Replace `context["kernel"]["SwapGlobalReadOrder"]` with `context.swap_global_read_order`
+- Replace `context.get("kernel", {}).get(...)` with `context.kernel.get(...)`
 
 **Step 5**: Run tests
 
@@ -1348,28 +1122,6 @@ def hook_up_packs(timeline: Timeline, kernel: dict, mfma_reorder: list[int]) -> 
 
 ---
 
-### Plan for R7: Keep Functions (No Classes Needed)
-
-**Estimated Effort**: None (no action required)
-
-With the unified timeline approach (R3), the pass structure is already explicit and clear in `isValid()`. No need to introduce a formal ValidationPass interface.
-
-The constraint-adding functions created in R3 serve as the "passes":
-- `add_local_read_constraints()`
-- `add_pack_constraints()`
-- `add_gr_not_too_early_constraints()`
-- `add_gr_finish_before_lr_constraints()`
-
-And the existing structural check functions remain:
-- `verify_correct_number_of_instructions()`
-- `verify_ascending_order()`
-- `verify_scc_overlap()`
-- `verify_gr_inc_order()`
-
-**Recommendation**: Skip R7. The unified timeline (R3) already provides the structure we need.
-
----
-
 ### Plan for R8: Centralize Error Messages
 
 **Estimated Effort**: Small (3-4 hours total, split across 2 PRs)
@@ -1436,7 +1188,7 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 
 ### Plan for R9: Clarify Validation Logic Location
 
-**Estimated Effort**: Medium (1 day)
+**Estimated Effort**: Small (half day) — Step 3 already achieved.
 
 **Step 1**: Document the chosen pattern (all validation in instruction classes)
 
@@ -1444,8 +1196,9 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 - Ensure it handles all constraints for that instruction type
 - Move any external validation logic into the class
 
-**Step 3**: Simplify standalone validation passes
-- They should only: build timeline, set constraints, call validate_timeline()
+**Step 3**: ~~Simplify standalone validation passes~~
+- ~~They should only: build timeline, set constraints, call validate_timeline()~~
+- **Done** — the `add_*_constraints()` functions already follow this pattern.
 
 **Step 4**: Add helper methods to instruction classes for constraint checking
 
@@ -1632,19 +1385,14 @@ class SchedulePosition:
 
 ## Recommended Implementation Order
 
-1. **R3: Unified Timeline** (high value, creates single Timeline with progressive constraints)
-2. **R4: Extract Magic Numbers** (quick win, low risk)
-3. **R5: Define Typed Context** (quick win, improves IDE support)
-4. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: eliminate `num_vmfma` — after R2; Phase 3: shared error formatting — after R8)
-5. **R2: Replace Float Indices** (fixes potential correctness issue, enables R13 Phase 2)
-6. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
-7. **R12: Document Limitations** (quick win, documentation only)
-8. **R9: Clarify Validation Logic** (already mostly done by R3, further enabled by R13)
-9. **R1: Split File Into Modules** (large effort, do after other changes stabilize)
-10. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
-11. **R10: Separate Timeline** (large effort, do last)
-12. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
-
-**Note**: R7 (ValidationPass Interface) is no longer needed - the unified timeline approach (R3) provides sufficient structure using simple functions.
-
-See `CMSValidator_UnifiedTimeline_Plan.md` for detailed implementation steps for R3.
+1. **R4: Extract Magic Numbers** (quick win, low risk)
+2. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
+3. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: eliminate `num_vmfma` — after R2; Phase 3: shared error formatting — after R8)
+4. **R2: Replace Float Indices** (fixes potential correctness issue, enables R13 Phase 2)
+5. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
+6. **R12: Document Limitations** (quick win, documentation only)
+7. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
+8. **R1: Split File Into Modules** (large effort, do after other changes stabilize)
+9. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
+10. **R10: Separate Timeline** (large effort, do last)
+11. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
