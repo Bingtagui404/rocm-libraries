@@ -58,6 +58,9 @@ cmake_install.cmake
 **/__pycache__
 *.egg-info/
 
+# Generated test data (from hipblaslt_gentest.py)
+clients/tests/data/hipblaslt_*.dat
+
 #clangd
 .cache
 
