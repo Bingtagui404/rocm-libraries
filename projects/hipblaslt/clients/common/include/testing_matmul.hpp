@@ -873,6 +873,18 @@ void check(hipStream_t                   stream,
         {
             CHECK_HIP_ERROR(synchronize(hBias[gemmIdx], dBias[gemmIdx]));
         }
+        // Check Inf/NaN consistency first so "Inf turned into NaN" bugs fail with a clear message
+        if(arg.unit_check || arg.norm_check)
+        {
+            check_special_value_consistency(M[gemmIdx],
+                                            N[gemmIdx],
+                                            ldd[gemmIdx],
+                                            stride_d[gemmIdx],
+                                            hD_gold[gemmIdx].buf(),
+                                            hD_1[gemmIdx].buf(),
+                                            num_batches[gemmIdx],
+                                            To);
+        }
         if(arg.unit_check)
         {
             if(tol[gemmIdx] != 0)
@@ -1885,16 +1897,24 @@ void testing_matmul_with_bias(const Arguments& arg,
 
         hipblaslt_seedrand();
 
+        // Per-matrix initialization overrides (0 = use default initialization)
+        auto initA = (arg.initialization_a != static_cast<hipblaslt_initialization>(0))
+                         ? arg.initialization_a
+                         : arg.initialization;
+        auto initB = (arg.initialization_b != static_cast<hipblaslt_initialization>(0))
+                         ? arg.initialization_b
+                         : arg.initialization;
+
 #ifdef HIPBLASLT_USE_ROCROLLER
         if(isBlockScaling(arg.scaleA))
         {
-            if(arg.initialization != hipblaslt_initialization::hpl
-               && arg.initialization != hipblaslt_initialization::trig_float
-               && arg.initialization != hipblaslt_initialization::uniform_01)
+            if(initA != hipblaslt_initialization::hpl
+               && initA != hipblaslt_initialization::trig_float
+               && initA != hipblaslt_initialization::uniform_01)
             {
                 hipblaslt_cout << "Initialization of microscaling data only allows hpl, trig_float "
                                   "or uniform_01, not "
-                               << hipblaslt_initialization2string(arg.initialization) << std::endl;
+                               << hipblaslt_initialization2string(initA) << std::endl;
                 return;
             }
             if(arg.algo_method == 1)
@@ -1923,7 +1943,7 @@ void testing_matmul_with_bias(const Arguments& arg,
                                               blockSize(arg.scaleA),
                                               1,
                                               true,
-                                              hipblaslt_initialization2string(arg.initialization)));
+                                              hipblaslt_initialization2string(initA)));
             // Copy data and scale to device buffers
             CHECK_HIP_ERROR(synchronize(dA[i], hA[i], block_count));
             CHECK_HIP_ERROR(synchronize(dScaleA[i], hScaleA[i], block_count));
@@ -1932,7 +1952,7 @@ void testing_matmul_with_bias(const Arguments& arg,
         {
 #endif
             hipblaslt_init_device(ABC_dims::A,
-                                  arg.initialization,
+                                  initA,
                                   alpha_isnan_type(arg, Talpha),
                                   dA[i].buf(),
                                   A_row[i],
@@ -1941,18 +1961,19 @@ void testing_matmul_with_bias(const Arguments& arg,
                                   TiA,
                                   (do_swizzle_a && stride_a[i] != 0) ? A_row[i] * A_col[i]
                                                                      : stride_a[i],
-                                  num_batches[i]);
+                                  num_batches[i],
+                                  arg.norm_dist_one_special_type);
 #ifdef HIPBLASLT_USE_ROCROLLER
         }
         if(isBlockScaling(arg.scaleB))
         {
-            if(arg.initialization != hipblaslt_initialization::hpl
-               && arg.initialization != hipblaslt_initialization::trig_float
-               && arg.initialization != hipblaslt_initialization::uniform_01)
+            if(initB != hipblaslt_initialization::hpl
+               && initB != hipblaslt_initialization::trig_float
+               && initB != hipblaslt_initialization::uniform_01)
             {
                 hipblaslt_cout << "Initialization of microscaling data only allows hpl, trig_float "
                                   "or uniform_01, not "
-                               << hipblaslt_initialization2string(arg.initialization) << std::endl;
+                               << hipblaslt_initialization2string(initB) << std::endl;
                 return;
             }
             if(arg.algo_method == 1)
@@ -1979,7 +2000,7 @@ void testing_matmul_with_bias(const Arguments& arg,
                                               1,
                                               blockSize(arg.scaleB),
                                               false,
-                                              hipblaslt_initialization2string(arg.initialization)));
+                                              hipblaslt_initialization2string(initB)));
             // Copy data and scale to device buffers
             CHECK_HIP_ERROR(synchronize(dB[i], hB[i], block_count));
             CHECK_HIP_ERROR(synchronize(dScaleB[i], hScaleB[i], block_count));
@@ -1988,7 +2009,7 @@ void testing_matmul_with_bias(const Arguments& arg,
         {
 #endif
             hipblaslt_init_device(ABC_dims::B,
-                                  arg.initialization,
+                                  initB,
                                   alpha_isnan_type(arg, Talpha),
                                   dB[i].buf(),
                                   B_row[i],
@@ -1997,7 +2018,8 @@ void testing_matmul_with_bias(const Arguments& arg,
                                   TiB,
                                   (do_swizzle_b && stride_b[i] != 0) ? B_row[i] * B_col[i]
                                                                      : stride_b[i],
-                                  num_batches[i]);
+                                  num_batches[i],
+                                  arg.norm_dist_one_special_type);
 #ifdef HIPBLASLT_USE_ROCROLLER
         }
 #endif
@@ -2010,7 +2032,8 @@ void testing_matmul_with_bias(const Arguments& arg,
                               ldc[i],
                               To,
                               stride_c[i],
-                              num_batches[i]);
+                              num_batches[i],
+                              arg.norm_dist_one_special_type);
 
         // broadcast first block
         CHECK_HIP_ERROR(broadcast(dA[i], block_count));

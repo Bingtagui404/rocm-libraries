@@ -48,6 +48,7 @@ Datatypes:
         neg_zero: 889
         neg_inf: 890
         nan: 891
+        norm_dist_one_special: 892
   - hipblaslt_activation_type:
       bases: [ c_int ]
       attr:
@@ -546,6 +547,9 @@ Arguments:
   - compute_input_typeB: hipDataType
   - scale_type: hipDataType
   - initialization: hipblaslt_initialization
+  - initialization_a: hipblaslt_initialization
+  - initialization_b: hipblaslt_initialization
+  - norm_dist_one_special_type: c_int8
   - gpu_arch: c_char*16
   - gpu_arch_exclude: c_char*16
   - pad: c_uint32
@@ -661,6 +665,9 @@ Defaults:
   requested_solution_num: 1
   workspace_size: 0
   initialization: rand_int
+  initialization_a: 0
+  initialization_b: 0
+  norm_dist_one_special_type: -1
   category: nightly
   known_bug_platforms: ''
   name: hipblaslt-bench

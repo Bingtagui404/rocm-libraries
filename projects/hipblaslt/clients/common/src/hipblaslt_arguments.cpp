@@ -81,7 +81,10 @@ void Arguments::init()
     compute_input_typeB = HIPBLASLT_DATATYPE_INVALID;
     scale_type          = HIP_R_32F;
 
-    initialization = hipblaslt_initialization::hpl;
+    initialization   = hipblaslt_initialization::hpl;
+    initialization_a  = static_cast<hipblaslt_initialization>(0); // 0 = use initialization
+    initialization_b  = static_cast<hipblaslt_initialization>(0);
+    norm_dist_one_special_type = -1; // -1 = from seed; 0=inf, 1=neg_inf, 2=nan
 
     // memory padding for testing write out of bounds
     pad = 4096;

@@ -75,6 +75,44 @@ Tests:
   beta: 0.0
   initialization: [ zero, neg_zero, inf, neg_inf, nan ]
 
+# Norm_dist with one inf/-inf/nan in A; B and C are norm_dist. Deterministic, FP only.
+# Run with norm_dist_one_special_type 0, 1, 2 to guarantee inf, neg_inf, and nan are each tested (e.g. for inf-handling bugs).
+- name: matmul_norm_dist_one_special_in_A
+  category: pre_checkin
+  function:
+    matmul: *floating_point_precisions_special_fp
+  matrix_size:
+    - { M: 64, N: 64, K: 64 }
+  transA: N
+  transB: N
+  alpha: 1.0
+  beta: 0.0
+  initialization: norm_dist
+  initialization_a: norm_dist_one_special
+  norm_dist_one_special_type: [ 0, 1, 2 ]
+  unit_check: 0
+  norm_check: 1
+  norm_check_assert: 0
+
+# Norm_dist with one inf/-inf/nan in B; A and C are norm_dist. Deterministic, FP only.
+# Run with norm_dist_one_special_type 0, 1, 2 to guarantee inf, neg_inf, and nan are each tested.
+- name: matmul_norm_dist_one_special_in_B
+  category: pre_checkin
+  function:
+    matmul: *floating_point_precisions_special_fp
+  matrix_size:
+    - { M: 64, N: 64, K: 64 }
+  transA: N
+  transB: N
+  alpha: 1.0
+  beta: 0.0
+  initialization: norm_dist
+  initialization_b: norm_dist_one_special
+  norm_dist_one_special_type: [ 0, 1, 2 ]
+  unit_check: 0
+  norm_check: 1
+  norm_check_assert: 0
+
 - name: matmul_one
   category: quick
   function:
