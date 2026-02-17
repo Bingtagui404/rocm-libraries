@@ -1060,7 +1060,7 @@ namespace rocRoller::KernelGraph
             if(!user)
                 return -1;
 
-            // Try dimension-based sizing first, fall back to extent
+            // Try dimension-based sizing first
             auto bufferSize = ComputeBufferSizeFromSubDimensions(graph, target, params.valueType);
 
             if(!bufferSize)
@@ -1069,7 +1069,7 @@ namespace rocRoller::KernelGraph
                 AssertFatal(user->size, "Invalid User dimension: missing size.", ShowValue(target));
                 bufferSize = ToBytes(user->size, params.valueType);
                 Log::debug(
-                    "KernelGraph::makeBuffer: using extent-based sizing for user {} (fallback)",
+                    "KernelGraph::makeBuffer: using fallback sizing for user {}",
                     target);
             }
             else
