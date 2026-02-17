@@ -10,7 +10,6 @@ This document outlines architectural improvements for the CMSValidator module an
 2. [Recommendations](#recommendations)
    - [R1: Split File Into Modules](#r1-split-file-into-modules)
    - [R2: Replace Float Indices with Composite Key](#r2-replace-float-indices-with-composite-key)
-   - [R4: Extract Magic Numbers to Constants](#r4-extract-magic-numbers-to-constants)
    - [R5: Define Typed Context](#r5-define-typed-context)
    - [R6: Use Registry Pattern for Pack Handling](#r6-use-registry-pattern-for-pack-handling)
    - [R8: Centralize Error Messages](#r8-centralize-error-messages)
@@ -30,7 +29,6 @@ This document outlines architectural improvements for the CMSValidator module an
 |---|-------|----------|----------|
 | 1 | 2100+ line file with mixed responsibilities | High | Maintainability |
 | 2 | Float indices risk precision bugs | High | Correctness |
-| 4 | Magic numbers throughout | Medium | Maintainability |
 | 5 | Untyped `context: dict` | Medium | Type Safety |
 | 6 | Nested conditionals for pack modes | Medium | Extensibility |
 | 8 | Inline error message construction | Low | Maintainability |
@@ -47,7 +45,7 @@ This document outlines architectural improvements for the CMSValidator module an
 
 ### R1: Split File Into Modules
 
-**Current State**: Single 2100+ line file containing instruction classes, timeline management, 8 validation passes, pack handling, and utility functions.
+**Current State**: Single 2100+ line file containing instruction classes, timeline management, 8 validation passes, pack handling, and utility functions. Named constants are already extracted to module-level variables (R4 complete).
 
 **Target State**:
 ```
@@ -55,7 +53,7 @@ Tensile/Components/CMSValidator/
 ├── __init__.py              # Public API: isValid(), TIMELINE_PASSES, structural_checks
 ├── instructions.py          # ValidatorInstruction base + all subclasses
 ├── timeline.py              # Timeline class + create_unified_timeline()
-├── constants.py             # All magic numbers as named constants
+├── constants.py             # Named constants (moved from CMSValidator.py top-level)
 ├── context.py               # ValidatorPassContext + ValidationContext dataclasses
 ├── errors.py                # Error message templates
 ├── passes.py                # add_*_constraints() functions, verify_*() structural checks
@@ -108,7 +106,7 @@ class SchedulePosition:
     __gt__, __ge__, and __eq__ using tuple-style comparison over fields in declaration order.
 
     Args:
-        loop_index: Which loop this position belongs to (0=ML-1, 1=ML, 2=NGL, 3=NLL).
+        loop_index: Which loop this position belongs to (0=MAIN_LOOP_PREV, 1=MAIN_LOOP, 2=NO_GLOBAL_LOAD_LOOP, 3=NO_LOCAL_LOAD_LOOP).
         vmfma_index: The VMFMA index within the loop (-1 to num_vmfma-1).
         sub_index: Position within a VMFMA slot (0-based, for multiple instructions at same vmfma_index).
     """
@@ -139,56 +137,6 @@ class SchedulePosition:
 - All comparison operators generated automatically
 - Eliminates `_resolve_issued_at_indices` entirely
 - Self-documenting code
-
----
-
-### R4: Extract Magic Numbers to Constants
-
-**Current State**:
-```python
-if 4 <= idx_in_group < 20:
-    continue
-pack.min_quad_cycles_before_result_used = 5
-idx_in_group = pack.issue_index % 10
-```
-
-**Target State**:
-```python
-# constants.py
-class PackGroupSizes:
-    """Number of pack instructions per logical group."""
-    BF16 = 2          # Packs per element pair
-    TF32_REGULAR = 24 # 4 CVT0 + 16 middle + 4 CVT1
-    TF32_4X4_MFMA = 10 # 4 CVT0 + 2 MFMA + 4 CVT1
-
-class TF32PackIndices:
-    """Index ranges within a TF32 pack group."""
-    # Regular TF32 (groups of 24)
-    CVT0_START = 0
-    CVT0_END = 4
-    MIDDLE_16_START = 4
-    MIDDLE_16_END = 20
-    CVT1_START = 20
-    CVT1_END = 24
-
-    # 4x4 MFMA TF32 (groups of 10)
-    MFMA_4X4_START = 4
-    MFMA_4X4_END = 6
-
-class QuadCycleRequirements:
-    """Minimum quad-cycles before result can be used (CDNA 4 ISA 7.6)."""
-    CVT_BEFORE_MFMA = 2
-    MFMA_4X4_BEFORE_CVT1 = 5
-    STANDARD_MFMA_FINISH = 3
-    MFMA_4X4_FINISH = 1
-
-class LoopNames:
-    """Loop iteration identifiers."""
-    MAIN_LOOP_PREV = "ML-1"
-    MAIN_LOOP = "ML"
-    NO_GLOBAL_LOAD = "NGL"
-    NO_LOCAL_LOAD = "NLL"
-```
 
 ---
 
@@ -330,16 +278,16 @@ def _handle_bf16(ctx: PackContext) -> None:
 
 @pack_handler("tf32")
 def _handle_tf32(ctx: PackContext) -> None:
-    """TF32: groups of 24 with CVT0 -> middle-16 -> CVT1 chain."""
+    """TF32: groups of PACK_GROUP_SIZE_TF32 with CVT0 -> middle-16 -> CVT1 chain."""
     _hook_up_packs_f32(ctx.packs, ctx.all_packs_in_loop, ctx.local_reads)
-    _set_min_quad_cycles(ctx.packs, cycles=2)
+    _set_min_quad_cycles(ctx.packs, cycles=QUAD_CYCLES_CVT_BEFORE_MFMA)
     _set_pack_needed_by(ctx.packs, ctx.mfmas_by_index, ...)
 
 @pack_handler("tf32_4x4mfma")
 def _handle_tf32_4x4mfma(ctx: PackContext) -> None:
-    """TF32 4x4 MFMA: groups of 10 with CVT0 -> MFMA -> CVT1 chain."""
+    """TF32 4x4 MFMA: groups of PACK_GROUP_SIZE_TF32_4X4 with CVT0 -> MFMA -> CVT1 chain."""
     _hook_up_packs_f32_mfma(ctx.packs, ctx.local_reads)
-    _set_min_quad_cycles(ctx.packs, cycles=5)
+    _set_min_quad_cycles(ctx.packs, cycles=QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1)
     _set_pack_needed_by(ctx.packs, ctx.mfmas_by_index, ...)
 ```
 
@@ -499,7 +447,7 @@ class LocalRead(ValidatorInstruction):
         return self.guaranteed_by < self.needed_by.issued_at
 
     def _format_timing_error(self) -> str:
-        return ValidationErrors.instruction_issued_too_late(
+        return _error_issued_too_late(
             name=self.name,
             issued_at=self._display_index(),
             needed_by_name=self.needed_by.name,
@@ -537,7 +485,7 @@ class ScheduleParser:
 
 # loop_manager.py
 class LoopManager:
-    """Manages loop iterations (ML-1, ML, NGL, NLL)."""
+    """Manages loop iterations (MAIN_LOOP_PREV, MAIN_LOOP, NO_GLOBAL_LOAD_LOOP, NO_LOCAL_LOAD_LOOP)."""
 
     def __init__(self, base_instructions: list[ValidatorInstruction], context: ValidationContext):
         self._loops = self._create_loops(base_instructions, context)
@@ -865,17 +813,17 @@ return _error_issued_too_late(self.name, self.issued_at.display_index, self.need
 
 ### R14: Model 4x4 MFMA Packs as Dual-Role Instructions
 
-**Current State**: In the TF32 4x4 MFMA emulation path (`UseMFMAF32XEmulation`), packs come in groups of 10. Indices 4 and 5 within each group are actually `v_mfma_f32_4x4x4_16b_bf16` instructions — real MFMAs — but they are modeled as `Pack` objects. This creates a pervasive type lie that forces special-case handling throughout the codebase:
+**Current State**: In the TF32 4x4 MFMA emulation path (`UseMFMAF32XEmulation`), packs come in groups of `PACK_GROUP_SIZE_TF32_4X4` (10). Indices `TF32_4X4_MFMA_START` to `TF32_4X4_MFMA_END` (4-5) within each group are actually `v_mfma_f32_4x4x4_16b_bf16` instructions — real MFMAs — but they are modeled as `Pack` objects. This creates a pervasive type lie that forces special-case handling throughout the codebase:
 
 **Problem 1: `isinstance(instruction, Pack)` checks must inspect `issue_index` to determine behavior**
 
-The `precompute_issue_times()` function cannot rely on type information alone. It must use `isinstance(instruction, Pack)` *and then* check `issue_index % 10 in [4, 5]` to determine if the instruction is actually an MFMA:
+The `precompute_issue_times()` function cannot rely on type information alone. It must use `isinstance(instruction, Pack)` *and then* check `issue_index % PACK_GROUP_SIZE_TF32_4X4` against `TF32_4X4_MFMA_START..TF32_4X4_MFMA_END` to determine if the instruction is actually an MFMA:
 ```python
-# precompute_issue_times (line 1491):
+# precompute_issue_times:
 if isinstance(instruction, Pack) and is_4x4mfma_tf32_packs:
-    idx_in_group = instruction.issue_index % 10
-    if idx_in_group in [4, 5]:
-        return (MFMAType.MFMA_4X4, 1)  # It's actually an MFMA!
+    idx_in_group = instruction.issue_index % PACK_GROUP_SIZE_TF32_4X4
+    if idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END):
+        return (MFMAType.MFMA_4X4, QUAD_CYCLES_MFMA_4X4_FINISH)  # It's actually an MFMA!
 ```
 
 This is a code smell: the type system says "Pack" but the runtime behavior says "MFMA with different timing characteristics."
@@ -883,29 +831,29 @@ This is a code smell: the type system says "Pack" but the runtime behavior says 
 **Problem 2: MFMA-specific timing rules are scattered across Pack handling code**
 
 The 4x4 MFMA packs have fundamentally different timing from real packs:
-- They take 2 quad-cycles (1 issue + 1 finish) instead of 1 quad-cycle like regular packs
+- They take 2 quad-cycles (1 issue + `QUAD_CYCLES_MFMA_4X4_FINISH` finish) instead of 1 quad-cycle like regular packs
 - They incur MFMA type-switch penalties when interleaved with standard MFMAs
-- They have a 5-quad-cycle result latency before CVT1 can consume their output (ISA section 7.6)
+- They have a `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`-quad-cycle result latency before CVT1 can consume their output (ISA section 7.6)
 - They need to be tracked as `MFMAType.MFMA_4X4` in the quad-cycle estimation
 
-All of these MFMA-specific behaviors are expressed via `if idx_in_group in [4, 5]` checks inside Pack handling code, rather than being expressed through the type system.
+All of these MFMA-specific behaviors are expressed via `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` checks inside Pack handling code, rather than being expressed through the type system.
 
 **Problem 3: Pack validation logic doesn't distinguish between CVT and MFMA semantics**
 
 The `Pack.validate()` method applies the same validation pattern to all packs, but the 4x4 MFMA packs have different constraint semantics:
 - Their `must_start_after` depends on other packs (CVT0), not on local reads
 - Their `needed_by` points to other packs (CVT1) or to later packs that consume their results, not to MFMAs
-- Their quad-cycle requirements (5 cycles before result used) stem from ISA MFMA completion rules, not from CVT timing
+- Their quad-cycle requirements (`QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1` cycles before result used) stem from ISA MFMA completion rules, not from CVT timing
 
 **Problem 4: The `_handle_min_pack_quad_cycles` function has special cases for the MFMA packs**
 ```python
-# _handle_min_pack_quad_cycles (line 1140):
+# _handle_min_pack_quad_cycles:
 if is_4x4mfma:
     for pack in packs:
-        idx_in_group = pack.issue_index % 10
-        if 4 <= idx_in_group < 6:
-            # Middle 2 packs are 4x4 MFMAs, need 5 quad-cycles before CVT1
-            pack.min_quad_cycles_before_result_used = 5
+        idx_in_group = pack.issue_index % PACK_GROUP_SIZE_TF32_4X4
+        if TF32_4X4_MFMA_START <= idx_in_group < TF32_4X4_MFMA_END:
+            # Middle 2 packs are 4x4 MFMAs
+            pack.min_quad_cycles_before_result_used = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1
 ```
 
 **Target State**: Introduce a `MFMAPack` class (or similar) that inherits from both `MFMA` and `Pack` (or from a shared base) so the type system captures the dual role:
@@ -915,14 +863,14 @@ if is_4x4mfma:
 class MFMAPack(ValidatorInstruction):
     """A v_mfma_f32_4x4x4_16b_bf16 instruction used as part of TF32 emulation pack groups.
 
-    These instructions appear at indices 4-5 within each group of 10 in the 4x4 MFMA
-    TF32 emulation path. They are real MFMA instructions but participate in the pack
-    dependency chain (CVT0 -> MFMAPack -> CVT1).
+    These instructions appear at indices TF32_4X4_MFMA_START-TF32_4X4_MFMA_END within each
+    group of PACK_GROUP_SIZE_TF32_4X4 in the 4x4 MFMA TF32 emulation path. They are real
+    MFMA instructions but participate in the pack dependency chain (CVT0 -> MFMAPack -> CVT1).
 
     Timing characteristics (MFMA-like):
-    - 2 quad-cycles total (1 issue + 1 finish)
+    - 2 quad-cycles total (1 issue + QUAD_CYCLES_MFMA_4X4_FINISH finish)
     - Incurs MFMA type-switch penalty when interleaved with standard MFMAs
-    - 5 quad-cycle result latency before CVT1 can use output (ISA 7.6)
+    - QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1 quad-cycle result latency before CVT1 can use output (ISA 7.6)
 
     Dependency characteristics (Pack-like):
     - must_start_after: CVT0 packs that produce its inputs
@@ -934,7 +882,7 @@ class MFMAPack(ValidatorInstruction):
     issue_index: int
     needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(float('inf')))
     must_start_after: ValidatorInstruction = field(default_factory=lambda: MFMA(float('-inf')))
-    min_quad_cycles_before_result_used: int = 5  # ISA 7.6 requirement
+    min_quad_cycles_before_result_used: int = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1
 
     # Override to reflect MFMA-like timing
     __min_issue_quad_cycles__: int = 1
@@ -962,19 +910,19 @@ With this change, `precompute_issue_times()` can use the type system directly:
 ```python
 def get_mfma_info(instruction: ValidatorInstruction) -> tuple[MFMAType, Optional[int]]:
     if isinstance(instruction, MFMA):
-        return (MFMAType.STANDARD, 3)
+        return (MFMAType.STANDARD, QUAD_CYCLES_STANDARD_MFMA_FINISH)
     if isinstance(instruction, MFMAPack):
-        return (MFMAType.MFMA_4X4, 1)
+        return (MFMAType.MFMA_4X4, QUAD_CYCLES_MFMA_4X4_FINISH)
     return (MFMAType.NONE, None)
 ```
 
 And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the `min_quad_cycles_before_result_used` default on `MFMAPack` handles it at construction time.
 
-**Construction**: In `_populate_instructions()` (or wherever Pack objects are created from the schedule), when `UseMFMAF32XEmulation` is true and the pack's `issue_index % 10` is 4 or 5, construct an `MFMAPack` instead of a `Pack`.
+**Construction**: In `_populate_instructions()` (or wherever Pack objects are created from the schedule), when `UseMFMAF32XEmulation` is true and the pack's `issue_index % PACK_GROUP_SIZE_TF32_4X4` is in `range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)`, construct an `MFMAPack` instead of a `Pack`.
 
 **Benefits**:
 - Type system accurately reflects hardware reality (these are MFMAs, not CVTs)
-- Eliminates `isinstance(Pack) + idx_in_group in [4,5]` pattern (appears in at least 4 places)
+- Eliminates `isinstance(Pack) + idx_in_group` pattern (appears in at least 4 places)
 - Quad-cycle estimation becomes type-driven rather than index-arithmetic-driven
 - Validation logic is tailored to the actual instruction semantics
 - New instruction types (e.g., FP8 packs with different MFMA variants) can follow the same pattern
@@ -997,34 +945,34 @@ And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the
 **Step 1**: Define the `MFMAPack` class
 
 Add a new `MFMAPack` dataclass alongside `Pack` and `MFMA`. It should have:
-- Fields: `name`, `issued_at`, `issue_index`, `needed_by`, `must_start_after`, `min_quad_cycles_before_result_used` (default 5), `estimated_quad_cycles_before_result_used`
+- Fields: `name`, `issued_at`, `issue_index`, `needed_by`, `must_start_after`, `min_quad_cycles_before_result_used` (default `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`), `estimated_quad_cycles_before_result_used`
 - `done_idx()` returns `self.issued_at`
 - `validate()` checks `must_start_after`, `needed_by`, and quad-cycle gap
 - No `num_vmfma` field (can be added if R2 is not yet done, removed when R2 lands)
 
 **Step 2**: Update instruction construction
 
-Find where `Pack` objects are created for the 4x4 MFMA path. When `UseMFMAF32XEmulation` is true and `issue_index % 10 in [4, 5]`, construct `MFMAPack` instead of `Pack`.
+Find where `Pack` objects are created for the 4x4 MFMA path. When `UseMFMAF32XEmulation` is true and `issue_index % PACK_GROUP_SIZE_TF32_4X4 in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)`, construct `MFMAPack` instead of `Pack`.
 
 **Step 3**: Update `_hook_up_packs_f32_mfma`
 
-The dependency setup in `_hook_up_packs_f32_mfma` (line 1295) already handles packs 4-5 differently via `pack_dependencies`. Verify that the `MFMAPack` objects work correctly with the existing dependency logic. The `pack_group` list will now contain a mix of `Pack` and `MFMAPack` objects.
+The dependency setup in `_hook_up_packs_f32_mfma` already handles packs at indices `TF32_4X4_MFMA_START..TF32_4X4_MFMA_END` differently via `pack_dependencies`. Verify that the `MFMAPack` objects work correctly with the existing dependency logic. The `pack_group` list will now contain a mix of `Pack` and `MFMAPack` objects.
 
 **Step 4**: Update `_set_pack_needed_by`
 
-In `_set_pack_needed_by` (around line 1033), the special handling for `idx_in_group in [4, 5]` (which sets `needed_by` and `continue`s) should now be handled by checking `isinstance(pack, MFMAPack)` instead of `idx_in_group` arithmetic.
+In `_set_pack_needed_by`, the special handling for `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` (which sets `needed_by` and `continue`s) should now be handled by checking `isinstance(pack, MFMAPack)` instead of `idx_in_group` arithmetic.
 
 **Step 5**: Update `_handle_min_pack_quad_cycles`
 
-Remove the `idx_in_group in [4, 5]` special case (line 1147). The `min_quad_cycles_before_result_used = 5` is now a default on `MFMAPack`, set at construction time.
+Remove the `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` special case. The `min_quad_cycles_before_result_used = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1` is now a default on `MFMAPack`, set at construction time.
 
 **Step 6**: Update `precompute_issue_times`
 
-Replace the `isinstance(Pack) + idx_in_group` check (line 1491) with `isinstance(instruction, MFMAPack)`. Remove the `is_4x4mfma_tf32_packs` parameter — the type system now carries this information.
+Replace the `isinstance(Pack) + idx_in_group` check with `isinstance(instruction, MFMAPack)`. Remove the `is_4x4mfma_tf32_packs` parameter — the type system now carries this information.
 
 **Step 7**: Update `estimate_quad_cycles`
 
-Remove the `kernel.get("UseMFMAF32XEmulation", False)` parameter from the `precompute_issue_times` call (line 1586). The function no longer needs it.
+Remove the `kernel.get("UseMFMAF32XEmulation", False)` parameter from the `precompute_issue_times` call. The function no longer needs it.
 
 **Step 8**: Run tests
 ```bash
@@ -1046,9 +994,11 @@ touch Tensile/Components/CMSValidator/pack_handlers/{__init__,base}.py
 touch Tensile/Components/CMSValidator/utils/__init__.py
 ```
 
-**Step 2**: Extract constants (do first - no dependencies)
-- Move `MAIN_LOOP_PREV`, `MAIN_LOOP`, etc. to `constants.py`
-- Add `PackGroupSizes`, `TF32PackIndices`, `QuadCycleRequirements`
+**Step 2**: Extract constants (mostly done — move existing module-level constants)
+- Move `MAIN_LOOP_PREV`, `MAIN_LOOP`, `NO_GLOBAL_LOAD_LOOP`, `NO_LOCAL_LOAD_LOOP` to `constants.py`
+- Move `PACK_GROUP_SIZE_TF32`, `PACK_GROUP_SIZE_TF32_4X4` to `constants.py`
+- Move `TF32_CVT0_END`, `TF32_MIDDLE_16_START`, `TF32_MIDDLE_16_END`, `TF32_4X4_MFMA_START`, `TF32_4X4_MFMA_END` to `constants.py`
+- Move `QUAD_CYCLES_*`, `MFMA_TYPE_SWITCH_THRESHOLD_*`, `MFMAS_PER_TILE_*`, `VGPRS_PER_CONVERSION_GROUP` to `constants.py`
 - Update imports in original file
 
 **Step 3**: Extract instruction classes
@@ -1153,28 +1103,6 @@ def _insert(self, vmfma_index: int, instruction: ValidatorInstruction, kernel: '
 ```bash
 pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 ```
-
----
-
-### Plan for R4: Extract Magic Numbers to Constants
-
-**Estimated Effort**: Small (2-4 hours)
-
-**Step 1**: Create constants.py with all constant classes (see R4 above)
-
-**Step 2**: Search for magic numbers in CMSValidator.py
-```bash
-grep -n "== 24\|== 10\|== 4\|== 20\|< 4\|< 20\|>= 4" CMSValidator.py
-```
-
-**Step 3**: Replace each occurrence with named constant
-- `24` → `PackGroupSizes.TF32_REGULAR`
-- `10` → `PackGroupSizes.TF32_4X4_MFMA`
-- `4 <= idx < 20` → `TF32PackIndices.MIDDLE_16_START <= idx < TF32PackIndices.MIDDLE_16_END`
-
-**Step 4**: Add imports at top of file
-
-**Step 5**: Run tests to verify no regressions
 
 ---
 
@@ -1321,12 +1249,12 @@ grep -n "return f\"" CMSValidator.py | head -30
 | Wrong interleaving | `{name} @ idx={issued_at} has wrong interleaving. Expected {expected_name} @ idx={expected_at}, got {actual_name} @ idx={actual_at}.` |
 
 **Step 3**: Update each class to use the canonical format:
-- `LocalRead.validate()` - lines 109, 121
-- `Pack.validate()` - lines 185, 190, 199, 204, 206
-- `GlobalRead._validate_must_start_after()` - lines 263, 272, 277
-- `GlobalRead._validate_needed_by()` - lines 296, 303, 307, 311, 314
-- `SWait.validate()` - line 346
-- `Barrier.validate()` - line 358
+- `LocalRead.validate()`
+- `Pack.validate()`
+- `GlobalRead._validate_must_start_after()`
+- `GlobalRead._validate_needed_by()`
+- `SWait.validate()`
+- `Barrier.validate()`
 
 **Step 4**: Run tests
 ```bash
@@ -1385,7 +1313,7 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 - Handle DirectToLds, mfmaReorder, etc.
 
 **Step 2**: Create LoopManager class
-- Handle ML-1, ML, NGL, NLL iteration creation
+- Handle MAIN_LOOP_PREV, MAIN_LOOP, NO_GLOBAL_LOAD_LOOP, NO_LOCAL_LOAD_LOOP iteration creation
 - Handle instruction filtering per loop type
 
 **Step 3**: Simplify Timeline class
@@ -1468,7 +1396,7 @@ needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(float('inf'
 
 **Step 2**: Update `set_gr_needed_by_from_lrs()` to assign the instruction object
 ```python
-# Before (line 801):
+# Before:
 for _, gr in grs:
     gr.needed_by = LR_target.issued_at
 
@@ -1555,15 +1483,14 @@ class SchedulePosition:
 
 ## Recommended Implementation Order
 
-1. **R4: Extract Magic Numbers** (quick win, low risk)
-2. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
-3. **R14: Model 4x4 MFMA Packs as Dual-Role Instructions** (high-value correctness/clarity win, eliminates scattered `idx_in_group` checks; can be done standalone)
-4. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: eliminate `num_vmfma` — after R2; Phase 3: shared error formatting — after R8)
-5. **R2: Replace Float Indices** (fixes potential correctness issue, enables R13 Phase 2)
-6. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
-7. **R12: Document Limitations** (quick win, documentation only)
-8. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
-9. **R1: Split File Into Modules** (large effort, do after other changes stabilize)
-10. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
-11. **R10: Separate Timeline** (large effort, do last)
-12. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
+1. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
+2. **R14: Model 4x4 MFMA Packs as Dual-Role Instructions** (high-value correctness/clarity win, eliminates scattered `idx_in_group` checks; can be done standalone)
+3. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: eliminate `num_vmfma` — after R2; Phase 3: shared error formatting — after R8)
+4. **R2: Replace Float Indices** (fixes potential correctness issue, enables R13 Phase 2)
+5. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
+6. **R12: Document Limitations** (quick win, documentation only)
+7. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
+8. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
+9. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
+10. **R10: Separate Timeline** (large effort, do last)
+11. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
