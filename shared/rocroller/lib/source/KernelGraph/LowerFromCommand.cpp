@@ -66,6 +66,41 @@ namespace rocRoller
         }
 
         /**
+         * @brief Compute User size from SubDimensions.
+         *
+         * Formula: 1 + Σ(stride[i] * (size[i] - 1))
+         *
+         * @param sizes Size expressions for each dimension
+         * @param strides Stride expressions for each dimension
+         * @param literalStrides Optional literal stride values (if >0, use instead of stride expr)
+         * @return Expression representing the user size
+         */
+        std::shared_ptr<Expression::Expression>
+            computeUserSize(std::vector<CommandArgumentPtr> const& sizes,
+                            std::vector<CommandArgumentPtr> const& strides,
+                            std::vector<size_t> const&                      literalStrides = {})
+        {
+            std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
+            for(size_t i = 0; i < strides.size(); ++i)
+            {
+                std::shared_ptr<Expression::Expression> strideExpr;
+                if(literalStrides.size() > i && literalStrides[i] > 0)
+                {
+                    strideExpr = Expression::literal(literalStrides[i]);
+                }
+                else
+                {
+                    strideExpr = std::make_shared<Expression::Expression>(strides[i]);
+                }
+
+                auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
+                auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
+                userSize          = userSize + contribution;
+            }
+            return userSize;
+        }
+
+        /**
          * @brief Command to KernelGraph translator.
          */
         struct TranslateVisitor
@@ -115,15 +150,7 @@ namespace rocRoller
 
                 auto totalSizeExpr = std::make_shared<Expression::Expression>(sizes[0]);
 
-                // Compute User size from SubDimensions: 1 + Σ(stride[i] * (size[i] - 1))
-                std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
-                for(size_t i = 0; i < strides.size(); ++i)
-                {
-                    auto strideExpr   = std::make_shared<Expression::Expression>(strides[i]);
-                    auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
-                    auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
-                    userSize          = userSize + contribution;
-                }
+                auto userSize = computeUserSize(sizes, strides);
 
                 auto user = m_graph.coordinates.addElement(
                     User(tload.getTag(), tensor.data()->name(), userSize));
@@ -239,24 +266,7 @@ namespace rocRoller
                 auto const strides        = tensor.strides();
                 auto const literalStrides = tensor.literalStrides();
 
-                // Compute User size from SubDimensions: 1 + Σ(stride[i] * (size[i] - 1))
-                std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
-                for(size_t i = 0; i < strides.size(); ++i)
-                {
-                    std::shared_ptr<Expression::Expression> strideExpr;
-                    if(literalStrides.size() > i && literalStrides[i] > 0)
-                    {
-                        strideExpr = Expression::literal(literalStrides[i]);
-                    }
-                    else
-                    {
-                        strideExpr = std::make_shared<Expression::Expression>(strides[i]);
-                    }
-
-                    auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
-                    auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
-                    userSize          = userSize + contribution;
-                }
+                auto userSize = computeUserSize(sizes, strides, literalStrides);
 
                 auto user = m_graph.coordinates.addElement(
                     User(tload.getTag(), tensor.data()->name(), userSize));
@@ -395,15 +405,7 @@ namespace rocRoller
                     dims.push_back(dim);
                 }
 
-                // Compute User size from SubDimensions: 1 + Σ(stride[i] * (size[i] - 1))
-                std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
-                for(size_t i = 0; i < strides.size(); ++i)
-                {
-                    auto strideExpr   = std::make_shared<Expression::Expression>(strides[i]);
-                    auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
-                    auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
-                    userSize          = userSize + contribution;
-                }
+                auto userSize = computeUserSize(sizes, strides);
 
                 auto linear = m_dim.at(tstore.getSrcTag());
                 auto user   = m_graph.coordinates.addElement(
@@ -463,24 +465,7 @@ namespace rocRoller
                     dims.push_back(dim);
                 }
 
-                // Compute User size from SubDimensions: 1 + Σ(stride[i] * (size[i] - 1))
-                std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
-                for(size_t i = 0; i < strides.size(); ++i)
-                {
-                    std::shared_ptr<Expression::Expression> strideExpr;
-                    if(literalStrides.size() > i && literalStrides[i] > 0)
-                    {
-                        strideExpr = Expression::literal(literalStrides[i]);
-                    }
-                    else
-                    {
-                        strideExpr = std::make_shared<Expression::Expression>(strides[i]);
-                    }
-
-                    auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
-                    auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
-                    userSize          = userSize + contribution;
-                }
+                auto userSize = computeUserSize(sizes, strides, literalStrides);
 
                 auto tile = m_dim.at(tstore.getSrcTag());
                 auto user = m_graph.coordinates.addElement(
