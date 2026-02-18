@@ -747,11 +747,6 @@ static auto GetFusedNonConvSolvers()
                                    solver::fusion::BnBwdTrgActivationFused>{};
 }
 
-static auto GetFusedDirectSolvers()
-{
-    return solver::SolverContainer<solver::fusion::ConvBiasActivAsm1x1U>{};
-}
-
 static auto GetFusedIGemmSolvers()
 {
     return solver::SolverContainer<solver::fusion::ConvCKIgemmFwdBiasActivFused,
@@ -760,10 +755,7 @@ static auto GetFusedIGemmSolvers()
                                    solver::fusion::ConvCKIgemmFwdBiasResAddActivFused>{};
 }
 
-static auto GetAllFusionSolvers()
-{
-    return GetFusedNonConvSolvers() + GetFusedDirectSolvers() + GetFusedIGemmSolvers();
-}
+static auto GetAllFusionSolvers() { return GetFusedNonConvSolvers() + GetFusedIGemmSolvers(); }
 
 namespace debug {
 std::vector<solver::Id> GetAllApplicableFusionSolutions(const FusionContext& ctx,
@@ -875,7 +867,6 @@ static const std::vector<std::unique_ptr<ISolversFinder>>& GetFusionSolverFinder
 
         auto tmp = std::vector<std::unique_ptr<ISolversFinder>>{};
         add(tmp, GetFusedNonConvSolvers(), "fusion");
-        add(tmp, GetFusedDirectSolvers(), "miopenConvolutionFwdAlgoDirect");
         add(tmp, GetFusedIGemmSolvers(), "miopenConvolutionFwdAlgoImplicitGEMM");
         return tmp;
     }();

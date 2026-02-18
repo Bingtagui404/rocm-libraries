@@ -134,7 +134,6 @@ struct CBAInferBase : ConvBiasActivInferTest<T, TestCaseType>
     }
 };
 
-using GPU_ConvBiasActivInfer_FP32                  = CBAInferBase<float>;
 using GPU_ConvBiasActivInferFusionCompileStep_FP32 = CBAInferBase<float>;
 using GPU_ConvBiasActivInfer_FP16                  = CBAInferBase<half_float::half>;
 
@@ -169,11 +168,6 @@ inline auto gcbaInferParamGenFull(Configs configs, TensorTypes tensorTypes)
 }
 
 } // namespace
-
-TEST_P(GPU_ConvBiasActivInfer_FP32, ConvBiasActivAsm1x1UFloat)
-{
-    RunTunableSolver<miopen::solver::fusion::ConvBiasActivAsm1x1U>();
-}
 
 TEST_P(GPU_ConvBiasActivInfer_FP16, ConvCKIgemmFwdBiasActivFused)
 {
@@ -228,15 +222,6 @@ INSTANTIATE_TEST_SUITE_P(
                      testing::Values(0.5f)));
 
 #endif
-
-INSTANTIATE_TEST_SUITE_P(Smoke,
-                         GPU_ConvBiasActivInfer_FP32,
-                         testing::Combine(testing::Values(miopenActivationRELU),
-                                          testing::ValuesIn(GetNetwork1<ConvTestCaseBase>()),
-                                          testing::Values(miopenTensorNCHW),
-                                          testing::Values(0.25f),
-                                          testing::Values(0.75f),
-                                          testing::Values(0.5f)));
 
 INSTANTIATE_TEST_SUITE_P(Smoke,
                          GPU_ConvBiasActivInfer_FP16,

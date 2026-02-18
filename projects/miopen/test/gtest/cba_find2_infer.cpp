@@ -49,10 +49,6 @@ bool IsTestSupportedForDevice()
     return ::IsTestSupportedForDevMask<d_mask, e_mask>();
 }
 
-struct GPU_ConvBiasActivFind2Infer_FP32 : ConvBiasActivInferFind2Test<float>
-{
-};
-
 struct GPU_ConvBiasActivFind2InferFusionFind_FP32 : ConvBiasActivInferFind2Test<float>
 {
 };
@@ -117,12 +113,6 @@ bool SkipTest() { return get_handle_xnack(); }
 } // namespace cba_find2_infer
 using namespace cba_find2_infer;
 
-TEST_P(GPU_ConvBiasActivFind2Infer_FP32, ConvBiasActivAsm1x1UFind2Float)
-{
-    RunTunableSolver<miopen::solver::fusion::ConvBiasActivAsm1x1U>(
-        fused_problem, invoke_params, conv_config, test_skipped);
-}
-
 TEST_P(GPU_ConvBiasActivFind2Infer_FP16, ConvCKIgemmFwdBiasActivFind2Fused)
 {
     RunTunableSolver<miopen::solver::fusion::ConvCKIgemmFwdBiasActivFused>(
@@ -175,12 +165,6 @@ INSTANTIATE_TEST_SUITE_P(
                      testing::Values(miopenTensorNCHW)));
 
 #endif
-
-INSTANTIATE_TEST_SUITE_P(Full,
-                         GPU_ConvBiasActivFind2Infer_FP32,
-                         testing::Combine(testing::Values(miopenActivationRELU),
-                                          testing::ValuesIn(GetNetwork1<ConvTestCaseBase>()),
-                                          testing::Values(miopenTensorNCHW)));
 
 INSTANTIATE_TEST_SUITE_P(Full,
                          GPU_ConvBiasActivFind2Infer_FP16,

@@ -266,7 +266,6 @@ set( MIOpen_Source
     solver/conv/gemm_common.cpp
     solver/conv/gemm_wrw.cpp
     solver/conv/conv_ck_grouped_conv_fwd.cpp
-    solver/conv_asm_1x1u_bias_activ_fused.cpp
     solver/conv_ck_igemm_grp_fwd_activ_fused.cpp
     solver/conv_ck_igemm_fwd_bias_activ_fused.cpp
     solver/conv_ck_igemm_grp_fwd_bias_activ_fused.cpp
@@ -605,7 +604,6 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/conv3x3.s
         kernels/conv1x1u.s
         kernels/conv1x1u_stride2.s
-        kernels/conv1x1u_bias_activ.s
         kernels/conv3x3wrw.s
         kernels/conv1x1wrw.s
         kernels/conv5x10u2v2f1.s

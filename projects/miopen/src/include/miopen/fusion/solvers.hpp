@@ -46,47 +46,6 @@ using FusionTunableSolver =
     TunableSolverMixin<FusionContext, miopen::FusionDescription, PerformanceConfig>;
 ;
 
-struct PerformanceConfigConvBiasActivAsm1x1U : conv::PerformanceConfigConvAsm1x1U
-{
-    PerformanceConfigConvBiasActivAsm1x1U(const bool spare) : PerformanceConfigConvAsm1x1U(spare) {}
-    PerformanceConfigConvBiasActivAsm1x1U()
-        : PerformanceConfigConvAsm1x1U(-1, -1, -1, -1, -1, -1, -1, -1, false)
-    {
-    }
-    MIOPEN_INTERNALS_EXPORT void HeuristicInit(const FusionContext& ctx,
-                                               const FusionDescription& problem);
-    MIOPEN_INTERNALS_EXPORT bool SetNextValue(const FusionDescription& problem);
-    bool IsValid(const FusionContext&, const FusionDescription& problem) const
-    {
-        return IsValid(problem);
-    }
-    MIOPEN_INTERNALS_EXPORT bool IsValid(const FusionDescription& problem) const;
-};
-
-struct ConvBiasActivAsm1x1U : FusionTunableSolver<PerformanceConfigConvBiasActivAsm1x1U>
-{
-    const std::string& SolverDbId() const override { return GetSolverDbId<ConvBiasActivAsm1x1U>(); }
-
-    MIOPEN_INTERNALS_EXPORT bool IsApplicable(const FusionContext& context,
-                                              const FusionDescription& problem) const override;
-    MIOPEN_INTERNALS_EXPORT ConvSolution
-    GetSolution(const FusionContext& context,
-                const FusionDescription& problem,
-                const PerformanceConfigConvBiasActivAsm1x1U& /*config*/) const override;
-    MIOPEN_INTERNALS_EXPORT PerformanceConfigConvBiasActivAsm1x1U
-    GetDefaultPerformanceConfig(const FusionContext&, const FusionDescription&) const override;
-    MIOPEN_INTERNALS_EXPORT PerformanceConfigConvBiasActivAsm1x1U
-    Search(const FusionContext& context,
-           const FusionDescription& problem,
-           const AnyInvokeParams& invoke_params) const override;
-    MIOPEN_INTERNALS_EXPORT bool
-    IsValidPerformanceConfig(const FusionContext&,
-                             const FusionDescription&,
-                             const PerformanceConfigConvBiasActivAsm1x1U&) const override;
-    MIOPEN_INTERNALS_EXPORT float GetWti(const FusionContext&,
-                                         const FusionDescription&) const override;
-};
-
 struct PerformanceConfigConvCKIgemmFwdBiasActivFused
     : PerfConfigBase<PerformanceConfigConvCKIgemmFwdBiasActivFused>
 {

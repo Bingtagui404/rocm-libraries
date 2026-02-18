@@ -292,11 +292,7 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
     RegisterWithSolver(registry, ++id, conv::ConvAsm3x3U{}, miopenConvolutionAlgoDirect);
     RegisterWithSolver(registry, ++id, conv::ConvAsm1x1U{}, miopenConvolutionAlgoDirect);
     RegisterWithSolver(registry, ++id, conv::ConvAsm1x1UV2{}, miopenConvolutionAlgoDirect);
-    Register(registry,
-             ++id,
-             Primitive::Fusion,
-             fusion::ConvBiasActivAsm1x1U{}.SolverDbId(),
-             miopenConvolutionAlgoDirect);
+    ++id; // Removed ConvBiasActivAsm1x1U
     RegisterWithSolver(registry, ++id, conv::ConvAsm5x10u2v2f1{}, miopenConvolutionAlgoDirect);
     RegisterWithSolver(registry, ++id, conv::ConvAsm5x10u2v2b1{}, miopenConvolutionAlgoDirect);
     RegisterWithSolver(
