@@ -153,9 +153,12 @@ namespace rocRoller::KernelGraph
          * enables hardware bounds checking. The descriptor contains the
          * base pointer, size, and access options.
          *
+         * NOTE: User.size should be preferably set by IdentifyParallelDimensions.
+         *       to avoid redundant size kernel arguments
+         *
          * @param graph The kernel graph to modify
          * @param params Index computation parameters
-         * @param target Target coordinate (must have a User coordinate)
+         * @param target Target coordinate (must have a User coordinate with size set)
          * @param buffer Buffer coordinate to connect the Assign to
          * @param context GPU context
          * @param command Command containing argument info

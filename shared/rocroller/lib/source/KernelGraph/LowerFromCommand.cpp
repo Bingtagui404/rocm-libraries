@@ -70,8 +70,8 @@ namespace rocRoller
          *
          * Formula: 1 + Σ(stride[i] * (size[i] - 1))
          *
-         * @param sizes Size expressions for each dimension
-         * @param strides Stride expressions for each dimension
+         * @param sizes Size command arguments for each dimension
+         * @param strides Stride command arguments for each dimension
          * @param literalStrides Optional literal stride values (if >0, use instead of stride expr)
          * @return Expression representing the user size
          */
