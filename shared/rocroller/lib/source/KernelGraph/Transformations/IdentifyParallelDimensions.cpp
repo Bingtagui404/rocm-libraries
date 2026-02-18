@@ -345,10 +345,9 @@ namespace rocRoller
             }
 
             // Update User coordinates to use merged SubDimension sizes
-            // After merging parallel SubDimensions above, output tensors (like matrix D in GEMM)
-            // may have User size expressions referencing SubDimension sizes that were merged.
-            // This pass recomputes User sizes using the merged SubDimension sizes, eliminating
-            // redundant kernel arguments for output tensor dimensions.
+            // After merging parallel SubDimensions above, tensors may have User size expressions
+            // referencing SubDimension sizes that were merged. This pass recomputes User sizes
+            // using the merged SubDimension sizes, eliminating redundant kernel arguments.
             //
             // Example: Matrix D's User initially references Tensor_D_size_0 and Tensor_D_size_1.
             //          After merging, D's SubDimensions now use Tensor_A_size_0 (M) and
@@ -360,20 +359,36 @@ namespace rocRoller
                 if(!user || !user->size)
                     continue;
 
-                Log::debug("IdentifyParallelDimensions: Checking User {} for Join connections",
+                Log::debug("IdentifyParallelDimensions: Checking User {} for SubDimension connections",
                            userTag);
 
-                // Find SubDimensions connected via Join edges
-                // Pattern: SubDimensions → Join edge → User (output tensors)
-                auto subdims = copy.coordinates
-                                   .getInputNodeIndices(
-                                       userTag, CoordinateGraph::isEdge<CoordinateGraph::Join>)
-                                   .to<std::vector>();
+                // Find SubDimensions connected to this User
+                // Pattern 1 (input tensors): User → Split → SubDimensions
+                // Pattern 2 (output tensors): SubDimensions → Join → User
+                std::vector<int> subdims;
 
-                Log::debug("  Found {} SubDimensions via Join edges", subdims.size());
+                // Try Split edges (input tensors: A, B, C)
+                subdims = copy.coordinates
+                              .getOutputNodeIndices(
+                                  userTag, CoordinateGraph::isEdge<CoordinateGraph::Split>)
+                              .to<std::vector>();
+
+                // Try Join edges (output tensors: D)
+                if(subdims.empty())
+                {
+                    subdims = copy.coordinates
+                                  .getInputNodeIndices(
+                                      userTag, CoordinateGraph::isEdge<CoordinateGraph::Join>)
+                                  .to<std::vector>();
+                }
 
                 if(subdims.empty())
+                {
+                    Log::debug("  No SubDimensions found via Split or Join edges");
                     continue;
+                }
+
+                Log::debug("  Found {} SubDimensions", subdims.size());
 
                 // Recompute User size using merged SubDimension expressions
                 // Formula: 1 + Σ(stride[i] * (size[i] - 1))
@@ -385,6 +400,7 @@ namespace rocRoller
                     auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
                     if(!subdim || !subdim->size || !subdim->stride)
                     {
+                        Log::debug("  SubDimension {} missing size or stride", subdimTag);
                         allValid = false;
                         break;
                     }

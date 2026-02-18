@@ -1060,23 +1060,11 @@ namespace rocRoller::KernelGraph
             if(!user)
                 return -1;
 
-            // Try dimension-based sizing first
-            auto bufferSize = ComputeBufferSizeFromSubDimensions(graph, target, params.valueType);
-
-            if(!bufferSize)
-            {
-                // Fallback for scratch space or User without SubDimensions
-                AssertFatal(user->size, "Invalid User dimension: missing size.", ShowValue(target));
-                bufferSize = ToBytes(user->size, params.valueType);
-                Log::debug(
-                    "KernelGraph::makeBuffer: using fallback sizing for user {}",
-                    target);
-            }
-            else
-            {
-                Log::debug(
-                    "KernelGraph::makeBuffer: using dimension-based sizing for user {}", target);
-            }
+            // Use User.size which has been updated by IdentifyParallelDimensions
+            // to reference non-redundant kernel arguments
+            AssertFatal(user->size, "Invalid User dimension: missing size.", ShowValue(target));
+            auto bufferSize = ToBytes(user->size, params.valueType);
+            Log::debug("KernelGraph::makeBuffer: using User.size for user {}", target);
 
             // Get the base pointer from command arguments
             auto arg = findArgumentByName(command, user->argumentName);
