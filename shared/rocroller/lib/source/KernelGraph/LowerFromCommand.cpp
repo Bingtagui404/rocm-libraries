@@ -78,7 +78,7 @@ namespace rocRoller
         std::shared_ptr<Expression::Expression>
             computeUserSize(std::vector<CommandArgumentPtr> const& sizes,
                             std::vector<CommandArgumentPtr> const& strides,
-                            std::vector<size_t> const&                      literalStrides = {})
+                            std::vector<size_t> const&             literalStrides = {})
         {
             std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
             for(size_t i = 0; i < strides.size(); ++i)

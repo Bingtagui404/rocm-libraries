@@ -359,8 +359,9 @@ namespace rocRoller
                 if(!user || !user->size)
                     continue;
 
-                Log::debug("IdentifyParallelDimensions: Checking User {} for SubDimension connections",
-                           userTag);
+                Log::debug(
+                    "IdentifyParallelDimensions: Checking User {} for SubDimension connections",
+                    userTag);
 
                 // Find SubDimensions connected to this User
                 // Pattern 1 (input tensors): User → Split → SubDimensions
@@ -369,8 +370,8 @@ namespace rocRoller
 
                 // Try Split edges (input tensors: A, B, C)
                 subdims = copy.coordinates
-                              .getOutputNodeIndices(
-                                  userTag, CoordinateGraph::isEdge<CoordinateGraph::Split>)
+                              .getOutputNodeIndices(userTag,
+                                                    CoordinateGraph::isEdge<CoordinateGraph::Split>)
                               .to<std::vector>();
 
                 // Try Join edges (output tensors: D)
