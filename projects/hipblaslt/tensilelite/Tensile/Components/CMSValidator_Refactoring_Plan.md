@@ -11,7 +11,6 @@ This document outlines architectural improvements for the CMSValidator module an
    - [R1: Split File Into Modules](#r1-split-file-into-modules)
    - [R5: Define Typed Context](#r5-define-typed-context)
    - [R6: Use Registry Pattern for Pack Handling](#r6-use-registry-pattern-for-pack-handling)
-   - [R8: Centralize Error Messages](#r8-centralize-error-messages)
    - [R9: Clarify Validation Logic Location](#r9-clarify-validation-logic-location)
    - [R10: Separate Timeline Responsibilities](#r10-separate-timeline-responsibilities)
    - [R11: Improve Test Infrastructure](#r11-improve-test-infrastructure)
@@ -29,7 +28,6 @@ This document outlines architectural improvements for the CMSValidator module an
 | 1 | 2100+ line file with mixed responsibilities | High | Maintainability |
 | 5 | Untyped `context: dict` | Medium | Type Safety |
 | 6 | Nested conditionals for pack modes | Medium | Extensibility |
-| 8 | Inline error message construction | Low | Maintainability |
 | 9 | Mixed validation logic locations | Medium | Clarity |
 | 10 | Timeline class has too many jobs | Medium | Maintainability |
 | 11 | Testing infrastructure gaps | Medium | Testability |
@@ -53,7 +51,6 @@ Tensile/Components/CMSValidator/
 ├── timeline.py              # Timeline class + create_unified_timeline()
 ├── constants.py             # Named constants + POSITION_INF/POSITION_NEG_INF
 ├── context.py               # ValidatorPassContext + ValidationContext dataclasses
-├── errors.py                # Error message templates
 ├── passes.py                # add_*_constraints() functions, verify_*() structural checks
 ├── pack_handlers/
 │   ├── __init__.py          # get_pack_handler() factory
@@ -251,104 +248,6 @@ def _handle_fp8(ctx: PackContext) -> None:
 | Discoverability | Grep for subclasses | `_PACK_HANDLERS.keys()` |
 | Testing | Instantiate class, call methods | Call function with mock context |
 | IDE support | Good | Good (dataclass + type hints) |
-
----
-
-### R8: Centralize Error Messages
-
-**Current State**:
-```python
-return f"{name} @ idx={issued_at} is not valid. It is guaranteed by the SWait @ idx={guaranteed_by} which is after..."
-```
-
-**Target State** (module-level functions, no class):
-```python
-# Error message functions - keep near top of CMSValidator.py
-# (or in errors.py if file is split per R1)
-
-def _error_issued_too_late(
-    name: str,
-    issued_at: int,
-    needed_by_name: str,
-    needed_by_at: int,
-    context: str = ""
-) -> str:
-    """Format error for instruction issued after its consumer."""
-    msg = (
-        f"{name} @ idx={issued_at} issued too late, "
-        f"must be issued before {needed_by_name} @ idx={needed_by_at}"
-    )
-    if context:
-        msg += f" {context}"
-    return msg + "."
-
-
-def _error_issued_too_early(
-    name: str,
-    issued_at: int,
-    must_start_after_name: str,
-    must_start_after_at: int
-) -> str:
-    """Format error for instruction issued before its dependency."""
-    return (
-        f"{name} @ idx={issued_at} issued too early, "
-        f"must be issued after {must_start_after_name} @ idx={must_start_after_at}."
-    )
-
-
-def _error_missing_barrier(
-    before_name: str,
-    before_at: int,
-    after_name: str,
-    after_at: int,
-    required_order: str
-) -> str:
-    """Format error for missing synchronization barrier."""
-    return (
-        f"Missing SBarrier between {before_name} @ idx={before_at} "
-        f"and {after_name} @ idx={after_at}. "
-        f"Required order: {required_order}."
-    )
-
-
-def _error_no_guarantee(name: str, issued_at: int) -> str:
-    """Format error for instruction with no SWaitCnt guarantee."""
-    return f"{name} @ idx={issued_at} has no SWaitCnt guaranteeing completion."
-
-
-def _error_wrong_instruction_count(name: str, actual: int, expected: int) -> str:
-    """Format error for incorrect number of instructions."""
-    return f"{name} has {actual} instructions, but {expected} are required."
-
-
-def _error_quad_cycle_violation(
-    name: str,
-    issued_at: int,
-    needed_by_name: str,
-    needed_by_at: int,
-    required: int,
-    actual: int
-) -> str:
-    """Format error for insufficient quad-cycle gap."""
-    return (
-        f"{name} @ idx={issued_at} has insufficient gap before "
-        f"{needed_by_name} @ idx={needed_by_at}. "
-        f"Required: {required} quad-cycles, actual: {actual}."
-    )
-```
-
-**Usage example**:
-```python
-def validate(self) -> Optional[str]:
-    if self.issued_at >= self.needed_by.issued_at:
-        return _error_issued_too_late(
-            name=self.name,
-            issued_at=self.issued_at.vmfma_index,
-            needed_by_name=self.needed_by.name,
-            needed_by_at=self.needed_by.issued_at.vmfma_index
-        )
-    return None
-```
 
 ---
 
@@ -649,35 +548,6 @@ for _, gr in grs:
     gr.needed_by = LR_target              # ValidatorInstruction
 ```
 
-2. **Shared error formatting functions** (module-level, see R8):
-
-Once `needed_by` is unified, error formatting functions can work uniformly across all instruction types:
-```python
-def _error_issued_too_late(name: str, issued_at: int, needed_by_name: str, needed_by_at: int, context: str = "") -> str:
-    msg = f"{name} @ idx={issued_at} issued too late, must be issued before {needed_by_name} @ idx={needed_by_at}"
-    if context:
-        msg += f" {context}"
-    return msg + "."
-
-def _error_issued_too_early(name: str, issued_at: int, must_start_after_name: str, must_start_after_at: int) -> str:
-    return f"{name} @ idx={issued_at} issued too early, must be issued after {must_start_after_name} @ idx={must_start_after_at}."
-
-def _error_no_guarantee(name: str, issued_at: int) -> str:
-    return f"{name} @ idx={issued_at} has no guarantee on when it will be done."
-```
-
-These are usable by any class:
-```python
-# LocalRead.validate():
-return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index, context_str)
-
-# Pack.validate():
-return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index)
-
-# GlobalRead._validate_needed_by():
-return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index)
-```
-
 **Benefits**:
 - `needed_by` has a single type across all instruction classes, enabling shared code
 - Error messages are consistent and testable
@@ -685,7 +555,6 @@ return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed
 - Cross-iteration detection logic is standardized
 
 **Relationship to other recommendations**:
-- **Depends on R8** (error message centralization) for shared error functions
 - **Enables R9** (clarify validation logic) by making instruction interfaces consistent
 
 ---
@@ -808,7 +677,6 @@ And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the
 - Eliminates the need for the `is_4x4mfma_tf32_packs` parameter threaded through `precompute_issue_times`
 
 **Relationship to other recommendations**:
-- **Benefits from R8** (error messages): Can use shared error formatting functions
 - **Pairs well with R6** (registry pattern): A `MFMAPack`-aware pack handler would be cleaner
 - **Benefits from R13** (class hierarchy): Unified `needed_by` type makes `MFMAPack` constraints consistent with other instructions
 
@@ -865,7 +733,7 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 **Step 1**: Create directory structure
 ```bash
 mkdir -p Tensile/Components/CMSValidator/{passes,pack_handlers,utils}
-touch Tensile/Components/CMSValidator/{__init__,instructions,timeline,constants,context,errors}.py
+touch Tensile/Components/CMSValidator/{__init__,instructions,timeline,constants,context}.py
 touch Tensile/Components/CMSValidator/passes/{__init__,base}.py
 touch Tensile/Components/CMSValidator/pack_handlers/{__init__,base}.py
 touch Tensile/Components/CMSValidator/utils/__init__.py
@@ -1022,70 +890,6 @@ def hook_up_packs(timeline: Timeline, kernel: dict, mfma_reorder: list[int]) -> 
 
 ---
 
-### Plan for R8: Centralize Error Messages
-
-**Estimated Effort**: Small (3-4 hours total, split across 2 PRs)
-
-This refactoring is done in two separate PRs to isolate test fixes from the main implementation.
-
----
-
-#### PR1: Standardize Error Message Formats
-
-**Goal**: Make error messages consistent across all instruction classes without extracting helper functions yet.
-
-**Step 1**: Identify all error message patterns
-```bash
-grep -n "return f\"" CMSValidator.py | head -30
-```
-
-**Step 2**: Define the canonical format for each error type:
-
-| Error Type | Canonical Format |
-|------------|------------------|
-| Issued too late | `{name} @ idx={issued_at} issued too late, must be issued before {needed_by_name} @ idx={needed_by_at}.` |
-| Issued too early | `{name} @ idx={issued_at} issued too early, must be issued after {must_start_after_name} @ idx={must_start_after_at}.` |
-| No guarantee | `{name} @ idx={issued_at} has no guarantee on when it will be done.` |
-| Missing barrier | `{name} @ idx={issued_at} is missing an SBarrier. Order must be {required_order}.` |
-| Quad-cycle violation | `{name} @ idx={issued_at} has insufficient gap before {needed_by_name} @ idx={needed_by_at}. Required: {required} quad-cycles, actual: {actual}.` |
-| Wrong interleaving | `{name} @ idx={issued_at} has wrong interleaving. Expected {expected_name} @ idx={expected_at}, got {actual_name} @ idx={actual_at}.` |
-
-**Step 3**: Update each class to use the canonical format:
-- `LocalRead.validate()`
-- `Pack.validate()`
-- `GlobalRead._validate_must_start_after()`
-- `GlobalRead._validate_needed_by()`
-- `SWait.validate()`
-- `Barrier.validate()`
-
-**Step 4**: Run tests
-```bash
-pytest Tensile/Tests/unit/test_CMSValidator*.py -v
-```
-
-**Step 5**: If tests fail due to hardcoded string expectations, update the test expectations to match the new canonical format.
-
-**Step 6**: Create PR with title: "CMSValidator: Standardize error message formats"
-
----
-
-#### PR2: Extract Helper Functions
-
-**Goal**: Extract the now-standardized error messages into reusable helper functions.
-
-**Step 1**: Add error message functions near top of CMSValidator.py (see R8 target state above)
-
-**Step 2**: Update each instruction class to call the helper functions instead of inline f-strings
-
-**Step 3**: Run tests to verify no regressions
-```bash
-pytest Tensile/Tests/unit/test_CMSValidator*.py -v
-```
-
-**Step 4**: Create PR with title: "CMSValidator: Extract error messages to helper functions"
-
----
-
 ### Plan for R9: Clarify Validation Logic Location
 
 **Estimated Effort**: Small (half day) — Step 3 already achieved.
@@ -1180,7 +984,7 @@ grep -n "TODO\|FIXME\|not supported\|skip" CMSValidator.py
 
 ### Plan for R13: Standardize ValidatorInstruction Class Hierarchy
 
-**Estimated Effort**: Medium (1 day, best done alongside R8)
+**Estimated Effort**: Medium (1 day)
 
 **Important**: With R2 done, `num_vmfma` has already been removed from instruction classes and display formatting already uses `self.issued_at.vmfma_index`. The remaining work focuses on unifying `needed_by` types and error message consistency.
 
@@ -1237,27 +1041,14 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 
 ---
 
-#### Phase 2: Add shared error formatting (concurrent with or after R8)
-
-**Step 1**: Add error formatting functions as described in R8
-
-**Step 2**: Update all `validate()` methods to call the shared functions instead of inline f-strings
-
-**Step 3**: Verify error messages are consistent across all instruction types
-
-**Step 4**: Run tests and update any test expectations that depend on exact error message strings
-
----
-
 ## Recommended Implementation Order
 
 1. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
 2. **R14: Model 4x4 MFMA Packs as Dual-Role Instructions** (high-value correctness/clarity win, eliminates scattered `idx_in_group` checks; can be done standalone)
-3. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: shared error formatting — after R8)
-4. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
-5. **R12: Document Limitations** (quick win, documentation only)
-6. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
-7. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
-8. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
-9. **R10: Separate Timeline** (large effort, do last)
-10. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
+3. **R13: Standardize Class Hierarchy** (unify `needed_by` type — standalone, no dependencies)
+4. **R12: Document Limitations** (quick win, documentation only)
+5. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
+6. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
+7. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
+8. **R10: Separate Timeline** (large effort, do last)
+9. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
