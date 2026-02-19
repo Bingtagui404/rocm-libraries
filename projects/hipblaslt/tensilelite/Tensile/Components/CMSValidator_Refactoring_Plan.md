@@ -1,6 +1,6 @@
 # CMSValidator Refactoring Plan
 
-This document outlines architectural improvements for the CMSValidator module and provides step-by-step implementation plans for each recommendation.
+This document outlines architectural improvements for the CMSValidator module and provides step-by-step implementation plans for each recommendation. It covers only outstanding work; completed items (R2: Replace Float Indices, R3: Dead Code Removal, R4: Named Constants, R7: Unified Timeline) have been removed.
 
 ---
 
@@ -9,7 +9,6 @@ This document outlines architectural improvements for the CMSValidator module an
 1. [Issue Summary](#issue-summary)
 2. [Recommendations](#recommendations)
    - [R1: Split File Into Modules](#r1-split-file-into-modules)
-   - [R2: Replace Float Indices with Composite Key](#r2-replace-float-indices-with-composite-key)
    - [R5: Define Typed Context](#r5-define-typed-context)
    - [R6: Use Registry Pattern for Pack Handling](#r6-use-registry-pattern-for-pack-handling)
    - [R8: Centralize Error Messages](#r8-centralize-error-messages)
@@ -28,7 +27,6 @@ This document outlines architectural improvements for the CMSValidator module an
 | # | Issue | Severity | Category |
 |---|-------|----------|----------|
 | 1 | 2100+ line file with mixed responsibilities | High | Maintainability |
-| 2 | Float indices risk precision bugs | High | Correctness |
 | 5 | Untyped `context: dict` | Medium | Type Safety |
 | 6 | Nested conditionals for pack modes | Medium | Extensibility |
 | 8 | Inline error message construction | Low | Maintainability |
@@ -45,15 +43,15 @@ This document outlines architectural improvements for the CMSValidator module an
 
 ### R1: Split File Into Modules
 
-**Current State**: Single 2100+ line file containing instruction classes, timeline management, 8 validation passes, pack handling, and utility functions. Named constants are already extracted to module-level variables (R4 complete).
+**Current State**: Single 2100+ line file containing instruction classes, timeline management, 8 validation passes, pack handling, and utility functions. Named constants are already extracted to module-level variables (R4 complete). `SchedulePosition` and sentinel constants are also at module level.
 
 **Target State**:
 ```
 Tensile/Components/CMSValidator/
 ├── __init__.py              # Public API: isValid(), TIMELINE_PASSES, structural_checks
-├── instructions.py          # ValidatorInstruction base + all subclasses
+├── instructions.py          # SchedulePosition, ValidatorInstruction base + all subclasses
 ├── timeline.py              # Timeline class + create_unified_timeline()
-├── constants.py             # Named constants (moved from CMSValidator.py top-level)
+├── constants.py             # Named constants + POSITION_INF/POSITION_NEG_INF
 ├── context.py               # ValidatorPassContext + ValidationContext dataclasses
 ├── errors.py                # Error message templates
 ├── passes.py                # add_*_constraints() functions, verify_*() structural checks
@@ -74,69 +72,6 @@ Tensile/Components/CMSValidator/
 - Easier to navigate and understand
 - Enables parallel development
 - Improves test isolation
-
----
-
-### R2: Replace Float Indices with Composite Key
-
-**Current State**:
-```python
-instruction.issued_at = 5.25  # vmfma_index=5, sub_index=1 of 4
-```
-
-The float index is built up incrementally across three stages:
-1. **Construction** (`_populate_instructions`): `issued_at = idx_vmfma` (raw integer)
-2. **`_insert`**: `issued_at += num_vmfma * loop_index` (loop offset hack to encode which loop)
-3. **`_resolve_issued_at_indices`**: `issued_at += i_instruction / divisor` (sub-position via float fractions, with special-case handling for idx=-1 and idx=num_vmfma-1)
-
-**Problems**:
-- Float comparisons can fail due to precision
-- Loop identity is encoded as an arithmetic offset rather than an explicit field
-- Sub-index precision requires fragile float arithmetic with special cases
-- Three mutation stages make the code hard to follow
-
-**Target State**:
-```python
-@dataclass(frozen=True, order=True)
-class SchedulePosition:
-    """Represents a position in the schedule with sub-index precision.
-
-    Fields are ordered for comparison: loop_index first (coarsest), then vmfma_index,
-    then sub_index (finest). @dataclass(order=True) auto-generates __lt__, __le__,
-    __gt__, __ge__, and __eq__ using tuple-style comparison over fields in declaration order.
-
-    Args:
-        loop_index: Which loop this position belongs to (0=MAIN_LOOP_PREV, 1=MAIN_LOOP, 2=NO_GLOBAL_LOAD_LOOP, 3=NO_LOCAL_LOAD_LOOP).
-        vmfma_index: The VMFMA index within the loop (-1 to num_vmfma-1).
-        sub_index: Position within a VMFMA slot (0-based, for multiple instructions at same vmfma_index).
-    """
-    loop_index: int
-    vmfma_index: int
-    sub_index: int = 0
-
-    @property
-    def display_index(self) -> int:
-        """Return the vmfma_index for user-facing messages."""
-        return self.vmfma_index
-```
-
-**Key Design Decisions**:
-
-1. **`frozen=True`**: The `SchedulePosition` is created in one shot inside `_insert`, where all three fields (loop_index, vmfma_index, sub_index) are known. The sub_index is simply the current length of the instruction list at that slot. This eliminates incremental mutation entirely.
-
-2. **`order=True`**: Auto-generates all comparison methods (`<`, `<=`, `>`, `>=`, `==`) using tuple-style comparison over `(loop_index, vmfma_index, sub_index)`. No manual comparator methods needed.
-
-3. **`loop_index` field**: Replaces the `num_vmfma * loop_index` offset hack in `_insert`. Loop identity is now explicit rather than encoded arithmetically.
-
-4. **Eliminates `_resolve_issued_at_indices`**: This entire method becomes unnecessary since the sub_index is computed at insert time.
-
-**Benefits**:
-- No floating-point precision issues
-- Immutable after creation (frozen) — no accidental mutation
-- Explicit loop identity instead of arithmetic offset hack
-- All comparison operators generated automatically
-- Eliminates `_resolve_issued_at_indices` entirely
-- Self-documenting code
 
 ---
 
@@ -408,9 +343,9 @@ def validate(self) -> Optional[str]:
     if self.issued_at >= self.needed_by.issued_at:
         return _error_issued_too_late(
             name=self.name,
-            issued_at=floor(self.issued_at),
+            issued_at=self.issued_at.vmfma_index,
             needed_by_name=self.needed_by.name,
-            needed_by_at=floor(self.needed_by.issued_at)
+            needed_by_at=self.needed_by.issued_at.vmfma_index
         )
     return None
 ```
@@ -441,7 +376,7 @@ class LocalRead(ValidatorInstruction):
         return None
 
     def _has_constraints(self) -> bool:
-        return self.needed_by.issued_at != float('inf')
+        return self.needed_by.issued_at != POSITION_INF
 
     def _is_guaranteed_before_needed(self) -> bool:
         return self.guaranteed_by < self.needed_by.issued_at
@@ -449,9 +384,9 @@ class LocalRead(ValidatorInstruction):
     def _format_timing_error(self) -> str:
         return _error_issued_too_late(
             name=self.name,
-            issued_at=self._display_index(),
+            issued_at=self.issued_at.vmfma_index,
             needed_by_name=self.needed_by.name,
-            needed_by_at=self.needed_by._display_index()
+            needed_by_at=self.needed_by.issued_at.vmfma_index
         )
 ```
 
@@ -464,7 +399,7 @@ class LocalRead(ValidatorInstruction):
 
 ### R10: Separate Timeline Responsibilities
 
-**Current State**: Timeline handles parsing, storage, iteration management, index resolution, and lookups.
+**Current State**: Timeline handles parsing, storage, iteration management, and lookups. (Index resolution has been eliminated by `SchedulePosition` — positions are now computed in one shot at insert time.)
 
 **Target State**:
 
@@ -634,7 +569,7 @@ def test_lr_finished_before_vmfma():
 
 ### R13: Standardize ValidatorInstruction Class Hierarchy
 
-**Current State**: The `ValidatorInstruction` base class is minimal (just `name`, `issued_at`, `validate()`, `done_idx()`) and subclasses diverge significantly in their field types, constraint patterns, and error message formatting. This leads to several concrete problems:
+**Current State**: The `ValidatorInstruction` base class is minimal (just `name`, `issued_at`, `validate()`, `done_idx()`) and subclasses diverge significantly in their field types, constraint patterns, and error message formatting. With `SchedulePosition` in place (R2 done), `num_vmfma` has been removed from instruction classes and display formatting uses `self.issued_at.vmfma_index` directly. The remaining problems are:
 
 **Problem 1: `needed_by` type mismatch across subclasses**
 ```python
@@ -645,41 +580,14 @@ class Pack(ValidatorInstruction):
     needed_by: ValidatorInstruction = ...   # An instruction object
 
 class GlobalRead(ValidatorInstruction):
-    needed_by: float = float('inf')         # A bare float!
+    needed_by: SchedulePosition = POSITION_INF  # A bare position!
 ```
-`GlobalRead.needed_by` is a `float` (the `issued_at` of the first LR1/3), while `LocalRead.needed_by` and `Pack.needed_by` are `ValidatorInstruction` references. This means:
+`GlobalRead.needed_by` is a `SchedulePosition` (the `issued_at` of the first LR1/3), while `LocalRead.needed_by` and `Pack.needed_by` are `ValidatorInstruction` references. This means:
 - Error formatting code cannot be shared (one does `self.needed_by.name`, the other can't).
 - `validate_timeline()` can't make any assumptions about constraint fields.
 - `estimate_quad_cycles()` must use `hasattr()` checks instead of type-safe access.
 
-**Problem 2: `num_vmfma` stored redundantly on each instruction**
-```python
-class LocalRead(ValidatorInstruction):
-    num_vmfma: int          # Same value for all instances
-
-class Pack(ValidatorInstruction):
-    num_vmfma: int          # Same value for all instances
-
-class GlobalRead(ValidatorInstruction):
-    num_vmfma: int          # Same value for all instances
-```
-Every `LocalRead`, `Pack`, and `GlobalRead` stores the same `num_vmfma` value. It's used exclusively for display formatting (`floor(self.issued_at) % self.num_vmfma`) and cross-iteration detection (`self.needed_by.issued_at > self.num_vmfma`). Both of these uses disappear entirely if R2 (SchedulePosition) is implemented, since SchedulePosition would encode the vmfma index directly without needing modular arithmetic.
-
-**Problem 3: Duplicated display-index computation**
-
-The pattern `floor(self.issued_at) % self.num_vmfma` appears **19 times** across `validate()` methods, with a special case for idx=-1 appearing **3 times**:
-```python
-# This exact pattern (or minor variant) appears in LocalRead, Pack, and GlobalRead:
-issued_at = floor(self.issued_at) % self.num_vmfma
-
-# This special-case for idx=-1 appears in LocalRead and Pack:
-if self.num_vmfma - 1 + 0.5 <= (value % self.num_vmfma) < self.num_vmfma:
-    display_index = -1
-else:
-    display_index = floor(value) % self.num_vmfma
-```
-
-**Problem 4: Inconsistent error message formats**
+**Problem 2: Inconsistent error message formats**
 
 Each class formats errors differently, making them hard to parse programmatically or visually:
 ```python
@@ -704,15 +612,15 @@ f"{name} @ idx={issued_at} is not valid. There is no SBarrier acting on it."
 f"{name} @ idx={issued_at} is not valid. It is guaranteed by the SWait @ idx=..."
 
 # SWait:
-f"SWait at index {floor(self.issued_at)} is invalid: ..."  # Uses "at index", no modulo wrapping
+f"SWait at index {self.issued_at.vmfma_index} is invalid: ..."  # Uses "at index"
 
 # Barrier:
-f"Barrier at index {floor(self.issued_at)} is not valid. Must be >= -1."  # Uses "at index"
+f"Barrier at index {self.issued_at.vmfma_index} is not valid. Must be >= -1."  # Uses "at index"
 ```
 
 Note the inconsistencies: "at index" vs "@ idx=", "issued too early" vs "is issued too early", "is not valid" appearing in different positions, some messages explaining the fix ("Order must be X") and others not.
 
-**Problem 5: `estimate_quad_cycles()` uses `hasattr()` checks**
+**Problem 3: `estimate_quad_cycles()` uses `hasattr()` checks**
 ```python
 # Current: runtime duck-typing
 if not hasattr(instruction, "needed_by") or instruction.needed_by is None:
@@ -727,46 +635,21 @@ These `hasattr()` checks exist because the base class doesn't define `needed_by`
 1. **Unify `GlobalRead.needed_by` to `ValidatorInstruction`** (matching `LocalRead` and `Pack`):
 ```python
 class GlobalRead(ValidatorInstruction):
-    needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(float('inf')))
-    # Instead of: needed_by: float = float('inf')
+    needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_INF))
+    # Instead of: needed_by: SchedulePosition = POSITION_INF
 ```
 Update `set_gr_needed_by_from_lrs()` to assign the LR1/3 instruction object rather than its `issued_at`:
 ```python
 # Before:
 for _, gr in grs:
-    gr.needed_by = LR_target.issued_at   # float
+    gr.needed_by = LR_target.issued_at   # SchedulePosition
 
 # After:
 for _, gr in grs:
     gr.needed_by = LR_target              # ValidatorInstruction
 ```
 
-2. **Eliminate `num_vmfma` from instruction classes** (requires R2: SchedulePosition):
-
-With SchedulePosition, display indices are accessed directly:
-```python
-# Before (19 occurrences):
-issued_at = floor(self.issued_at) % self.num_vmfma
-
-# After:
-issued_at = self.issued_at.display_index
-```
-
-And the special idx=-1 handling moves into SchedulePosition:
-```python
-@dataclass(frozen=True, order=True)
-class SchedulePosition:
-    vmfma_index: int
-    sub_index: int = 0
-
-    @property
-    def display_index(self) -> int:
-        return self.vmfma_index
-```
-
-Cross-iteration detection (`self.needed_by.issued_at > self.num_vmfma`) would be handled by adding iteration info to SchedulePosition or by a separate mechanism.
-
-3. **Shared error formatting functions** (module-level, see R8):
+2. **Shared error formatting functions** (module-level, see R8):
 
 Once `needed_by` is unified, error formatting functions can work uniformly across all instruction types:
 ```python
@@ -786,28 +669,24 @@ def _error_no_guarantee(name: str, issued_at: int) -> str:
 These are usable by any class:
 ```python
 # LocalRead.validate():
-return _error_issued_too_late(self.name, self.issued_at.display_index, self.needed_by.name, self.needed_by.issued_at.display_index, context_str)
+return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index, context_str)
 
 # Pack.validate():
-return _error_issued_too_late(self.name, self.issued_at.display_index, self.needed_by.name, self.needed_by.issued_at.display_index)
+return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index)
 
 # GlobalRead._validate_needed_by():
-return _error_issued_too_late(self.name, self.issued_at.display_index, self.needed_by.name, self.needed_by.issued_at.display_index)
+return _error_issued_too_late(self.name, self.issued_at.vmfma_index, self.needed_by.name, self.needed_by.issued_at.vmfma_index)
 ```
 
 **Benefits**:
 - `needed_by` has a single type across all instruction classes, enabling shared code
-- `num_vmfma` is eliminated from instruction classes (absorbed into SchedulePosition via R2)
-- Display index computation is centralized (19 occurrences reduced to SchedulePosition.display_index)
 - Error messages are consistent and testable
 - `hasattr()` checks in `estimate_quad_cycles()` are replaced with type-safe access
 - Cross-iteration detection logic is standardized
 
 **Relationship to other recommendations**:
-- **Depends on R2** (SchedulePosition) for eliminating `num_vmfma`
 - **Depends on R8** (error message centralization) for shared error functions
 - **Enables R9** (clarify validation logic) by making instruction interfaces consistent
-- **Can be done concurrently with R2** since both touch the same fields
 
 ---
 
@@ -878,16 +757,16 @@ class MFMAPack(ValidatorInstruction):
     - Has issue_index for group-relative positioning
     """
     name: str
-    issued_at: Union[int, float]
+    issued_at: SchedulePosition
     issue_index: int
-    needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(float('inf')))
-    must_start_after: ValidatorInstruction = field(default_factory=lambda: MFMA(float('-inf')))
+    needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_INF))
+    must_start_after: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_NEG_INF))
     min_quad_cycles_before_result_used: int = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1
 
     # Override to reflect MFMA-like timing
     __min_issue_quad_cycles__: int = 1
 
-    def done_idx(self) -> Union[int, float]:
+    def done_idx(self) -> SchedulePosition:
         return self.issued_at
 
     def validate(self) -> Optional[str]:
@@ -929,7 +808,6 @@ And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the
 - Eliminates the need for the `is_4x4mfma_tf32_packs` parameter threaded through `precompute_issue_times`
 
 **Relationship to other recommendations**:
-- **Benefits from R2** (SchedulePosition): Display index formatting would be simplified, but R14 can be done standalone
 - **Benefits from R8** (error messages): Can use shared error formatting functions
 - **Pairs well with R6** (registry pattern): A `MFMAPack`-aware pack handler would be cleaner
 - **Benefits from R13** (class hierarchy): Unified `needed_by` type makes `MFMAPack` constraints consistent with other instructions
@@ -945,10 +823,9 @@ And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the
 **Step 1**: Define the `MFMAPack` class
 
 Add a new `MFMAPack` dataclass alongside `Pack` and `MFMA`. It should have:
-- Fields: `name`, `issued_at`, `issue_index`, `needed_by`, `must_start_after`, `min_quad_cycles_before_result_used` (default `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`), `estimated_quad_cycles_before_result_used`
+- Fields: `name`, `issued_at: SchedulePosition`, `issue_index`, `needed_by`, `must_start_after`, `min_quad_cycles_before_result_used` (default `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`), `estimated_quad_cycles_before_result_used`
 - `done_idx()` returns `self.issued_at`
 - `validate()` checks `must_start_after`, `needed_by`, and quad-cycle gap
-- No `num_vmfma` field (can be added if R2 is not yet done, removed when R2 lands)
 
 **Step 2**: Update instruction construction
 
@@ -999,10 +876,11 @@ touch Tensile/Components/CMSValidator/utils/__init__.py
 - Move `PACK_GROUP_SIZE_TF32`, `PACK_GROUP_SIZE_TF32_4X4` to `constants.py`
 - Move `TF32_CVT0_END`, `TF32_MIDDLE_16_START`, `TF32_MIDDLE_16_END`, `TF32_4X4_MFMA_START`, `TF32_4X4_MFMA_END` to `constants.py`
 - Move `QUAD_CYCLES_*`, `MFMA_TYPE_SWITCH_THRESHOLD_*`, `MFMAS_PER_TILE_*`, `VGPRS_PER_CONVERSION_GROUP` to `constants.py`
+- Move `POSITION_INF`, `POSITION_NEG_INF` to `constants.py`
 - Update imports in original file
 
-**Step 3**: Extract instruction classes
-- Move `ValidatorInstruction`, `LocalRead`, `GlobalRead`, `Pack`, `MFMA`, `SWait`, `Barrier`, `SNop` to `instructions.py`
+**Step 3**: Extract `SchedulePosition` and instruction classes
+- Move `SchedulePosition`, `ValidatorInstruction`, `LocalRead`, `GlobalRead`, `Pack`, `MFMA`, `SWait`, `Barrier`, `SNop` to `instructions.py`
 - Update imports
 
 **Step 4**: Extract utility functions
@@ -1027,82 +905,6 @@ touch Tensile/Components/CMSValidator/utils/__init__.py
 - Update to new paths
 
 **Step 9**: Run tests and fix any issues
-
----
-
-### Plan for R2: Replace Float Indices with Composite Key
-
-**Estimated Effort**: Medium (1 day)
-
-**Step 1**: Define SchedulePosition class
-```python
-@dataclass(frozen=True, order=True)
-class SchedulePosition:
-    """Fields ordered for tuple-style comparison: loop_index > vmfma_index > sub_index."""
-    loop_index: int
-    vmfma_index: int
-    sub_index: int = 0
-
-    @property
-    def display_index(self) -> int:
-        return self.vmfma_index
-```
-
-**Step 2**: Update ValidatorInstruction base class
-- Change `issued_at: Union[int, float]` to `issued_at: SchedulePosition`
-- Update `done_idx()` return type
-
-**Step 3**: Update `Timeline._insert()` to create SchedulePosition in one shot
-The sub_index is the current length of the instruction list at that slot (i.e., how many instructions are already there). The loop_index and vmfma_index are already known. This replaces both the loop offset hack and the need for `_resolve_issued_at_indices`.
-```python
-def _insert(self, vmfma_index: int, instruction: ValidatorInstruction, kernel: 'Solution') -> None:
-    for loop in self.loops:
-        if self._should_add(instruction, loop, kernel):
-            _instruction = deepcopy(instruction)
-
-            loop_index = self.loops.index(loop)
-            sub_index = len(self._instructions_at_index[loop][vmfma_index + 1])
-            _instruction.issued_at = SchedulePosition(
-                loop_index=loop_index,
-                vmfma_index=vmfma_index,
-                sub_index=sub_index
-            )
-
-            # Adjust for NLL/NGL shifts (SWait handling unchanged).
-            if isinstance(_instruction, SWait):
-                if _instruction.vlcnt != -1:
-                    vlcnt = max(0, _instruction.vlcnt - self.vlcnt_shift[loop])
-                    _instruction.vlcnt = vlcnt
-                if _instruction.dscnt != -1 and self.nll_zero_dscnt \
-                   and loop in [NO_LOCAL_LOAD_LOOP]:
-                    _instruction.dscnt = 0
-
-            self._instructions_at_index[loop][vmfma_index + 1].append(_instruction)
-```
-
-**Step 4**: Remove `Timeline._resolve_issued_at_indices()`
-- Delete the method entirely
-- Remove the call from `Timeline.__init__`
-
-**Step 5**: Update all comparisons
-- Find all `issued_at < `, `issued_at > `, `issued_at >= `, `issued_at <= `
-- These should work unchanged due to `order=True` generating tuple-style comparisons
-- Replace `float('inf')` and `float('-inf')` sentinel values with sentinel SchedulePosition instances (e.g., `SchedulePosition(loop_index=999, vmfma_index=999)` for inf)
-
-**Step 6**: Update `floor()` calls and display formatting
-- `floor(self.issued_at) % self.num_vmfma` becomes `self.issued_at.display_index`
-- `f"idx={issued_at}"` stays the same, but `issued_at` is now `self.issued_at.display_index`
-- The special-case idx=-1 handling (`num_vmfma - 1 + 0.5 <= ...`) is eliminated — `display_index` returns `vmfma_index` directly, which is already -1
-
-**Step 7**: Remove `num_vmfma` from instruction classes
-- With `loop_index` explicit, the `num_vmfma * loop_index` offset is gone
-- Cross-iteration detection (`self.needed_by.issued_at > self.num_vmfma`) becomes `self.needed_by.issued_at.loop_index > self.issued_at.loop_index`
-- The `num_vmfma` field on `LocalRead`, `Pack`, and `GlobalRead` can be removed
-
-**Step 8**: Run tests and fix edge cases
-```bash
-pytest Tensile/Tests/unit/test_CMSValidator*.py -v
-```
 
 ---
 
@@ -1319,6 +1121,7 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 **Step 3**: Simplify Timeline class
 - Accept LoopManager in constructor
 - Focus on query/lookup functionality only
+- Note: `_insert()` now creates `SchedulePosition` in one shot, so there is no separate index-resolution phase to extract
 
 **Step 4**: Update all Timeline usages
 
@@ -1377,21 +1180,21 @@ grep -n "TODO\|FIXME\|not supported\|skip" CMSValidator.py
 
 ### Plan for R13: Standardize ValidatorInstruction Class Hierarchy
 
-**Estimated Effort**: Medium (1 day, but best done alongside R2 and R8)
+**Estimated Effort**: Medium (1 day, best done alongside R8)
 
-**Important**: This refactoring has strong dependencies on R2 (SchedulePosition) and R8 (error messages). The recommended approach is to implement all three together as a single coherent change, or in the order: R2 -> R13 -> R8.
+**Important**: With R2 done, `num_vmfma` has already been removed from instruction classes and display formatting already uses `self.issued_at.vmfma_index`. The remaining work focuses on unifying `needed_by` types and error message consistency.
 
 ---
 
 #### Phase 1: Unify `needed_by` type on GlobalRead (can be done standalone)
 
-**Step 1**: Change `GlobalRead.needed_by` from `float` to `ValidatorInstruction`
+**Step 1**: Change `GlobalRead.needed_by` from `SchedulePosition` to `ValidatorInstruction`
 ```python
 # Before:
-needed_by: float = float('inf')
+needed_by: SchedulePosition = POSITION_INF
 
 # After:
-needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(float('inf')))
+needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_INF))
 ```
 
 **Step 2**: Update `set_gr_needed_by_from_lrs()` to assign the instruction object
@@ -1405,17 +1208,17 @@ for _, gr in grs:
     gr.needed_by = LR_target
 ```
 
-**Step 3**: Update `GlobalRead._validate_needed_by()` to use `self.needed_by.issued_at` and `self.needed_by.name` instead of using `self.needed_by` directly as a float
+**Step 3**: Update `GlobalRead._validate_needed_by()` to use `self.needed_by.issued_at` and `self.needed_by.name` instead of using `self.needed_by` directly as a `SchedulePosition`
 ```python
 # Before:
-if self.needed_by == float('inf'):
+if self.needed_by == POSITION_INF:
 if self.issued_at < self.guaranteed_by < self.needed_by:
-needed_by = floor(self.needed_by) % self.num_vmfma
+needed_by = self.needed_by.vmfma_index
 
 # After:
-if self.needed_by.issued_at == float('inf'):
+if self.needed_by.issued_at == POSITION_INF:
 if self.issued_at < self.guaranteed_by < self.needed_by.issued_at:
-needed_by = floor(self.needed_by.issued_at) % self.num_vmfma
+needed_by = self.needed_by.issued_at.vmfma_index
 ```
 
 **Step 4**: Update error messages in `_validate_needed_by()` to use `self.needed_by.name` instead of hardcoded "LR1"
@@ -1434,42 +1237,7 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 
 ---
 
-#### Phase 2: Eliminate `num_vmfma` (requires R2: SchedulePosition)
-
-This phase should be done as part of or immediately after R2.
-
-**Step 1**: Ensure SchedulePosition (from R2) provides a `display_index` property
-```python
-@dataclass(frozen=True, order=True)
-class SchedulePosition:
-    vmfma_index: int
-    sub_index: int = 0
-
-    @property
-    def display_index(self) -> int:
-        return self.vmfma_index
-```
-
-**Step 2**: Replace all `floor(self.issued_at) % self.num_vmfma` with `self.issued_at.display_index` (19 occurrences)
-
-**Step 3**: Replace all `floor(self.X.issued_at) % self.num_vmfma` patterns with `self.X.issued_at.display_index` for referenced instructions (needed_by, must_start_after, etc.)
-
-**Step 4**: Handle the idx=-1 special case in SchedulePosition construction (in `Timeline._resolve_issued_at_indices()`) rather than in each `validate()` method
-
-**Step 5**: Handle cross-iteration detection. Currently uses `self.needed_by.issued_at > self.num_vmfma`. Options:
-- Add an `iteration` field to SchedulePosition
-- Add a `is_next_iteration(self, other: SchedulePosition) -> bool` method
-- Keep a separate mechanism outside the instruction classes
-
-**Step 6**: Remove `num_vmfma` field from `LocalRead`, `Pack`, and `GlobalRead` dataclasses
-
-**Step 7**: Remove `num_vmfma` parameter from Timeline's instruction construction calls
-
-**Step 8**: Run tests
-
----
-
-#### Phase 3: Add shared error formatting (concurrent with or after R8)
+#### Phase 2: Add shared error formatting (concurrent with or after R8)
 
 **Step 1**: Add error formatting functions as described in R8
 
@@ -1485,12 +1253,11 @@ class SchedulePosition:
 
 1. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
 2. **R14: Model 4x4 MFMA Packs as Dual-Role Instructions** (high-value correctness/clarity win, eliminates scattered `idx_in_group` checks; can be done standalone)
-3. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: eliminate `num_vmfma` — after R2; Phase 3: shared error formatting — after R8)
-4. **R2: Replace Float Indices** (fixes potential correctness issue, enables R13 Phase 2)
-5. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
-6. **R12: Document Limitations** (quick win, documentation only)
-7. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
-8. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
-9. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
-10. **R10: Separate Timeline** (large effort, do last)
-11. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
+3. **R13: Standardize Class Hierarchy** (Phase 1: unify `needed_by` type — standalone, no dependencies; Phase 2: shared error formatting — after R8)
+4. **R8: Centralize Error Messages** (quick win, enabled by R13 Phase 1's unified `needed_by` type)
+5. **R12: Document Limitations** (quick win, documentation only)
+6. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
+7. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
+8. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
+9. **R10: Separate Timeline** (large effort, do last)
+10. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
