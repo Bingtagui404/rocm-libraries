@@ -707,7 +707,7 @@ TEST_CASE("launchTimeSubExpressions works", "[expression][expression-transformat
 
     KernelOptions opts;
     opts->minLaunchTimeExpressionComplexity = 5;
-    auto context = TestContext::ForDefaultTarget(opts);
+    auto context                            = TestContext::ForDefaultTarget(opts);
 
     auto command = std::make_shared<Command>();
 
