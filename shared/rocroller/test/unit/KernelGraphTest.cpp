@@ -102,8 +102,8 @@ namespace KernelGraphTest
 
         std::string expectedC = R".(
                 digraph {
-                "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
-                "coord2"[label="User{CommandArgument(Tensor_2_extent)I64}(2)"];
+                "coord1"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64}(1)"];
+                "coord2"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64}(2)"];
                 "coord3"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(3)"];
                 "coord4"[label="Split(4)",shape=box];
                 "coord5"[label="Linear{CommandArgument(Tensor_0_size_0)I64}(5)"];
@@ -122,7 +122,7 @@ namespace KernelGraphTest
                 "coord18"[label="DataFlow(18)",shape=box];
                 "coord19"[label="SubDimension{0, NA}(19)"];
                 "coord20"[label="Split(20)",shape=box];
-                "coord21"[label="User{CommandArgument(Tensor_8_extent)I64}(21)"];
+                "coord21"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64}(21)"];
                 "coord22"[label="Join(22)",shape=box];
                 "coord23"[label="DataFlow(23)",shape=box];
                 "coord1" -> "coord4"
@@ -236,13 +236,13 @@ namespace KernelGraphTest
 
         std::string expected0 = R".(
                 digraph {
-                "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
+                "coord1"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64}(1)"];
                 "coord2"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(2)"];
                 "coord3"[label="Split(3)",shape=box];
                 "coord4"[label="Linear{CommandArgument(Tensor_0_size_0)I64}(4)"];
                 "coord5"[label="Flatten(5)",shape=box];
                 "coord6"[label="DataFlow(6)",shape=box];
-                "coord7"[label="User{CommandArgument(Tensor_2_extent)I64}(7)"];
+                "coord7"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64}(7)"];
                 "coord8"[label="SubDimension{0, CommandArgument(Tensor_2_size_0)I64}(8)"];
                 "coord9"[label="Split(9)",shape=box];
                 "coord10"[label="Linear{CommandArgument(Tensor_2_size_0)I64}(10)"];
@@ -255,7 +255,7 @@ namespace KernelGraphTest
                 "coord17"[label="Linear{NA}(17)"];
                 "coord18"[label="DataFlow(18)",shape=box];
                 "coord19"[label="SubDimension{0, NA}(19)"];
-                "coord20"[label="User{CommandArgument(Tensor_8_extent)I64}(20)"];
+                "coord20"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64}(20)"];
                 "coord21"[label="Split(21)",shape=box];
                 "coord22"[label="Join(22)",shape=box];
                 "coord23"[label="DataFlow(23)",shape=box];
@@ -370,8 +370,8 @@ namespace KernelGraphTest
 
         std::string expected1 = R".(
             digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
-        "coord2"[label="User{CommandArgument(Tensor_2_extent)I64}(2)"];
+        "coord1"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64}(1)"];
+        "coord2"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64}(2)"];
         "coord3"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(3)"];
         "coord4"[label="Split(4)",shape=box];
         "coord5"[label="Linear{CommandArgument(Tensor_0_size_0)I64}(5)"];
@@ -383,16 +383,16 @@ namespace KernelGraphTest
         "coord11"[label="Linear{NA}(11)"];
         "coord12"[label="SubDimension{0, NA}(12)"];
         "coord13"[label="Split(13)",shape=box];
-        "coord14"[label="User{CommandArgument(Tensor_8_extent)I64}(14)"];
+        "coord14"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64}(14)"];
         "coord15"[label="Join(15)",shape=box];
         "coord16"[label="VGPR{NA}(16)"];
-        "coord17"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_0_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(17)"];
+        "coord17"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(17)"];
         "coord18"[label="Workitem{0, 64:U32}(18)"];
         "coord19"[label="Tile(19)",shape=box];
         "coord20"[label="Forget(20)",shape=box];
         "coord21"[label="DataFlow(21)",shape=box];
         "coord22"[label="VGPR{NA}(22)"];
-        "coord23"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_2_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(23)"];
+        "coord23"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(23)"];
         "coord24"[label="Workitem{0, 64:U32}(24)"];
         "coord25"[label="Tile(25)",shape=box];
         "coord26"[label="Forget(26)",shape=box];
@@ -403,7 +403,7 @@ namespace KernelGraphTest
         "coord31"[label="DataFlow(31)",shape=box];
         "coord32"[label="VGPR{NA}(32)"];
         "coord33"[label="DataFlow(33)",shape=box];
-        "coord34"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_8_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(34)"];
+        "coord34"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(34)"];
         "coord35"[label="Workitem{0, 64:U32}(35)"];
         "coord36"[label="Inherit(36)",shape=box];
         "coord37"[label="Flatten(37)",shape=box];
@@ -574,13 +574,13 @@ namespace KernelGraphTest
 
         std::string expected2 = R".(
         digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
-        "coord2"[label="User{CommandArgument(Tensor_2_extent)I64}(2)"];
+        "coord1"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64}(1)"];
+        "coord2"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64}(2)"];
         "coord3"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(3)"];
         "coord4"[label="Split(4)",shape=box];
         "coord5"[label="Linear{CommandArgument(Tensor_0_size_0)I64}(5)"];
         "coord6"[label="Flatten(6)",shape=box];
-        "coord7"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_0_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(7)"];
+        "coord7"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(7)"];
         "coord8"[label="Workitem{0, 64:U32}(8)"];
         "coord9"[label="Tile(9)",shape=box];
         "coord10"[label="Linear{16:I}(10)"];
@@ -593,7 +593,7 @@ namespace KernelGraphTest
         "coord17"[label="Split(17)",shape=box];
         "coord18"[label="Linear{CommandArgument(Tensor_2_size_0)I64}(18)"];
         "coord19"[label="Flatten(19)",shape=box];
-        "coord20"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_2_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(20)"];
+        "coord20"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(20)"];
         "coord21"[label="Workitem{0, 64:U32}(21)"];
         "coord22"[label="Tile(22)",shape=box];
         "coord23"[label="ForLoop{16:I}(23)"];
@@ -607,7 +607,7 @@ namespace KernelGraphTest
         "coord31"[label="DataFlow(31)",shape=box];
         "coord32"[label="VGPR{NA}(32)"];
         "coord33"[label="DataFlow(33)",shape=box];
-        "coord34"[label="Workgroup{0, Divide(Subtract(Add(CommandArgument(Tensor_8_extent)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(34)"];
+        "coord34"[label="Workgroup{0, Divide(Subtract(Add(Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64, 64:U32)I64, 1:U32)I64, 64:U32)I64}(34)"];
         "coord35"[label="Workitem{0, 64:U32}(35)"];
         "coord36"[label="Inherit(36)",shape=box];
         "coord37"[label="ForLoop{16:I}(37)"];
@@ -616,7 +616,7 @@ namespace KernelGraphTest
         "coord40"[label="Flatten(40)",shape=box];
         "coord41"[label="SubDimension{0, NA}(41)"];
         "coord42"[label="Split(42)",shape=box];
-        "coord43"[label="User{CommandArgument(Tensor_8_extent)I64}(43)"];
+        "coord43"[label="User{Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64}(43)"];
         "coord44"[label="Join(44)",shape=box];
         "coord45"[label="DataFlow(45)",shape=box];
         "coord1" -> "coord4"
@@ -950,14 +950,14 @@ namespace KernelGraphTest
 
         std::string expected0 = R".(
         digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
+        "coord1"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_0_stride_1)I64, Subtract(CommandArgument(Tensor_0_size_1)I64, 1:U32)I64)I64)I64}(1)"];
         "coord2"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(2)"];
         "coord3"[label="SubDimension{1, CommandArgument(Tensor_0_size_1)I64}(3)"];
         "coord4"[label="MacroTile{NA}(2/None/None){}-()(4)"];
         "coord5"[label="Split(5)",shape=box];
         "coord6"[label="ConstructMacroTile(6)",shape=box];
         "coord7"[label="DataFlow(7)",shape=box];
-        "coord8"[label="User{CommandArgument(Tensor_2_extent)I64}(8)"];
+        "coord8"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_2_stride_1)I64, Subtract(CommandArgument(Tensor_2_size_1)I64, 1:U32)I64)I64)I64}(8)"];
         "coord9"[label="SubDimension{0, CommandArgument(Tensor_2_size_0)I64}(9)"];
         "coord10"[label="SubDimension{1, CommandArgument(Tensor_2_size_1)I64}(10)"];
         "coord11"[label="MacroTile{NA}(2/None/None){}-()(11)"];
@@ -968,7 +968,7 @@ namespace KernelGraphTest
         "coord16"[label="DataFlow(16)",shape=box];
         "coord17"[label="SubDimension{0, NA}(17)"];
         "coord18"[label="SubDimension{1, NA}(18)"];
-        "coord19"[label="User{CommandArgument(Tensor_5_extent)I64}(19)"];
+        "coord19"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_5_stride_0)I64, Subtract(CommandArgument(Tensor_5_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_5_stride_1)I64, Subtract(CommandArgument(Tensor_5_size_1)I64, 1:U32)I64)I64)I64}(19)"];
         "coord20"[label="DestructMacroTile(20)",shape=box];
         "coord21"[label="Join(21)",shape=box];
         "coord22"[label="DataFlow(22)",shape=box];
@@ -1106,12 +1106,12 @@ namespace KernelGraphTest
                                                              Operations::ScaleMode::None);
 
         auto expectedCommand = R".(
-        Tensor.FP8.d2 0, (base=&0, lim=&8, sizes={&16 &24 }, strides={&32 &40 })
+        Tensor.FP8.d2 0, (base=&0, sizes={&8 &16 }, strides={&24 &32 })
         T_LOAD_TILED 1 Source 0
-        Tensor.FP6.d2 2, (base=&48, lim=&56, sizes={&64 &72 }, strides={&80 &88 })
+        Tensor.FP6.d2 2, (base=&40, sizes={&48 &56 }, strides={&64 &72 })
         T_LOAD_TILED 3 Source 2
         T_Mul 1 3 Value: Float
-        Tensor.Float.d2 5, (base=&96, lim=&104, sizes={&112 &120 }, strides={&128 &136 })
+        Tensor.Float.d2 5, (base=&80, sizes={&88 &96 }, strides={&104 &112 })
         T_STORE_TILED 6 Source 4 Dest 5
         ).";
 
@@ -1168,18 +1168,18 @@ namespace KernelGraphTest
                                                              Operations::ScaleMode::Separate);
 
         auto expectedCommand = R".(
-        Tensor.FP8.d2 0, (base=&0, lim=&8, sizes={&16 &24 }, strides={&32 &40 })
+        Tensor.FP8.d2 0, (base=&0, sizes={&8 &16 }, strides={&24 &32 })
         T_LOAD_TILED 1 Source 0
-        Tensor.E8M0.d2 2, (base=&48, lim=&56, sizes={&64 &72 }, strides={&80 &88 })
+        Tensor.E8M0.d2 2, (base=&40, sizes={&48 &56 }, strides={&64 &72 })
         T_LOAD_TILED 3 Source 2
         BlockScale(Separate, {1, 32}): Data: 1, Scale: 3
-        Tensor.FP6.d2 5, (base=&96, lim=&104, sizes={&112 &120 }, strides={&128 &136 })
+        Tensor.FP6.d2 5, (base=&80, sizes={&88 &96 }, strides={&104 &112 })
         T_LOAD_TILED 6 Source 5
-        Tensor.E8M0.d2 7, (base=&144, lim=&152, sizes={&160 &168 }, strides={&176 &184 })
+        Tensor.E8M0.d2 7, (base=&120, sizes={&128 &136 }, strides={&144 &152 })
         T_LOAD_TILED 8 Source 7
         BlockScale(Separate, {32, 1}): Data: 6, Scale: 8
         T_Mul 4 9 Value: Float
-        Tensor.Float.d2 11, (base=&192, lim=&200, sizes={&208 &216 }, strides={&224 &232 })
+        Tensor.Float.d2 11, (base=&160, sizes={&168 &176 }, strides={&184 &192 })
         T_STORE_TILED 12 Source 10 Dest 11
         ).";
 
@@ -1426,14 +1426,14 @@ namespace KernelGraphTest
 
         std::string expected0 = R".(
             digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
+        "coord1"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_0_stride_1)I64, Subtract(CommandArgument(Tensor_0_size_1)I64, 1:U32)I64)I64)I64}(1)"];
         "coord2"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(2)"];
         "coord3"[label="SubDimension{1, CommandArgument(Tensor_0_size_1)I64}(3)"];
         "coord4"[label="MacroTile{NA}(2/LDS/None){16,8}-(4,2)(4)"];
         "coord5"[label="Split(5)",shape=box];
         "coord6"[label="ConstructMacroTile(6)",shape=box];
         "coord7"[label="DataFlow(7)",shape=box];
-        "coord8"[label="User{CommandArgument(Tensor_2_extent)I64}(8)"];
+        "coord8"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_2_stride_1)I64, Subtract(CommandArgument(Tensor_2_size_1)I64, 1:U32)I64)I64)I64}(8)"];
         "coord9"[label="SubDimension{0, CommandArgument(Tensor_2_size_0)I64}(9)"];
         "coord10"[label="SubDimension{1, CommandArgument(Tensor_2_size_1)I64}(10)"];
         "coord11"[label="MacroTile{NA}(2/VGPR/None){16,8}-(4,2)(11)"];
@@ -1448,7 +1448,7 @@ namespace KernelGraphTest
         "coord20"[label="DataFlow(20)",shape=box];
         "coord21"[label="SubDimension{0, NA}(21)"];
         "coord22"[label="SubDimension{1, NA}(22)"];
-        "coord23"[label="User{CommandArgument(Tensor_8_extent)I64}(23)"];
+        "coord23"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_8_stride_0)I64, Subtract(CommandArgument(Tensor_8_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_8_stride_1)I64, Subtract(CommandArgument(Tensor_8_size_1)I64, 1:U32)I64)I64)I64}(23)"];
         "coord24"[label="DestructMacroTile(24)",shape=box];
         "coord25"[label="Join(25)",shape=box];
         "coord26"[label="DataFlow(26)",shape=box];
@@ -1939,12 +1939,10 @@ namespace KernelGraphTest
         CommandArguments commandArgs = command->createArguments();
 
         commandArgs.setArgument(xTensorTag, ArgumentType::Value, d_a.get());
-        commandArgs.setArgument(xTensorTag, ArgumentType::Limit, nx);
         commandArgs.setArgument(xTensorTag, ArgumentType::Size, 0, nx);
         commandArgs.setArgument(xTensorTag, ArgumentType::Stride, 0, (size_t)1);
         commandArgs.setArgument(alphaScalarTag, ArgumentType::Value, d_alpha.get());
         commandArgs.setArgument(reluTensorTag, ArgumentType::Value, d_b.get());
-        commandArgs.setArgument(reluTensorTag, ArgumentType::Limit, nx);
         commandArgs.setArgument(reluTensorTag, ArgumentType::Size, 0, nx);
         commandArgs.setArgument(reluTensorTag, ArgumentType::Stride, 0, (size_t)1);
 
@@ -1999,11 +1997,9 @@ namespace KernelGraphTest
         CommandArguments commandArgs = command->createArguments();
 
         commandArgs.setArgument(tagTensorA, ArgumentType::Value, d_a.get());
-        commandArgs.setArgument(tagTensorA, ArgumentType::Limit, nx);
         commandArgs.setArgument(tagTensorA, ArgumentType::Size, 0, nx);
         commandArgs.setArgument(tagTensorA, ArgumentType::Stride, 0, (size_t)1);
         commandArgs.setArgument(tagTensorB, ArgumentType::Value, d_b.get());
-        commandArgs.setArgument(tagTensorB, ArgumentType::Limit, nx);
         commandArgs.setArgument(tagTensorB, ArgumentType::Size, 0, nx);
         commandArgs.setArgument(tagTensorB, ArgumentType::Stride, 0, (size_t)1);
 
@@ -2456,14 +2452,14 @@ namespace KernelGraphTest
 
         std::string expected0 = R".(
         digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
+        "coord1"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_0_stride_1)I64, Subtract(CommandArgument(Tensor_0_size_1)I64, 1:U32)I64)I64)I64}(1)"];
         "coord2"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(2)"];
         "coord3"[label="SubDimension{1, CommandArgument(Tensor_0_size_1)I64}(3)"];
         "coord4"[label="MacroTile{NA}(2/None/None){}-()(4)"];
         "coord5"[label="Split(5)",shape=box];
         "coord6"[label="ConstructMacroTile(6)",shape=box];
         "coord7"[label="DataFlow(7)",shape=box];
-        "coord8"[label="User{CommandArgument(Tensor_2_extent)I64}(8)"];
+        "coord8"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_2_stride_1)I64, Subtract(CommandArgument(Tensor_2_size_1)I64, 1:U32)I64)I64)I64}(8)"];
         "coord9"[label="SubDimension{0, CommandArgument(Tensor_2_size_0)I64}(9)"];
         "coord10"[label="SubDimension{1, CommandArgument(Tensor_2_size_1)I64}(10)"];
         "coord11"[label="MacroTile{NA}(2/None/None){}-()(11)"];
@@ -2474,7 +2470,7 @@ namespace KernelGraphTest
         "coord16"[label="DataFlow(16)",shape=box];
         "coord17"[label="SubDimension{0, NA}(17)"];
         "coord18"[label="SubDimension{1, NA}(18)"];
-        "coord19"[label="User{CommandArgument(Tensor_5_extent)I64}(19)"];
+        "coord19"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_5_stride_0)I64, Subtract(CommandArgument(Tensor_5_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_5_stride_1)I64, Subtract(CommandArgument(Tensor_5_size_1)I64, 1:U32)I64)I64)I64}(19)"];
         "coord20"[label="DestructMacroTile(20)",shape=box];
         "coord21"[label="Join(21)",shape=box];
         "coord22"[label="DataFlow(22)",shape=box];
@@ -2586,14 +2582,14 @@ namespace KernelGraphTest
 
         std::string expected1 = R".(
         digraph {
-        "coord1"[label="User{CommandArgument(Tensor_0_extent)I64}(1)"];
+        "coord1"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_0_stride_0)I64, Subtract(CommandArgument(Tensor_0_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_0_stride_1)I64, Subtract(CommandArgument(Tensor_0_size_1)I64, 1:U32)I64)I64)I64}(1)"];
         "coord2"[label="SubDimension{0, CommandArgument(Tensor_0_size_0)I64}(2)"];
         "coord3"[label="SubDimension{1, CommandArgument(Tensor_0_size_1)I64}(3)"];
         "coord4"[label="MacroTile{NA}(2/VGPR/None){64,64}-()(4)"];
         "coord5"[label="Split(5)",shape=box];
         "coord6"[label="ConstructMacroTile(6)",shape=box];
         "coord7"[label="DataFlow(7)",shape=box];
-        "coord8"[label="User{CommandArgument(Tensor_2_extent)I64}(8)"];
+        "coord8"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_2_stride_0)I64, Subtract(CommandArgument(Tensor_2_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_2_stride_1)I64, Subtract(CommandArgument(Tensor_2_size_1)I64, 1:U32)I64)I64)I64}(8)"];
         "coord9"[label="SubDimension{0, CommandArgument(Tensor_2_size_0)I64}(9)"];
         "coord10"[label="SubDimension{1, CommandArgument(Tensor_2_size_1)I64}(10)"];
         "coord11"[label="MacroTile{NA}(2/VGPR/None){64,64}-()(11)"];
@@ -2604,7 +2600,7 @@ namespace KernelGraphTest
         "coord16"[label="DataFlow(16)",shape=box];
         "coord17"[label="SubDimension{0, NA}(17)"];
         "coord18"[label="SubDimension{1, NA}(18)"];
-        "coord19"[label="User{CommandArgument(Tensor_5_extent)I64}(19)"];
+        "coord19"[label="User{Add(Add(1:U32, Multiply(CommandArgument(Tensor_5_stride_0)I64, Subtract(CommandArgument(Tensor_5_size_0)I64, 1:U32)I64)I64)I64, Multiply(CommandArgument(Tensor_5_stride_1)I64, Subtract(CommandArgument(Tensor_5_size_1)I64, 1:U32)I64)I64)I64}(19)"];
         "coord20"[label="DestructMacroTile(20)",shape=box];
         "coord21"[label="Join(21)",shape=box];
         "coord22"[label="DataFlow(22)",shape=box];
