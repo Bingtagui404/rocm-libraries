@@ -180,22 +180,41 @@ namespace rocRoller
                             ShowValue(op.aDims.size()),
                             ShowValue(op.bDims.size()));
 
-                std::set<int> remainingADims(aTileDims.begin(), aTileDims.end());
-                std::set<int> remainingBDims(bTileDims.begin(), bTileDims.end());
+                // Separate dimensions into free and contracted
+                // For standard GEMM: aFreeDims=[M], aContractedDims=[K], bFreeDims=[N], bContractedDims=[K]
+                std::set<size_t> aContractedIndices(op.aDims.begin(), op.aDims.end());
+                std::set<size_t> bContractedIndices(op.bDims.begin(), op.bDims.end());
 
-                for(size_t i = 0; i < op.aDims.size(); i++)
+                std::vector<int> aFreeDims;
+                std::vector<int> aContractedDims;
+                std::vector<int> bFreeDims;
+                std::vector<int> bContractedDims;
+
+                for(size_t i = 0; i < aTileDims.size(); i++)
                 {
-                    auto aDim = aTileDims.at(op.aDims.at(i));
-                    auto bDim = bTileDims.at(op.bDims.at(i));
-
-                    redundantArgs.push_back({aDim, bDim});
-                    remainingADims.erase(aDim);
-                    remainingBDims.erase(bDim);
+                    if(aContractedIndices.contains(i))
+                        aContractedDims.push_back(aTileDims[i]);
+                    else
+                        aFreeDims.push_back(aTileDims[i]);
                 }
 
-                AssertFatal(remainingADims.size() == 1, ShowValue(remainingADims.size()));
-                AssertFatal(remainingBDims.size() == 1, ShowValue(remainingBDims.size()));
+                for(size_t i = 0; i < bTileDims.size(); i++)
+                {
+                    if(bContractedIndices.contains(i))
+                        bContractedDims.push_back(bTileDims[i]);
+                    else
+                        bFreeDims.push_back(bTileDims[i]);
+                }
 
+                // Match contracted dimensions between A and B
+                AssertFatal(aContractedDims.size() == bContractedDims.size(),
+                            ShowValue(aContractedDims.size()),
+                            ShowValue(bContractedDims.size()));
+
+                for(size_t i = 0; i < aContractedDims.size(); i++)
+                    redundantArgs.push_back({aContractedDims[i], bContractedDims[i]});
+
+                // Match free dimensions with output D
                 auto isDataFlowEdge = CoordinateGraph::isEdge<CoordinateGraph::DataFlow>;
                 auto isMacroTile    = [](CoordinateGraph::Dimension const& dim) {
                     return std::holds_alternative<CoordinateGraph::MacroTile>(dim);
@@ -214,77 +233,96 @@ namespace rocRoller
                         = graph.coordinates.getOutputNodeIndices(dTile, isDestructMacroTile)
                               .to<std::vector>();
 
-                    AssertFatal(dTileDims.size() == 2, ShowValue(dTileDims.size()));
+                    size_t expectedDSize = aFreeDims.size() + bFreeDims.size();
+                    AssertFatal(dTileDims.size() == expectedDSize,
+                                ShowValue(dTileDims.size()),
+                                ShowValue(expectedDSize),
+                                ShowValue(aFreeDims.size()),
+                                ShowValue(bFreeDims.size()));
 
-                    redundantArgs.push_back({*remainingADims.begin(), dTileDims.at(0)});
-                    redundantArgs.push_back({*remainingBDims.begin(), dTileDims.at(1)});
+                    // Match A's free dimensions to D's first dimensions
+                    for(size_t i = 0; i < aFreeDims.size(); i++)
+                    {
+                        redundantArgs.push_back({aFreeDims[i], dTileDims[i]});
+                    }
+
+                    // Match B's free dimensions to D's remaining dimensions
+                    for(size_t i = 0; i < bFreeDims.size(); i++)
+                    {
+                        redundantArgs.push_back({bFreeDims[i], dTileDims[aFreeDims.size() + i]});
+                    }
                 }
 
                 // Handle block-scaled matrix multiplication scale tensors
-                // ScaleA dimensions: [M, K/blockSize]
-                // ScaleB dimensions: [K/blockSize, N]
+                // ScaleA structure: [A_free_dims..., blocked_contracted_dims...]
+                // ScaleB structure: [blocked_contracted_dims..., B_free_dims...]
                 auto maybeScaleA = graph.mapper.get(nodeID, NaryArgument::LHS_SCALE);
                 auto maybeScaleB = graph.mapper.get(nodeID, NaryArgument::RHS_SCALE);
 
-                if(maybeScaleA > 0)
+                if(maybeScaleA > 0 || maybeScaleB > 0)
                 {
-                    // maybeScaleA is a MacroTile coordinate tag (same as A, B above)
-                    auto scaleADims
-                        = graph.coordinates.getInputNodeIndices(maybeScaleA, isConstructMacroTile)
-                              .to<std::vector>();
+                    std::vector<int> scaleADims, scaleBDims;
 
-                    Log::debug("IdentifyParallelDimensions: Found ScaleA with {} dims",
-                               scaleADims.size());
-
-                    // ScaleA[0] (M dimension) should match A[0] and D[0]
-                    if(scaleADims.size() >= 1 && aTileDims.size() >= 1)
+                    // Validate ScaleA dimensions if present
+                    if(maybeScaleA > 0)
                     {
-                        redundantArgs.push_back({scaleADims[0], aTileDims[0]});
-                        Log::debug("  matched ScaleA[0] with A[0] (M dimension)");
+                        scaleADims = graph.coordinates
+                                         .getInputNodeIndices(maybeScaleA, isConstructMacroTile)
+                                         .to<std::vector>();
+
+                        size_t expectedScaleASize = aFreeDims.size() + aContractedDims.size();
+                        AssertFatal(scaleADims.size() == expectedScaleASize,
+                                    ShowValue(scaleADims.size()),
+                                    ShowValue(expectedScaleASize),
+                                    ShowValue(aFreeDims.size()),
+                                    ShowValue(aContractedDims.size()));
+
+                        // Match ScaleA's free dimensions with A's free dimensions
+                        for(size_t i = 0; i < aFreeDims.size(); i++)
+                        {
+                            redundantArgs.push_back({scaleADims[i], aFreeDims[i]});
+                        }
+                        Log::debug("IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
+                                   aFreeDims.size());
                     }
 
-                    // If both scale tensors exist, match their K/blockSize dimensions
-                    if(maybeScaleB > 0 && scaleADims.size() >= 2)
+                    // Validate ScaleB dimensions if present
+                    if(maybeScaleB > 0)
                     {
-                        auto scaleBDims
-                            = graph.coordinates
-                                  .getInputNodeIndices(maybeScaleB, isConstructMacroTile)
-                                  .to<std::vector>();
+                        scaleBDims = graph.coordinates
+                                         .getInputNodeIndices(maybeScaleB, isConstructMacroTile)
+                                         .to<std::vector>();
 
-                        Log::debug("IdentifyParallelDimensions: Found ScaleB with {} dims",
-                                   scaleBDims.size());
+                        size_t expectedScaleBSize = bContractedDims.size() + bFreeDims.size();
+                        AssertFatal(scaleBDims.size() == expectedScaleBSize,
+                                    ShowValue(scaleBDims.size()),
+                                    ShowValue(expectedScaleBSize),
+                                    ShowValue(bContractedDims.size()),
+                                    ShowValue(bFreeDims.size()));
 
-                        // ScaleA[1] and ScaleB[0] both represent K/blockSize
-                        if(scaleBDims.size() >= 1)
+                        // Match ScaleB's free dimensions with B's free dimensions
+                        for(size_t i = 0; i < bFreeDims.size(); i++)
                         {
-                            redundantArgs.push_back({scaleADims[1], scaleBDims[0]});
-                            Log::debug(
-                                "  matched ScaleA[1] with ScaleB[0] (K/blockSize dimension)");
+                            size_t scaleBIdx = bContractedDims.size() + i;
+                            redundantArgs.push_back({scaleBDims[scaleBIdx], bFreeDims[i]});
                         }
-
-                        // ScaleB[1] (N dimension) should match B[1] and D[1]
-                        if(scaleBDims.size() >= 2 && bTileDims.size() >= 2)
-                        {
-                            redundantArgs.push_back({scaleBDims[1], bTileDims[1]});
-                            Log::debug("  matched ScaleB[1] with B[1] (N dimension)");
-                        }
+                        Log::debug("IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
+                                   bFreeDims.size());
                     }
-                }
-                else if(maybeScaleB > 0)
-                {
-                    // Only ScaleB exists (B is scaled, A is not)
-                    auto scaleBDims
-                        = graph.coordinates.getInputNodeIndices(maybeScaleB, isConstructMacroTile)
-                              .to<std::vector>();
 
-                    Log::debug("IdentifyParallelDimensions: Found ScaleB with {} dims (no ScaleA)",
-                               scaleBDims.size());
-
-                    // ScaleB[1] (N dimension) should match B[1] and D[1]
-                    if(scaleBDims.size() >= 2 && bTileDims.size() >= 2)
+                    // Match blocked contracted dimensions when both scales exist
+                    if(maybeScaleA > 0 && maybeScaleB > 0)
                     {
-                        redundantArgs.push_back({scaleBDims[1], bTileDims[1]});
-                        Log::debug("  matched ScaleB[1] with B[1] (N dimension)");
+                        for(size_t i = 0; i < aContractedDims.size(); i++)
+                        {
+                            size_t scaleAIdx = aFreeDims.size() + i;
+                            size_t scaleBIdx = i;
+                            redundantArgs.push_back({scaleADims[scaleAIdx], scaleBDims[scaleBIdx]});
+                        }
+                        Log::debug("IdentifyParallelDimensions: Matched {} blocked contracted dims "
+                                   "between "
+                                   "ScaleA and ScaleB",
+                                   aContractedDims.size());
                     }
                 }
             }
@@ -344,15 +382,8 @@ namespace rocRoller
                 }
             }
 
-            // Update User coordinates to use merged SubDimension sizes
-            // After merging parallel SubDimensions above, tensors may have User size expressions
-            // referencing SubDimension sizes that were merged. This pass recomputes User sizes
-            // using the merged SubDimension sizes, eliminating redundant kernel arguments.
-            //
-            // Example: Matrix D's User initially references Tensor_D_size_0 and Tensor_D_size_1.
-            //          After merging, D's SubDimensions now use Tensor_A_size_0 (M) and
-            //          Tensor_B_size_1 (N). This pass updates D's User size expression to
-            //          reference those merged sizes, allowing Tensor_D_size_* to be eliminated.
+            // This pass recomputes User.size (tensor limit) using the merged SubDimension
+            // sizes, eliminating redundant kernel arguments.
             for(auto userTag : copy.coordinates.getNodes())
             {
                 auto user = copy.coordinates.get<CoordinateGraph::User>(userTag);
@@ -400,27 +431,20 @@ namespace rocRoller
                 for(auto subdimTag : subdims)
                 {
                     auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
-                    if(!subdim || !subdim->size || !subdim->stride)
-                    {
-                        Log::debug("  SubDimension {} missing size or stride", subdimTag);
-                        allValid = false;
-                        break;
-                    }
+                    AssertFatal(subdim && subdim->size && subdim->stride,
+                                ShowValue(subdimTag),
+                                "SubDimension node missing size or stride");
 
                     auto contribution = subdim->stride * (subdim->size - Expression::literal(1u));
                     newSize           = newSize + contribution;
                 }
 
-                if(allValid)
-                {
-                    user->size = newSize;
-                    copy.coordinates.setElement(userTag, *user);
-                    Log::debug(
-                        "IdentifyParallelDimensions: Updated User {} size expression using {} "
-                        "SubDimensions",
-                        userTag,
-                        subdims.size());
-                }
+                user->size = newSize;
+                copy.coordinates.setElement(userTag, *user);
+                Log::debug("IdentifyParallelDimensions: Updated User {} size expression using {} "
+                           "SubDimensions",
+                           userTag,
+                           subdims.size());
             }
 
             return copy;
