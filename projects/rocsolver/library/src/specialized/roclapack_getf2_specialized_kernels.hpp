@@ -684,6 +684,22 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
 
     // determine sizes
     I dimy, dimx;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    // ASAN: cap total threads at 256 (VGPR inflation limits gfx942 to 1 wave/SIMD)
+    if(m <= 8)
+        dimx = 8;
+    else if(m <= 16)
+        dimx = 16;
+    else if(m <= 32)
+        dimx = 32;
+    else if(m <= 64)
+        dimx = 64;
+    else if(m <= 128)
+        dimx = 128;
+    else
+        dimx = 256;
+    dimy = I(256) / dimx;
+#else
     if(m <= 8)
         dimx = 8;
     else if(m <= 16)
@@ -701,6 +717,7 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
     else
         dimx = 1024;
     dimy = I(1024) / dimx;
+#endif
 
     // prepare kernel launch
     dim3 grid(1, 1, batch_count);

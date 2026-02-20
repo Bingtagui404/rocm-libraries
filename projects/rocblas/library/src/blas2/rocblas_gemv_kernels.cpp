@@ -393,8 +393,13 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
                                 || (m <= dgemvn_gfx906_upper_threshold
                                     && n <= dgemvn_gfx906_upper_threshold))))))
         {
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+            static constexpr int GEMVN_DIM_X = 16;
+            static constexpr int GEMVN_DIM_Y = 16;
+#else
             static constexpr int GEMVN_DIM_X = 32;
             static constexpr int GEMVN_DIM_Y = 16;
+#endif
             rocblas_int          blocks      = (m - 1) / (GEMVN_DIM_X * 4) + 1;
             if(std::is_same_v<Tex, rocblas_double_complex>)
                 blocks = (m - 1) / (GEMVN_DIM_X) + 1;
@@ -428,8 +433,13 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
         else
         {
             // GEMVN_DIM_Y must be at least 4, 8 * 8 is very slow only 40Gflop/s
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+            static constexpr int GEMVN_DIM_X = 16;
+            static constexpr int GEMVN_DIM_Y = 16;
+#else
             static constexpr int GEMVN_DIM_X = 64;
             static constexpr int GEMVN_DIM_Y = 16;
+#endif
             rocblas_int          blocks      = (m - 1) / (GEMVN_DIM_X * 4) + 1;
             if(std::is_same_v<Tex, rocblas_double_complex>)
                 blocks = (m - 1) / (GEMVN_DIM_X) + 1;
@@ -539,7 +549,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
             if constexpr(is_float)
             {
                 const int TILE_DIM_X = 16;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+                const int TILE_DIM_Y = 16; // ASAN: 16*16=256 (was 64)
+#else
                 const int TILE_DIM_Y = 64;
+#endif
                 dim3      gemvt_threads(TILE_DIM_X, TILE_DIM_Y);
                 dim3      gemvt_grid((n - 1) / TILE_DIM_Y + 1, 1, batches);
                 if(handle->pointer_mode == rocblas_pointer_mode_device)
@@ -554,7 +568,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
             else if constexpr(is_double || is_complex_float)
             {
                 const int TILE_DIM_X = 16;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+                const int TILE_DIM_Y = 16; // ASAN: 16*16=256 (was 32)
+#else
                 const int TILE_DIM_Y = 32;
+#endif
                 dim3      gemvt_threads(TILE_DIM_X, TILE_DIM_Y);
                 dim3      gemvt_grid((n - 1) / TILE_DIM_Y + 1, 1, batches);
                 if(handle->pointer_mode == rocblas_pointer_mode_device)
@@ -804,7 +822,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
         else
         {
             //Number of threads per block
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+            static constexpr int NB = 256; // ASAN: cap at 256 (was 1024)
+#else
             static constexpr int NB = 1024;
+#endif
             dim3                 gemvt_grid(n, 1, batches);
             dim3                 gemvt_threads(NB);
 
@@ -910,7 +932,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
             if constexpr(is_float)
             {
                 const int TILE_DIM_X = 16;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+                const int TILE_DIM_Y = 16; // ASAN: 16*16=256 (was 64)
+#else
                 const int TILE_DIM_Y = 64;
+#endif
                 dim3      gemvt_threads(TILE_DIM_X, TILE_DIM_Y);
                 dim3      gemvt_grid((n - 1) / TILE_DIM_Y + 1, 1, batches);
                 if(handle->pointer_mode == rocblas_pointer_mode_device)
@@ -925,7 +951,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
             else if constexpr(is_double || is_complex_float)
             {
                 const int TILE_DIM_X = 16;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+                const int TILE_DIM_Y = 16; // ASAN: 16*16=256 (was 32)
+#else
                 const int TILE_DIM_Y = 32;
+#endif
                 dim3      gemvt_threads(TILE_DIM_X, TILE_DIM_Y);
                 dim3      gemvt_grid((n - 1) / TILE_DIM_Y + 1, 1, batches);
                 if(handle->pointer_mode == rocblas_pointer_mode_device)
@@ -1133,7 +1163,11 @@ rocblas_status rocblas_internal_gemv_launcher(rocblas_handle    handle,
         else
         {
             //Number of threads per block
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+            static constexpr int NB = 256; // ASAN: cap at 256 (was 1024)
+#else
             static constexpr int NB = 1024;
+#endif
             dim3                 gemvt_grid(n, 1, batches);
             dim3                 gemvt_threads(NB);
             if(handle->pointer_mode == rocblas_pointer_mode_device)

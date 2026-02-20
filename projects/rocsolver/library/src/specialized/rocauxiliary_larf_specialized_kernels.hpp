@@ -181,6 +181,13 @@ rocblas_status larf_run_small(rocblas_handle handle,
             ROCSOLVER_LAUNCH_KERNEL((larf_left_kernel_small<256, T>), grid, dim3(256), 0, stream, m,
                                     n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
                                     strideA);
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+        // ASAN: cap at 256 threads (VGPR inflation limits gfx942 to 1 wave/SIMD)
+        else
+            ROCSOLVER_LAUNCH_KERNEL((larf_left_kernel_small<256, T>), grid, dim3(256), 0, stream, m,
+                                    n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
+                                    strideA);
+#else
         else if(m <= 512)
             ROCSOLVER_LAUNCH_KERNEL((larf_left_kernel_small<512, T>), grid, dim3(512), 0, stream, m,
                                     n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
@@ -189,6 +196,7 @@ rocblas_status larf_run_small(rocblas_handle handle,
             ROCSOLVER_LAUNCH_KERNEL((larf_left_kernel_small<1024, T>), grid, dim3(1024), 0, stream,
                                     m, n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
                                     strideA);
+#endif
     }
     else
     {
@@ -205,6 +213,13 @@ rocblas_status larf_run_small(rocblas_handle handle,
             ROCSOLVER_LAUNCH_KERNEL((larf_right_kernel_small<256, T>), grid, dim3(256), 0, stream,
                                     m, n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
                                     strideA);
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+        // ASAN: cap at 256 threads
+        else
+            ROCSOLVER_LAUNCH_KERNEL((larf_right_kernel_small<256, T>), grid, dim3(256), 0, stream,
+                                    m, n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
+                                    strideA);
+#else
         else if(n <= 512)
             ROCSOLVER_LAUNCH_KERNEL((larf_right_kernel_small<512, T>), grid, dim3(512), 0, stream,
                                     m, n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
@@ -213,6 +228,7 @@ rocblas_status larf_run_small(rocblas_handle handle,
             ROCSOLVER_LAUNCH_KERNEL((larf_right_kernel_small<1024, T>), grid, dim3(1024), 0, stream,
                                     m, n, x, shiftX, incX, strideX, tau, strideP, A, shiftA, lda,
                                     strideA);
+#endif
     }
 
     return rocblas_status_success;

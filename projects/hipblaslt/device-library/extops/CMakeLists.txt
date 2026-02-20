@@ -69,7 +69,12 @@ foreach(arch IN LISTS archs)
         COMMAND ${HIPBLASLT_PYTHON_COMMAND} "${ops_dir}/AMaxGenerator.py" -o "${CMAKE_CURRENT_BINARY_DIR}/A_H_S_256_4_${arch}.s" -t H -d S -w 256 -c 4 --arch ${arch}
         COMMAND ${HIPBLASLT_PYTHON_COMMAND} "${ops_dir}/AMaxGenerator.py" -o "${CMAKE_CURRENT_BINARY_DIR}/A_S_H_256_4_${arch}.s" -t S -d H -w 256 -c 4 --arch ${arch}
         COMMENT "Creating Layer Norm, Softmax and Amax Assembly for ${arch}"
-        DEPENDS ${HIPBLASLT_PYTHON_DEPS}
+        # Content dependency: rebuild assembly only when the generator scripts
+        # change, not when rocisa or unrelated runtime deps are relinked.
+        DEPENDS
+            "${ops_dir}/LayerNormGenerator.py"
+            "${ops_dir}/SoftmaxGenerator.py"
+            "${ops_dir}/AMaxGenerator.py"
     )
 
     set(output_code_object_file "${CMAKE_CURRENT_BINARY_DIR}/extop_${arch}.co")

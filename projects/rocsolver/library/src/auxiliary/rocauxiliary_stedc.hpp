@@ -44,7 +44,12 @@
 
 ROCSOLVER_BEGIN_NAMESPACE
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+// ASAN: cap at 256 threads (VGPR inflation limits gfx942 to 1 wave/SIMD)
+#define STEDC_BDIM 256
+#else
 #define STEDC_BDIM 512 // Number of threads per thread-block used in main stedc kernels
+#endif
 #define STEDC_SOLVE_BDIM 4 // Number of threads per thread-block used in solver kernel
 
 // bit indicating base deflation candidate

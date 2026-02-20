@@ -160,7 +160,11 @@ rocblas_status rocblas_internal_syr2k_syrkx_block_recursive_template(rocblas_han
     if(TWOK)
     {
         // for syr2k/her2k we first scale C so we c an use directly for output without work buffer
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+        static constexpr int syr2k_SCALE_DIM_X = 32; // ASAN: 32*8=256 (was 128*8=1024)
+#else
         static constexpr int syr2k_SCALE_DIM_X = 128;
+#endif
         static constexpr int syr2k_SCALE_DIM_Y = 8;
         rocblas_int          gx                = (n - 1) / (syr2k_SCALE_DIM_X) + 1;
         rocblas_int          gy                = (n - 1) / (syr2k_SCALE_DIM_Y) + 1;
@@ -358,7 +362,11 @@ rocblas_status rocblas_internal_syr2k_her2k_non_recursive_template(rocblas_handl
 
     int batches = handle->getBatchGridDim((int)batch_count);
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    static constexpr int syr2k_DIM_XY = 16; // ASAN: 16*16=256 (was 32*32=1024)
+#else
     static constexpr int syr2k_DIM_XY = 32;
+#endif
     rocblas_int          bx           = (n - 1) / (syr2k_DIM_XY) + 1;
     rocblas_int          by           = (n - 1) / (syr2k_DIM_XY) + 1;
     dim3                 syr2k_grid(bx, by, batches);
@@ -601,7 +609,11 @@ rocblas_status rocblas_internal_syr2k_her2k_template(rocblas_handle    handle,
 
     int batches = handle->getBatchGridDim((int)batch_count);
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    static constexpr int syr2k_SCALE_DIM_X = 32; // ASAN: 32*8=256 (was 128*8=1024)
+#else
     static constexpr int syr2k_SCALE_DIM_X = 128;
+#endif
     static constexpr int syr2k_SCALE_DIM_Y = 8;
     rocblas_int          gx                = (n - 1) / (syr2k_SCALE_DIM_X) + 1;
     rocblas_int          gy                = (n - 1) / (syr2k_SCALE_DIM_Y) + 1;

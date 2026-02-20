@@ -41,7 +41,12 @@
 ROCSOLVER_BEGIN_NAMESPACE
 
 // number of threads for the iamax reduction kernel
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+// ASAN inflates VGPRs beyond 256 on gfx942 — cap at 256 threads
+#define IAMAX_THDS 256
+#else
 #define IAMAX_THDS 1024
+#endif
 
 /** this kernel initializes the permutation array
     which is instrumental for parallel row permutations in GETRF **/

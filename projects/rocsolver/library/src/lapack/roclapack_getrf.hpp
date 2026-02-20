@@ -504,7 +504,12 @@ rocblas_status getrf_panelLU(rocblas_handle handle,
         if(pivot)
         {
             dimx = jb;
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+            // ASAN: cap total threads at 256
+            dimy = std::max(I(1), I(256) / dimx);
+#else
             dimy = I(1024) / dimx;
+#endif
             blocks = (n - jb - 1) / dimy + 1;
             grid = dim3(1, blocks, batch_count);
             threads = dim3(dimx, dimy, 1);

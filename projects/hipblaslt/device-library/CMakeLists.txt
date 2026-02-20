@@ -67,11 +67,12 @@ add_custom_command(
     COMMENT "Building device libraries to ${HIPBLASLT_TENSILE_LIBPATH} ..."
     COMMAND ${TENSILE_CREATE_LIBRARY_COMMAND}
     COMMAND ${CMAKE_COMMAND} -E touch "${output_stamp}"
-    DEPENDS  ${HIPBLASLT_PYTHON_DEPS}
-    # Because the command can contain special characters
+    # No DEPENDS: code objects only rebuild when Tensile.stamp is missing
+    # (clean build or manual deletion).  This prevents cascading rebuilds
+    # from unrelated dependency changes (e.g. rocprofiler-sdk, rocisa
+    # relinks) that would otherwise trigger a multi-hour regeneration.
+    # To force a rebuild of code objects: delete Tensile.stamp.
     VERBATIM
-    # Because this can be very long running and difficult to debug deadlocks
-    # without streaming.
     USES_TERMINAL
 )
 
@@ -83,6 +84,14 @@ endblock()
 add_custom_target(tensilelite-device-libraries ALL
     DEPENDS "${output_stamp}"
 )
+
+# Ordering-only: ensure rocisa (and other Python build tools) are built before
+# TensileCreateLibrary runs, but do NOT trigger a code object rebuild when
+# they change.  This prevents unrelated dependency rebuilds (e.g. profiler
+# SDK) from cascading into a multi-hour Tensile regeneration.
+if(HIPBLASLT_PYTHON_DEPS)
+    add_dependencies(tensilelite-device-libraries ${HIPBLASLT_PYTHON_DEPS})
+endif()
 
 add_subdirectory(extops)
 add_subdirectory(matrix-transform)

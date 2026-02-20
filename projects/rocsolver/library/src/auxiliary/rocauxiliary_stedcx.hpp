@@ -36,7 +36,12 @@
 
 ROCSOLVER_BEGIN_NAMESPACE
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+// ASAN: cap at 256 threads (VGPR inflation limits gfx942 to 1 wave/SIMD)
+#define STEDCX_BDIM 256
+#else
 #define STEDCX_BDIM 512 // Number of threads per thread-block used in main stedc kernels
+#endif
 
 // TODO: using macro STEDCX_EXTERNAL_GEMM = false for now. We can enable the use of
 // external gemm updates once the development is completed for stedc.

@@ -304,7 +304,11 @@ rocblas_status rocblas_symm_hemm_dispatch(rocblas_handle handle,
     if(!m || !n || !batch_count)
         return rocblas_status_success;
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    static constexpr int symm_SCALE_DIM_X = 32; // ASAN: 32*8=256 (was 128*8=1024)
+#else
     static constexpr int symm_SCALE_DIM_X = 128;
+#endif
     static constexpr int symm_SCALE_DIM_Y = 8;
     rocblas_int          gx               = (m - 1) / (symm_SCALE_DIM_X) + 1;
     rocblas_int          gy = std::min(c_YZ_grid_launch_limit, (n - 1) / (symm_SCALE_DIM_Y) + 1);
@@ -314,7 +318,11 @@ rocblas_status rocblas_symm_hemm_dispatch(rocblas_handle handle,
     dim3 symm_scale_grid(gx, gy, batches);
     dim3 symm_scale_threads(symm_SCALE_DIM_X, symm_SCALE_DIM_Y);
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    static constexpr int symm_DIM_XY = 16; // ASAN: 16*16=256 (was 32*32=1024)
+#else
     static constexpr int symm_DIM_XY = 32;
+#endif
     rocblas_int          bx          = (m - 1) / (symm_DIM_XY) + 1;
     rocblas_int          by = std::min(c_YZ_grid_launch_limit, (n - 1) / (symm_DIM_XY) + 1);
     dim3                 symm_grid(bx, by, batches);

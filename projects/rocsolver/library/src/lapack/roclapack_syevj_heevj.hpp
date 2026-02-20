@@ -44,7 +44,12 @@ ROCSOLVER_BEGIN_NAMESPACE
 /************** Kernels and device functions for small size*******************/
 /*****************************************************************************/
 
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+// ASAN: cap at 256 threads (VGPR inflation limits gfx942 to 1 wave/SIMD)
+#define SYEVJ_BDIM 256
+#else
 #define SYEVJ_BDIM 1024 // Max number of threads per thread-block used in syevj_small kernel
+#endif
 
 /** SYEVJ_SMALL_KERNEL/RUN_SYEVJ applies the Jacobi eigenvalue algorithm to matrices of size
     n <= SYEVJ_BLOCKED_SWITCH. For each off-diagonal element A[i,j], a Jacobi rotation J is

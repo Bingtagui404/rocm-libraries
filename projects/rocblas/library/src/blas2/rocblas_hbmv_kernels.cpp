@@ -242,8 +242,13 @@ rocblas_status rocblas_internal_hbmv_launcher(rocblas_handle handle,
     int batches = handle->getBatchGridDim((int)batch_count);
 
     // hbmvN_DIM_Y must be at least 4, 8 * 8 is very slow only 40Gflop/s
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    static constexpr int hbmvN_DIM_X = 16; // ASAN: 16*16=256 (was 64*16=1024)
+    static constexpr int hbmvN_DIM_Y = 16;
+#else
     static constexpr int hbmvN_DIM_X = 64;
     static constexpr int hbmvN_DIM_Y = 16;
+#endif
     rocblas_int          blocks      = (n - 1) / (hbmvN_DIM_X) + 1;
     dim3                 hbmvn_grid(blocks, 1, batches);
     dim3                 hbmvn_threads(hbmvN_DIM_X, hbmvN_DIM_Y);
