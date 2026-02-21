@@ -5,6 +5,7 @@
 
 #include <rocRoller/KernelGraph/ControlGraph/Operation.hpp>
 #include <rocRoller/KernelGraph/CoordinateGraph/Dimension.hpp>
+#include <rocRoller/KernelGraph/Utils.hpp>
 
 namespace rocRoller
 {
@@ -424,22 +425,19 @@ namespace rocRoller
                 Log::debug("  Found {} SubDimensions", subdims.size());
 
                 // Recompute User size using merged SubDimension expressions
-                // Formula: 1 + Σ(stride[i] * (size[i] - 1))
-                auto newSize  = Expression::literal(1u);
-                bool allValid = true;
-
+                std::vector<Expression::ExpressionPtr> sizes, strides;
                 for(auto subdimTag : subdims)
                 {
                     auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
                     AssertFatal(subdim && subdim->size && subdim->stride,
                                 ShowValue(subdimTag),
                                 "SubDimension node missing size or stride");
-
-                    auto contribution = subdim->stride * (subdim->size - Expression::literal(1u));
-                    newSize           = newSize + contribution;
+                    sizes.push_back(subdim->size);
+                    strides.push_back(subdim->stride);
                 }
 
-                user->size = newSize;
+                auto newSize = computeUserSize(sizes, strides);
+                user->size   = newSize;
                 copy.coordinates.setElement(userTag, *user);
                 Log::debug("IdentifyParallelDimensions: Updated User {} size expression using {} "
                            "SubDimensions",

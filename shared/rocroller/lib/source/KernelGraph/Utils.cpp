@@ -1703,5 +1703,27 @@ namespace rocRoller
 
             return {};
         }
+
+        Expression::ExpressionPtr
+            computeUserSize(std::vector<Expression::ExpressionPtr> const& sizes,
+                            std::vector<Expression::ExpressionPtr> const& strides)
+        {
+            AssertFatal(sizes.size() == strides.size(),
+                        ShowValue(sizes.size()),
+                        ShowValue(strides.size()),
+                        "Size and stride vectors must have same length");
+
+            auto userSize = Expression::literal(1u);
+            for(size_t i = 0; i < sizes.size(); ++i)
+            {
+                AssertFatal(sizes[i] && strides[i],
+                            ShowValue(i),
+                            "Size and stride expressions must not be null");
+
+                auto contribution = strides[i] * (sizes[i] - Expression::literal(1u));
+                userSize          = userSize + contribution;
+            }
+            return userSize;
+        }
     }
 }

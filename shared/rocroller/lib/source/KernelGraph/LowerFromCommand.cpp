@@ -66,38 +66,32 @@ namespace rocRoller
         }
 
         /**
-         * @brief Compute User size from SubDimensions.
+         * @brief Helper to convert CommandArgumentPtr vectors to ExpressionPtr vectors.
          *
-         * Formula: 1 + Σ(stride[i] * (size[i] - 1))
+         * Handles literal overrides (if literal value > 0, use it instead of the expression).
          *
-         * @param sizes Size command arguments for each dimension
-         * @param strides Stride command arguments for each dimension
-         * @param literalStrides Optional literal stride values (if >0, use instead of stride expr)
-         * @return Expression representing the user size
+         * @param args CommandArgument vector
+         * @param literals Optional literal values (if literals[i] > 0, use it instead of args[i])
+         * @return Vector of Expression shared pointers
          */
-        std::shared_ptr<Expression::Expression>
-            computeUserSize(std::vector<CommandArgumentPtr> const& sizes,
-                            std::vector<CommandArgumentPtr> const& strides,
-                            std::vector<size_t> const&             literalStrides = {})
+        std::vector<Expression::ExpressionPtr>
+            toExpressionVec(std::vector<CommandArgumentPtr> const& args,
+                            std::vector<size_t> const&             literals = {})
         {
-            std::shared_ptr<Expression::Expression> userSize = Expression::literal(1u);
-            for(size_t i = 0; i < strides.size(); ++i)
+            std::vector<Expression::ExpressionPtr> exprs;
+            exprs.reserve(args.size());
+            for(size_t i = 0; i < args.size(); ++i)
             {
-                std::shared_ptr<Expression::Expression> strideExpr;
-                if(literalStrides.size() > i && literalStrides[i] > 0)
+                if(literals.size() > i && literals[i] > 0)
                 {
-                    strideExpr = Expression::literal(literalStrides[i]);
+                    exprs.push_back(Expression::literal(literals[i]));
                 }
                 else
                 {
-                    strideExpr = std::make_shared<Expression::Expression>(strides[i]);
+                    exprs.push_back(std::make_shared<Expression::Expression>(args[i]));
                 }
-
-                auto sizeExpr     = std::make_shared<Expression::Expression>(sizes[i]);
-                auto contribution = strideExpr * (sizeExpr - Expression::literal(1u));
-                userSize          = userSize + contribution;
             }
-            return userSize;
+            return exprs;
         }
 
         /**
@@ -150,7 +144,7 @@ namespace rocRoller
 
                 auto totalSizeExpr = std::make_shared<Expression::Expression>(sizes[0]);
 
-                auto userSize = computeUserSize(sizes, strides);
+                auto userSize = computeUserSize(toExpressionVec(sizes), toExpressionVec(strides));
 
                 auto user = m_graph.coordinates.addElement(
                     User(tload.getTag(), tensor.data()->name(), userSize));
@@ -266,7 +260,8 @@ namespace rocRoller
                 auto const strides        = tensor.strides();
                 auto const literalStrides = tensor.literalStrides();
 
-                auto userSize = computeUserSize(sizes, strides, literalStrides);
+                auto userSize = computeUserSize(toExpressionVec(sizes, literalSizes),
+                                                toExpressionVec(strides, literalStrides));
 
                 auto user = m_graph.coordinates.addElement(
                     User(tload.getTag(), tensor.data()->name(), userSize));
@@ -405,7 +400,7 @@ namespace rocRoller
                     dims.push_back(dim);
                 }
 
-                auto userSize = computeUserSize(sizes, strides);
+                auto userSize = computeUserSize(toExpressionVec(sizes), toExpressionVec(strides));
 
                 auto linear = m_dim.at(tstore.getSrcTag());
                 auto user   = m_graph.coordinates.addElement(
@@ -465,7 +460,8 @@ namespace rocRoller
                     dims.push_back(dim);
                 }
 
-                auto userSize = computeUserSize(sizes, strides, literalStrides);
+                auto userSize = computeUserSize(toExpressionVec(sizes),
+                                                toExpressionVec(strides, literalStrides));
 
                 auto tile = m_dim.at(tstore.getSrcTag());
                 auto user = m_graph.coordinates.addElement(
