@@ -271,20 +271,29 @@ namespace rocRoller
                                          .getInputNodeIndices(maybeScaleA, isConstructMacroTile)
                                          .to<std::vector>();
 
-                        size_t expectedScaleASize = aFreeDims.size() + aContractedDims.size();
-                        AssertFatal(scaleADims.size() == expectedScaleASize,
-                                    ShowValue(scaleADims.size()),
-                                    ShowValue(expectedScaleASize),
-                                    ShowValue(aFreeDims.size()),
-                                    ShowValue(aContractedDims.size()));
-
-                        // Match ScaleA's free dimensions with A's free dimensions
-                        for(size_t i = 0; i < aFreeDims.size(); i++)
+                        // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
+                        if(scaleADims.size() > 0)
                         {
-                            redundantArgs.push_back({scaleADims[i], aFreeDims[i]});
+                            size_t expectedScaleASize = aFreeDims.size() + aContractedDims.size();
+                            AssertFatal(scaleADims.size() == expectedScaleASize,
+                                        ShowValue(scaleADims.size()),
+                                        ShowValue(expectedScaleASize),
+                                        ShowValue(aFreeDims.size()),
+                                        ShowValue(aContractedDims.size()));
+
+                            // Match ScaleA's free dimensions with A's free dimensions
+                            for(size_t i = 0; i < aFreeDims.size(); i++)
+                            {
+                                redundantArgs.push_back({scaleADims[i], aFreeDims[i]});
+                            }
+                            Log::debug("IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
+                                       aFreeDims.size());
                         }
-                        Log::debug("IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
-                                   aFreeDims.size());
+                        else
+                        {
+                            Log::debug("IdentifyParallelDimensions: ScaleA is scalar (SingleScale mode), "
+                                       "skipping dimension matching");
+                        }
                     }
 
                     // Validate ScaleB dimensions if present
@@ -294,25 +303,35 @@ namespace rocRoller
                                          .getInputNodeIndices(maybeScaleB, isConstructMacroTile)
                                          .to<std::vector>();
 
-                        size_t expectedScaleBSize = bContractedDims.size() + bFreeDims.size();
-                        AssertFatal(scaleBDims.size() == expectedScaleBSize,
-                                    ShowValue(scaleBDims.size()),
-                                    ShowValue(expectedScaleBSize),
-                                    ShowValue(bContractedDims.size()),
-                                    ShowValue(bFreeDims.size()));
-
-                        // Match ScaleB's free dimensions with B's free dimensions
-                        for(size_t i = 0; i < bFreeDims.size(); i++)
+                        // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
+                        if(scaleBDims.size() > 0)
                         {
-                            size_t scaleBIdx = bContractedDims.size() + i;
-                            redundantArgs.push_back({scaleBDims[scaleBIdx], bFreeDims[i]});
+                            size_t expectedScaleBSize = bContractedDims.size() + bFreeDims.size();
+                            AssertFatal(scaleBDims.size() == expectedScaleBSize,
+                                        ShowValue(scaleBDims.size()),
+                                        ShowValue(expectedScaleBSize),
+                                        ShowValue(bContractedDims.size()),
+                                        ShowValue(bFreeDims.size()));
+
+                            // Match ScaleB's free dimensions with B's free dimensions
+                            for(size_t i = 0; i < bFreeDims.size(); i++)
+                            {
+                                size_t scaleBIdx = bContractedDims.size() + i;
+                                redundantArgs.push_back({scaleBDims[scaleBIdx], bFreeDims[i]});
+                            }
+                            Log::debug("IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
+                                       bFreeDims.size());
                         }
-                        Log::debug("IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
-                                   bFreeDims.size());
+                        else
+                        {
+                            Log::debug("IdentifyParallelDimensions: ScaleB is scalar (SingleScale mode), "
+                                       "skipping dimension matching");
+                        }
                     }
 
-                    // Match blocked contracted dimensions when both scales exist
-                    if(maybeScaleA > 0 && maybeScaleB > 0)
+                    // Match blocked contracted dimensions when both scales exist and have dimensions
+                    if(maybeScaleA > 0 && maybeScaleB > 0 && scaleADims.size() > 0
+                       && scaleBDims.size() > 0)
                     {
                         for(size_t i = 0; i < aContractedDims.size(); i++)
                         {
