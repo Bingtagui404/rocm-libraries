@@ -33,7 +33,7 @@ from Tensile.SolutionStructs import Solution, ProblemSizes
 from Tensile.SolutionStructs.Problem import ProblemType, problemTypeToEnum
 from Tensile.Common.GlobalParameters import defaultSolution
 
-from typing import NamedTuple, List, Dict
+from typing import NamedTuple, Dict
 import os
 import sys
 import subprocess
@@ -293,7 +293,7 @@ def parseLibraryLogicData(
         lazyLibraryLoading: bool
     ):
     """Parses the data of a library logic file."""
-    if isinstance(data, List):
+    if isinstance(data, list):
         # TODO: this can be removed when all logic files have dict format
         data = parseLibraryLogicList(data, srcFile)
     elif isinstance(data, dict) in data:
