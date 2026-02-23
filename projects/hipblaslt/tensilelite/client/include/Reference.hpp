@@ -40,86 +40,69 @@ namespace TensileLite
         template <>
         inline bool AlmostEqual(Half a, Half b)
         {
-            Half absA = (a > 0) ? a : -a;
-            Half absB = (b > 0) ? b : -b;
-            // this avoids NaN when inf is compared against inf in the alternative code
-            // path
-            if(static_cast<float>(absA) == std::numeric_limits<float>::infinity()
-               || // numeric_limits is yet to
-               // support _Float16 type
-               // properly;
-               static_cast<float>(absB)
-                   == std::numeric_limits<float>::infinity()) // however promoting it to
-            // float works just as fine
-            {
-                return a == b;
-            }
-            Half absDiff = (a - b > 0) ? a - b : b - a;
-            return absDiff / (absA + absB + 1) < 0.01;
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.01f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
         template <>
         inline bool AlmostEqual(Float8 a, Float8 b)
         {
-            Float8 absA    = (a > static_cast<Float8>(0.0f)) ? a : static_cast<Float8>(0.0f) - a;
-            Float8 absB    = (b > static_cast<Float8>(0.0f)) ? b : static_cast<Float8>(0.0f) - b;
-            Float8 absDiff = (a - b > static_cast<Float8>(0.0f)) ? a - b : b - a;
-            return absDiff / (absA + absB + static_cast<Float8>(1.0f)) < static_cast<Float8>(
-                       0.125f); // tolerance * eps = 2 * 0.0625; 2*eps needed for SR
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.125f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
         template <>
         inline bool AlmostEqual(BFloat8 a, BFloat8 b)
         {
-            BFloat8 absA    = (a > static_cast<BFloat8>(0.0f)) ? a : static_cast<BFloat8>(0.0f) - a;
-            BFloat8 absB    = (b > static_cast<BFloat8>(0.0f)) ? b : static_cast<BFloat8>(0.0f) - b;
-            BFloat8 absDiff = (a - b > static_cast<BFloat8>(0.0f)) ? a - b : b - a;
-            return absDiff / (absA + absB + static_cast<BFloat8>(1.0f)) < static_cast<BFloat8>(
-                       0.25f); // tolerance * epsilon = 2 * 0.125; 2*eps needed for SR
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.25f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
         template <>
         inline bool AlmostEqual(Float8_fnuz a, Float8_fnuz b)
         {
-            Float8_fnuz absA    = (a > static_cast<Float8_fnuz>(0.0f)) ? a : static_cast<Float8_fnuz>(0.0f) - a;
-            Float8_fnuz absB    = (b > static_cast<Float8_fnuz>(0.0f)) ? b : static_cast<Float8_fnuz>(0.0f) - b;
-            Float8_fnuz absDiff = (a - b > static_cast<Float8_fnuz>(0.0f)) ? a - b : b - a;
-            return absDiff / (absA + absB + static_cast<Float8_fnuz>(1.0f)) < static_cast<Float8_fnuz>(
-                       0.125f); // tolerance * eps = 2 * 0.0625; 2*eps needed for SR
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.125f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
         template <>
         inline bool AlmostEqual(BFloat8_fnuz a, BFloat8_fnuz b)
         {
-            BFloat8_fnuz absA    = (a > static_cast<BFloat8_fnuz>(0.0f)) ? a : static_cast<BFloat8_fnuz>(0.0f) - a;
-            BFloat8_fnuz absB    = (b > static_cast<BFloat8_fnuz>(0.0f)) ? b : static_cast<BFloat8_fnuz>(0.0f) - b;
-            BFloat8_fnuz absDiff = (a - b > static_cast<BFloat8_fnuz>(0.0f)) ? a - b : b - a;
-            return absDiff / (absA + absB + static_cast<BFloat8_fnuz>(1.0f)) < static_cast<BFloat8_fnuz>(
-                       0.25f); // tolerance * epsilon = 2 * 0.125; 2*eps needed for SR
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.25f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
-    template <>
+        template <>
         inline bool AlmostEqual(BFloat16 a, BFloat16 b)
         {
-            BFloat16 absA = (a > static_cast<BFloat16>(0.0f)) ? a : static_cast<BFloat16>(0.0f) - a;
-            BFloat16 absB = (b > static_cast<BFloat16>(0.0f)) ? b : static_cast<BFloat16>(0.0f) - b;
-            BFloat16 absDiff = (a - b > static_cast<BFloat16>(0.0f)) ? a - b : b - a;
-            return absDiff / (absA + absB + static_cast<BFloat16>(1.0f))
-                   < static_cast<BFloat16>(0.1f);
+            float fa      = static_cast<float>(a);
+            float fb      = static_cast<float>(b);
+            float absDiff = std::fabs(fa - fb);
+            return fa == fb || absDiff < 0.1f * (std::fabs(fa) + std::fabs(fb) + 1.0f);
         }
 
         template <>
         inline bool AlmostEqual(float a, float b)
         {
-            return std::fabs(a - b) / (std::fabs(a) + std::fabs(b) + 1)
-                   < 0.0001; // 7 digits of precision - 2
+            float absDiff = std::fabs(a - b);
+            return a == b || absDiff < 0.0001 * (std::fabs(a) + std::fabs(b) + 1);
         }
 
         template <>
         inline bool AlmostEqual(double a, double b)
         {
-            return std::fabs(a - b) / (std::fabs(a) + std::fabs(b) + 1)
-                   < 0.000000000001; // 15 digits of precision - 2
+            double absDiff = std::fabs(a - b);
+            return a == b || absDiff < 0.000000000001 * (std::fabs(a) + std::fabs(b) + 1);
         }
         template <>
         inline bool AlmostEqual(int8_t a, int8_t b)

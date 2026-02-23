@@ -35,6 +35,7 @@
 #include <Tensile/hip/HipUtils.hpp>
 
 #include <cstddef>
+#include <type_traits>
 
 namespace TensileLite
 {
@@ -678,9 +679,7 @@ namespace TensileLite
                 elementsAfterData
                     = elementsToCopy - (tensor.totalAllocatedElements() + elementsBeforeData);
             }
-            // If there was extra data allocated before the tensor to do bounds
-            // checking, resultBuffer is the whole allocation, while resultData
-            // points directly to the result.
+
             ValidType const* resultBuffer
                 = reinterpret_cast<ValidType const*>(m_cpuResultBuffer.get());
             ValidType const* resultData      = resultBuffer + elementsBeforeData;
