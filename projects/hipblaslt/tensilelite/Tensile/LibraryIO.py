@@ -80,6 +80,78 @@ except ImportError:
 ###################
 # Writing functions
 ###################
+
+# YAML keywords that need quoting when used as string values
+_YAML_BOOL_KEYWORDS = frozenset({
+    'true', 'false', 'yes', 'no', 'on', 'off',
+    'True', 'False', 'Yes', 'No', 'On', 'Off',
+    'TRUE', 'FALSE', 'YES', 'NO', 'ON', 'OFF',
+})
+_YAML_NULL_KEYWORDS = frozenset({'null', 'Null', 'NULL', '~'})
+_YAML_SPECIAL_STARTS = frozenset('-?:,[]{}#&*!|>\'"%%@`')
+
+def _yamlScalar(v):
+    """Format a Python value as an inline YAML scalar."""
+    if v is None:
+        return 'null'
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return repr(v)
+    if isinstance(v, str):
+        return _yamlStr(v)
+    if isinstance(v, list):
+        return _yamlFlowList(v)
+    return repr(v)
+
+def _yamlStr(s):
+    """Format a Python string as a YAML scalar, quoting only when necessary."""
+    if not s or s in _YAML_BOOL_KEYWORDS or s in _YAML_NULL_KEYWORDS:
+        return "'%s'" % s
+    if s[0] in _YAML_SPECIAL_STARTS or s[0] == ' ' or s[-1] == ' ':
+        return "'%s'" % s.replace("'", "''")
+    if ': ' in s or ' #' in s or s.endswith(':') or '\n' in s:
+        return "'%s'" % s.replace("'", "''")
+    # Check if it looks like a number
+    c = s[0]
+    if c.isdigit() or (c in '+-.' and len(s) > 1):
+        try:
+            float(s)
+            return "'%s'" % s
+        except ValueError:
+            pass
+    return s
+
+def _yamlFlowList(lst):
+    """Format a Python list as a YAML flow sequence: [a, b, c]."""
+    if not lst:
+        return '[]'
+    return '[%s]' % ', '.join(_yamlScalar(item) for item in lst)
+
+def _fastDumpSolutions(solutionStates, f):
+    """Write a list of solution dicts as YAML, optimized for speed.
+
+    Produces output compatible with yaml.load(f, CSafeLoader).
+    Only handles the plain Python types found in solution state dicts:
+    int, bool, str, float, None, list, and dict (one level of nesting).
+    """
+    for sol in solutionStates:
+        first = True
+        for k, v in sol.items():
+            if first:
+                prefix = '- '
+                first = False
+            else:
+                prefix = '  '
+            if isinstance(v, dict):
+                f.write('%s%s:\n' % (prefix, k))
+                for k2, v2 in v.items():
+                    f.write('    %s: %s\n' % (k2, _yamlScalar(v2)))
+            else:
+                f.write('%s%s: %s\n' % (prefix, k, _yamlScalar(v)))
+
 def write(filename_noExt, data, format="yaml"):
     """Writes data to file with specified format; extension is appended based on format."""
     if format == "yaml":
@@ -154,7 +226,7 @@ def writeSolutions(filename, problemSizes, biasTypeArgs, activationArgs, solutio
             f.write("- ActivationArgs:\n")
             for setting in activationArgs.settingList:
                 f.write("  - [Enum: %s]\n"%(setting.activationEnum))
-        yaml.dump(solutionStates, f, Dumper=yamlDumper, default_flow_style=None)
+        _fastDumpSolutions(solutionStates, f)
 
 
 ###############################
