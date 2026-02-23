@@ -887,5 +887,45 @@ class Solution:
 
             setattr(self, key, value)
 
+    def writeFastYAML(self, f, indent, listItem=False):
+        """Write this solution directly as YAML, bypassing state() + yaml.dump."""
+        from Tensile.LibraryIO import _fastDumpValue, _yamlScalar
+        from Tensile.Common import state as _state
+        prefix = '  ' * indent
+        # For list items, first key uses "- " prefix; rest use "  " prefix
+        first = True
+        for key in self.__class__.StateKeys:
+            attr = key
+            if isinstance(key, tuple):
+                (key, attr) = key
+            value = getattr(self, attr)
+            if listItem and first:
+                p = prefix[:-2] + '- ' if indent > 0 else '- '
+                first = False
+            else:
+                p = prefix
+            # Decide how to write based on type
+            if hasattr(value, 'writeFastYAML'):
+                f.write('%s%s:\n' % (p, key))
+                value.writeFastYAML(f, indent + 1)
+            elif hasattr(value, 'state') or hasattr(value.__class__, 'StateKeys'):
+                sv = _state(value)
+                if isinstance(sv, dict) and sv:
+                    f.write('%s%s:\n' % (p, key))
+                    _fastDumpValue(f, sv, indent + 1)
+                elif isinstance(sv, (list, tuple)) and sv and any(isinstance(i, (dict, list, tuple)) for i in sv):
+                    f.write('%s%s:\n' % (p, key))
+                    from Tensile.LibraryIO import _fastDumpList
+                    _fastDumpList(f, sv, indent + 1)
+                else:
+                    f.write('%s%s: %s\n' % (p, key, _yamlScalar(sv)))
+            elif isinstance(value, dict) and value:
+                f.write('%s%s:\n' % (p, key))
+                _fastDumpValue(f, value, indent + 1)
+            elif isinstance(value, dict):
+                f.write('%s%s: {}\n' % (p, key))
+            else:
+                f.write('%s%s: %s\n' % (p, key, _yamlScalar(value)))
+
     def getSolutionKeys(self):
         return self.originalSolution.keys()

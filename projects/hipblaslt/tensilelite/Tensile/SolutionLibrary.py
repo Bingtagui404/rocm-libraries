@@ -44,6 +44,11 @@ class SingleSolutionLibrary:
     def state(self):
         return {"type": self.tag, "index": self.solution.index}
 
+    def writeFastYAML(self, f, indent):
+        prefix = '  ' * indent
+        f.write('%stype: %s\n' % (prefix, self.tag))
+        f.write('%sindex: %d\n' % (prefix, self.solution.index))
+
     def remapSolutionIndices(self, indexMap):
         pass
 
@@ -294,6 +299,33 @@ class PredicateLibrary:
         self.tag = tag
         if rows is None: rows = []
         self.rows = rows
+
+    def writeFastYAML(self, f, indent):
+        from Tensile.LibraryIO import _fastDumpValue, _yamlScalar
+        from Tensile.Common import state as _state
+        prefix = '  ' * indent
+        f.write('%stype: %s\n' % (prefix, self.tag))
+        f.write('%srows:\n' % prefix)
+        for row in self.rows:
+            predState = _state(row["predicate"])
+            lib = row["library"]
+            # Write predicate as first key of list item (uses "- " prefix)
+            if isinstance(predState, dict) and predState:
+                f.write('%s- predicate:\n' % prefix)
+                _fastDumpValue(f, predState, indent + 2)
+            else:
+                f.write('%s- predicate: %s\n' % (prefix, _yamlScalar(predState)))
+            # Write library as second key of same list item (uses "  " prefix)
+            if hasattr(lib, 'writeFastYAML'):
+                f.write('%s  library:\n' % prefix)
+                lib.writeFastYAML(f, indent + 2)
+            else:
+                libState = _state(lib)
+                if isinstance(libState, dict) and libState:
+                    f.write('%s  library:\n' % prefix)
+                    _fastDumpValue(f, libState, indent + 2)
+                else:
+                    f.write('%s  library: %s\n' % (prefix, _yamlScalar(libState)))
 
     def merge(self, other):
         assert self.__class__ == other.__class__ and self.tag == other.tag
@@ -593,6 +625,26 @@ class MasterSolutionLibrary:
         if self.version is not None:
             rv["version"] = self.version
         return rv
+
+    def writeFastYAML(self, f, indent):
+        from Tensile.LibraryIO import _fastDumpValue, _fastDumpList
+        prefix = '  ' * indent
+        # Write solutions list
+        f.write('%ssolutions:\n' % prefix)
+        for sol in self.solutions.values():
+            if hasattr(sol, 'writeFastYAML'):
+                sol.writeFastYAML(f, indent + 1, listItem=True)
+            else:
+                _fastDumpList(f, [state(sol)], indent + 1)
+        # Write library
+        f.write('%slibrary:\n' % prefix)
+        if hasattr(self.library, 'writeFastYAML'):
+            self.library.writeFastYAML(f, indent + 1)
+        else:
+            _fastDumpValue(f, state(self.library), indent + 1)
+        # Write version if present
+        if self.version is not None:
+            f.write('%sversion: %s\n' % (prefix, str(self.version)))
 
     def applyNaming(self, splitGSU: bool):
         for s in list(self.solutions.values()):

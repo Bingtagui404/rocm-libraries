@@ -297,7 +297,7 @@ def writeBenchmarkFiles(
             newLibrary.applyNaming(debugConfig.splitGSU)
 
         with timing_context("python_benchpost_library_write"):
-            LibraryIO.write(newLibraryFile, state(newLibrary), globalParameters["LibraryFormat"])
+            LibraryIO.writeLibraryFast(newLibraryFile + ".yaml", newLibrary)
 
         codeObjectFiles = [os.path.relpath(f, sourcePath) \
                 for f in codeObjectFiles]

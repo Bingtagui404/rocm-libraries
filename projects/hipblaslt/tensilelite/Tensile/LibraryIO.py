@@ -102,7 +102,7 @@ def _yamlScalar(v):
         return repr(v)
     if isinstance(v, str):
         return _yamlStr(v)
-    if isinstance(v, list):
+    if isinstance(v, (list, tuple)):
         return _yamlFlowList(v)
     return repr(v)
 
@@ -151,6 +151,78 @@ def _fastDumpSolutions(solutionStates, f):
                     f.write('    %s: %s\n' % (k2, _yamlScalar(v2)))
             else:
                 f.write('%s%s: %s\n' % (prefix, k, _yamlScalar(v)))
+
+def _fastDumpValue(f, value, indent):
+    """Write a Python value as YAML to file handle, recursively.
+
+    Handles the types produced by state(): dict, list, tuple, str, int, float,
+    bool, None.  Scalar lists are rendered inline as flow sequences [a, b, c].
+    """
+    prefix = '  ' * indent
+    if isinstance(value, dict):
+        if not value:
+            f.write('{}\n')
+            return
+        for k, v in value.items():
+            ks = _yamlScalar(k)
+            if isinstance(v, dict):
+                if not v:
+                    f.write('%s%s: {}\n' % (prefix, ks))
+                else:
+                    f.write('%s%s:\n' % (prefix, ks))
+                    _fastDumpValue(f, v, indent + 1)
+            elif isinstance(v, (list, tuple)) and v and any(isinstance(i, (dict, list, tuple)) for i in v):
+                f.write('%s%s:\n' % (prefix, ks))
+                _fastDumpList(f, v, indent + 1)
+            else:
+                f.write('%s%s: %s\n' % (prefix, ks, _yamlScalar(v)))
+    elif isinstance(value, (list, tuple)):
+        _fastDumpList(f, value, indent)
+    else:
+        f.write('%s%s\n' % (prefix, _yamlScalar(value)))
+
+def _fastDumpList(f, lst, indent):
+    """Write a list as YAML block sequence."""
+    prefix = '  ' * indent
+    if not lst:
+        f.write('%s[]\n' % prefix)
+        return
+    for item in lst:
+        if isinstance(item, dict):
+            first = True
+            for k, v in item.items():
+                ks = _yamlScalar(k)
+                if first:
+                    p = prefix + '- '
+                    first = False
+                else:
+                    p = prefix + '  '
+                if isinstance(v, dict):
+                    if not v:
+                        f.write('%s%s: {}\n' % (p, ks))
+                    else:
+                        f.write('%s%s:\n' % (p, ks))
+                        _fastDumpValue(f, v, indent + 2)
+                elif isinstance(v, (list, tuple)) and v and any(isinstance(i, (dict, list, tuple)) for i in v):
+                    f.write('%s%s:\n' % (p, ks))
+                    _fastDumpList(f, v, indent + 2)
+                else:
+                    f.write('%s%s: %s\n' % (p, ks, _yamlScalar(v)))
+        elif isinstance(item, (list, tuple)):
+            f.write('%s- %s\n' % (prefix, _yamlFlowList(item)))
+        else:
+            f.write('%s- %s\n' % (prefix, _yamlScalar(item)))
+
+def writeLibraryFast(filename, library):
+    """Write a MasterSolutionLibrary to YAML using fast direct writing.
+
+    Bypasses both full state() materialization and yaml.dump by having each
+    library object write itself directly to the file handle.
+    """
+    with open(filename, "w") as f:
+        f.write("---\n")
+        library.writeFastYAML(f, 0)
+        f.write("...\n")
 
 def write(filename_noExt, data, format="yaml"):
     """Writes data to file with specified format; extension is appended based on format."""
