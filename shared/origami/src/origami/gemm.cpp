@@ -696,6 +696,7 @@ double compute_memory_latency(const problem_t& problem,
     OLOG_DEBUG("Ld_mem_dram: " << Ld_mem_dram);
     OLOG_DEBUG("Ld_mem_mall: " << Ld_mem_mall);
     OLOG_DEBUG("bw_limited: " << bw_limited);
+    OLOG_DEBUG("L_mem_mem_mem_l2: " << L_mem_mem_l2);
     OLOG_DEBUG("L_mem_mem_mall: " << L_mem_mem_mall);
     OLOG_DEBUG("L_mem_mem_dram: " << L_mem_mem_dram);
     OLOG_DEBUG("L_mem: " << L_mem);
@@ -730,7 +731,8 @@ double compute_tile_latency(const problem_t& problem,
   const auto a_bits  = datatype_to_bits(problem.a_dtype);
   const auto b_bits  = datatype_to_bits(problem.b_dtype);
   const auto d_bytes = data_type_to_bytes(problem.d_dtype);
-
+  const long k_per_split = static_cast<long>(math::safe_ceil_div(K, splitting_factor));
+  
   heuristic_params_t heuristic = get_heuristic_params(problem, hardware, config);
 
   // 1) Compute per-tile latencies
@@ -738,6 +740,10 @@ double compute_tile_latency(const problem_t& problem,
 
   double L_mem =
       compute_memory_latency(problem, hardware, config, num_active_cus, splitting_factor);
+
+  // Formocast prefetch //
+
+  // Formocast memory load //
 
   // TODO Does work utilization need to be 128-byte rounded for a cache line?
   double utilization        = calculate_work_utilization(problem, config);
@@ -848,6 +854,7 @@ double compute_tile_latency(const problem_t& problem,
   {
     L_cvt = compute_cvt_overhead_x1(problem, hardware, config);
   }
+  // L_mem almost always dominates L_compute
   double L_tile_single =
       std::max(L_compute * heuristic.weight_compute, L_mem * heuristic.weight_memory);
   L_tile_single *= heuristic.main_loop_efficiency;
@@ -855,7 +862,7 @@ double compute_tile_latency(const problem_t& problem,
   L_tile_single += L_cvt;
 
   // 5) Number of K-iterations (excluding epilogue), at least 1
-  const long k_per_split = static_cast<long>(math::safe_ceil_div(K, splitting_factor));
+  
   long num_iter =
       std::max(static_cast<long>(math::safe_ceil_div(static_cast<size_t>(k_per_split), MT_K) - 1),
                static_cast<long>(1));

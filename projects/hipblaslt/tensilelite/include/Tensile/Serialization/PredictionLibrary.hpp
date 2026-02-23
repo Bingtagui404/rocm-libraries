@@ -115,6 +115,19 @@ namespace TensileLite
                                 .cache_hints_b             = solution->sizeMapping.nonTemporalB,
                                 .workspace_size            = std::numeric_limits<size_t>::max(),
                                 .workspace_size_per_elem_c = std::numeric_limits<size_t>::max(),
+                                .tensile.grvw_a = solution->sizeMapping.grvwA,
+                                .tensile.grvw_b = solution->sizeMapping.grvwB,
+                                .tensile.gwvw_d = solution->sizeMapping.gwvwD,
+                                .tensile.prefetch_global_read = solution->sizeMapping.PrefetchGlobalRead,
+                                .tensile.direct_to_vgpr_a = solution->sizeMapping.DirectToVgprA,
+                                .tensile.direct_to_vgpr_b = solution->sizeMapping.DirectToVgprB,
+                                .tensile.num_loads_coalesced_a = solution->sizeMapping.NumLoadsCoalescedA,
+                                .tensile.num_loads_coalesced_b = solution->sizeMapping.NumLoadsCoalescedB,
+                                .tensile.vector_width_a = solution->sizeMapping.VectorWidthA,
+                                .tensile.vector_width_b = solution->sizeMapping.VectorWidthB,
+                                .tensile.wave_group_m = solution->sizeMapping.waveGroup[0],
+                                .tensile.wave_group_n = solution->sizeMapping.waveGroup[1],
+                                .tensile.wave_num = solution->sizeMapping.waveNum,
                             };
 
                             lib.origami_config_list.emplace_back(origami_config);

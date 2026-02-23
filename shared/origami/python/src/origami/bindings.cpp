@@ -143,7 +143,8 @@ NB_MODULE(origami, m) {
                           size_t,  // L2_capacity
                           double,  // compute_clock_ghz
                           size_t,  // parallel_mi_cu
-                          std::tuple<double, double, double>>())  // mem_bw_per_wg_coefficients
+                          std::tuple<double, double, double>,  // mem_bw_per_wg_coefficients
+                          size_t>())  // wavefront_size
       .def("print", &hardware_t::print)
       .def("get_valid_matrix_instructions", &hardware_t::get_valid_matrix_instructions,
            "Get valid matrix instruction dimensions for a given datatype")

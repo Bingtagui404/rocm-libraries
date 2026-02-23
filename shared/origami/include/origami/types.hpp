@@ -325,6 +325,77 @@ struct runtime_options {
 };
 
 /**
+ * @brief Tensile/TensileLite-specific configuration parameters.
+ *
+ * Contains parameters specific to TensileLite-generated GEMM kernels,
+ * used by the Formocast simulation model. These parameters are ignored
+ * by the estimation-based prediction model.
+ */
+struct tensile_params_t {
+  /// Depth unroll factor (0 = use mt.k)
+  std::size_t depth_u = 0;
+
+  /// Global split-K factor
+  std::int16_t global_split_u = 1;
+
+  /// GSU accumulation method (0=none, 2=MultiBuffer, 3=MultiBufferSingleKernel)
+  int global_accumulation = 0;
+
+  /// Local split-K factor
+  int local_split_u = 1;
+
+  /// Global read vector width for matrix A
+  std::size_t grvw_a = 1;
+
+  /// Global read vector width for matrix B
+  std::size_t grvw_b = 1;
+
+  /// Global write vector width for matrix D
+  std::size_t gwvw_d = 1;
+
+  /// DirectToVGPR flags - bypass LDS for register file
+  bool direct_to_vgpr_a = false;
+  bool direct_to_vgpr_b = false;
+
+  /// DirectToLDS flags - direct global memory to LDS
+  bool direct_to_lds_a = false;
+  bool direct_to_lds_b = false;
+
+  /// Number of loads that can be coalesced
+  int num_loads_coalesced_a = 1;
+  int num_loads_coalesced_b = 1;
+
+  /// Vector width for matrix operands
+  int vector_width_a = 1;
+  int vector_width_b = 1;
+
+  /// Number of waves per workgroup
+  std::size_t wave_num = 4;
+
+  /// Wave group dimensions [wave_group_m, wave_group_n]
+  int wave_group_m = 2;
+  int wave_group_n = 2;
+
+  /// Prefetch global read depth
+  int prefetch_global_read = 2;
+
+  /// Math clocks per unrolled loop iteration (0 = auto-calculate)
+  int math_clocks_unrolled_loop = 0;
+
+  /// Swizzled memory layout flags
+  bool swizzle_a = false;
+  bool swizzle_b = false;
+
+  /// Workgroup mapping XCC parameters
+  int workgroup_mapping_xcc = 0;
+  int workgroup_mapping_xcc_group = 0;
+  bool global_split_u_coalesced = false;
+  bool global_split_u_wgm_round_robin = false;
+
+  constexpr bool operator==(const tensile_params_t& o) const noexcept = default;
+};
+
+/**
  * @brief Full kernel configuration (tile shape + execution parameters).
  *
  * Holds the geometric tile sizes along with occupancy,
@@ -364,6 +435,10 @@ struct config_t {
   target_t target = target_t::tensilelite;
   /// Grid selection algorithm.
   grid_selection_t grid_selection = grid_selection_t::k_split_aware;
+
+  /// Tensile/TensileLite-specific parameters (used when prediction_mode == simulation)
+  /// These are ignored by the estimation-based prediction model.
+  tensile_params_t tensile{};
 
   constexpr bool operator==(const config_t& o) const noexcept {
     return mt == o.mt && mi == o.mi && hand_optimized_main_loop == o.hand_optimized_main_loop &&

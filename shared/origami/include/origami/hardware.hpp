@@ -133,6 +133,7 @@ class hardware_t {
     std::tuple<double, double, double>
         mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
     double mem_clock_ratio;          ///< Memory clock ratio relative to compute clock
+    size_t wavefront_size;           ///< Wavefront size in threads
 
     constexpr architecture_constants(size_t num_xcds,
                                      double mem1_perf_ratio,
@@ -140,14 +141,16 @@ class hardware_t {
                                      double mem3_perf_ratio,
                                      size_t parallel_mi_cu,
                                      std::tuple<double, double, double> mem_bw_per_wg_coefficients,
-                                     double mem_clock_ratio)  // Obtained through microbenchmarking
+                                     double mem_clock_ratio,  // Obtained through microbenchmarking
+                                     size_t wavefront_size = 64)
         : num_xcds(num_xcds)
         , mem1_perf_ratio(mem1_perf_ratio)
         , mem2_perf_ratio(mem2_perf_ratio)
         , mem3_perf_ratio(mem3_perf_ratio)
         , parallel_mi_cu(parallel_mi_cu)
         , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
-        , mem_clock_ratio(mem_clock_ratio) {}
+        , mem_clock_ratio(mem_clock_ratio)
+        , wavefront_size(wavefront_size) {}
   };
 
   /**
@@ -169,28 +172,28 @@ class hardware_t {
   static constexpr architecture_constants get_arch_constants(architecture_t arch) {
     switch (arch) {
       case architecture_t::gfx90a:
-        return {1, 5.5, 1.21875121875121875122 * 1.2, 1.2, 4, std::make_tuple(0, 0.03, 0), 1.5};
+        return {1, 5.5, 1.21875121875121875122 * 1.2, 1.2, 4, std::make_tuple(0, 0.03, 0), 1.5, 64};
       case architecture_t::gfx942:
-        return {8, 17, 1.21875121875121875122 * 6, 4, 4, std::make_tuple(0, 0.015, 0), 1.5};
+        return {8, 17, 1.21875121875121875122 * 6, 4, 4, std::make_tuple(0, 0.015, 0), 1.5, 64};
       case architecture_t::gfx950:
-        return {8, 17, 1.21875121875121875122 * 7, 6, 4, std::make_tuple(0, 0.008, 0), 1.5};
+        return {8, 17, 1.21875121875121875122 * 7, 6, 4, std::make_tuple(0, 0.008, 0), 1.5, 64};
       case architecture_t::gfx1201:
-        return {1, 5.74, 1.21875121875121875122 * 2.41, 0.464, 2, std::make_tuple(0, 0.17, 0), 1.5};
+        return {1, 5.74, 1.21875121875121875122 * 2.41, 0.464, 2, std::make_tuple(0, 0.17, 0), 1.5, 32};
       case architecture_t::gfx1100:
-        return {1, 7.12, 1.21875121875121875122 * 3.48, 0.732, 2, std::make_tuple(0, 0.11, 0), 1.5};
+        return {1, 7.12, 1.21875121875121875122 * 3.48, 0.732, 2, std::make_tuple(0, 0.11, 0), 1.5, 32};
       case architecture_t::gfx1150:
         // AMD Strix Point iGPU
-        return {1, 1.497, NO_MALL_AVAILABLE, 0.077, 16, std::make_tuple(0, 0.18, 0), 1.5};
+        return {1, 1.497, NO_MALL_AVAILABLE, 0.077, 16, std::make_tuple(0, 0.18, 0), 1.5, 32};
       case architecture_t::gfx1151:
         // AMD Strix Halo iGPU
-        return {1, 2.47, 1.21875121875121875122 * 0.93, 0.215, 2, std::make_tuple(0, 0.22, 0), 1.5};
+        return {1, 2.47, 1.21875121875121875122 * 0.93, 0.215, 2, std::make_tuple(0, 0.22, 0), 1.5, 32};
       case architecture_t::gfx1152:
         // AMD Radeon 840M iGPU
-        return {1, 0.849, NO_MALL_AVAILABLE, 0.096, 4, std::make_tuple(0, 0.13, 0), 1.5};
+        return {1, 0.849, NO_MALL_AVAILABLE, 0.096, 4, std::make_tuple(0, 0.13, 0), 1.5, 32};
       case architecture_t::gfx1153:
         // AMD Radeon 820M iGPU
-        return {1, 0.240, NO_MALL_AVAILABLE, 0.066, 2, std::make_tuple(0, 0.19, 0), 1.5};
-      default: return {0, 0, 0, 0, 0, std::make_tuple(0, 0, 0), 0};
+        return {1, 0.240, NO_MALL_AVAILABLE, 0.066, 2, std::make_tuple(0, 0.19, 0), 1.5, 32};
+      default: return {0, 0, 0, 0, 0, std::make_tuple(0, 0, 0), 0, 0};
     }
   }
 
@@ -433,6 +436,7 @@ class hardware_t {
   std::tuple<double, double, double>
       mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
   size_t NUM_XCD;                  ///< Number of XCDs (XGMI Complex Die)
+  size_t wavefront_size;           ///< Wavefront size in threads
 
   /**
    * @brief Construct hardware_t with explicit parameters.
@@ -448,6 +452,7 @@ class hardware_t {
    * @param compute_clock_ghz Compute clock frequency in GHz
    * @param parallel_mi_cu Number of parallel matrix instructions per CU
    * @param mem_bw_per_wg_coefficients Memory bandwidth coefficients per workgroup
+   * @param wavefront_size Wavefront size in threads
    */
   hardware_t(architecture_t arch,
              size_t N_CU,
@@ -459,7 +464,8 @@ class hardware_t {
              size_t L2_capacity,
              double compute_clock_ghz,
              size_t parallel_mi_cu,
-             std::tuple<double, double, double> mem_bw_per_wg_coefficients);
+             std::tuple<double, double, double> mem_bw_per_wg_coefficients,
+             size_t wavefront_size);
 
   /**
    * @brief Construct hardware_t using architecture constants and a clock frequency.

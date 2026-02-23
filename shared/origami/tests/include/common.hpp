@@ -111,6 +111,7 @@ inline origami::hardware_t make_hardware(int gpu_arch) {
   double compute_clock_ghz                                      = 0.0;
   size_t parallel_mi_cu                                         = 0;
   std::tuple<double, double, double> mem_bw_per_wg_coefficients = std::make_tuple(0, 0, 0);
+  size_t wavefront_size                                         = 0;
 
   if (gpu_arch == 942) {
     n_cu                       = 304;
@@ -123,6 +124,7 @@ inline origami::hardware_t make_hardware(int gpu_arch) {
     compute_clock_ghz          = 1;
     parallel_mi_cu             = 1;
     mem_bw_per_wg_coefficients = std::make_tuple(0, 0.015, 0);
+    wavefront_size             = 64;
   } else if (gpu_arch == 950) {
     n_cu                       = 256;
     lds_capacity               = 163840;
@@ -134,6 +136,7 @@ inline origami::hardware_t make_hardware(int gpu_arch) {
     compute_clock_ghz          = 1.2;
     parallel_mi_cu             = 1;
     mem_bw_per_wg_coefficients = std::make_tuple(0, 0.008, 0);
+    wavefront_size             = 64;
   }
 
   const std::string gpu_arch_str = "gfx" + std::to_string(gpu_arch);
@@ -148,5 +151,6 @@ inline origami::hardware_t make_hardware(int gpu_arch) {
                              l2_capacity,
                              compute_clock_ghz,
                              parallel_mi_cu,
-                             mem_bw_per_wg_coefficients);
+                             mem_bw_per_wg_coefficients,
+                             wavefront_size);
 }

@@ -21,7 +21,8 @@ hardware_t::hardware_t(architecture_t arch,
                        size_t L2_capacity,
                        double compute_clock_ghz,
                        size_t parallel_mi_cu,
-                       std::tuple<double, double, double> mem_bw_per_wg_coefficients)
+                       std::tuple<double, double, double> mem_bw_per_wg_coefficients,
+                       size_t wavefront_size)
     : arch(arch)
     , N_CU(N_CU)
     , lds_capacity(lds_capacity)
@@ -33,7 +34,8 @@ hardware_t::hardware_t(architecture_t arch,
     , compute_clock_ghz(compute_clock_ghz)
     , parallel_mi_cu(parallel_mi_cu)
     , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
-    , NUM_XCD(NUM_XCD) {}
+    , NUM_XCD(NUM_XCD)
+    , wavefront_size(wavefront_size) {}
 
 hardware_t::hardware_t(architecture_t arch,
                        size_t N_CU,
@@ -53,7 +55,8 @@ hardware_t::hardware_t(architecture_t arch,
           L2_capacity,
           compute_clock_ghz,
           constants.parallel_mi_cu,
-          constants.mem_bw_per_wg_coefficients) {}
+          constants.mem_bw_per_wg_coefficients,
+          constants.wavefront_size) {}
 
 hardware_t::hardware_t(hipDeviceProp_t properties)
     : hardware_t(get_hardware_for_properties(properties)) {}

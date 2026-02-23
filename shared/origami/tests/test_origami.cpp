@@ -53,7 +53,8 @@ TEST_CASE("Origami: compute_perf_gflops", "[origami]") {
                                             4000000,
                                             1.4,
                                             1,
-                                            std::make_tuple(0, 0.015, 0));
+                                            std::make_tuple(0, 0.015, 0),
+                                            64);
         hardware_fast                  = origami::hardware_t(gpu_arch_enum,
                                             304,
                                             65536,
@@ -64,7 +65,8 @@ TEST_CASE("Origami: compute_perf_gflops", "[origami]") {
                                             4000000,
                                             1.8,
                                             1,
-                                            std::make_tuple(0, 0.015, 0));
+                                            std::make_tuple(0, 0.015, 0),
+                                            64);
       } else if (gpu_arch == 950) {
         const std::string gpu_arch_str = "gfx" + std::to_string(gpu_arch);
         auto gpu_arch_enum             = origami::hardware_t::arch_name_to_enum(gpu_arch_str);
@@ -78,7 +80,8 @@ TEST_CASE("Origami: compute_perf_gflops", "[origami]") {
                                             4000000,
                                             1.4,
                                             1,
-                                            std::make_tuple(0, 0.008, 0));
+                                            std::make_tuple(0, 0.008, 0),
+                                            64);
         hardware_fast                  = origami::hardware_t(gpu_arch_enum,
                                             256,
                                             163840,
@@ -89,7 +92,8 @@ TEST_CASE("Origami: compute_perf_gflops", "[origami]") {
                                             4000000,
                                             1.8,
                                             1,
-                                            std::make_tuple(0, 0.008, 0));
+                                            std::make_tuple(0, 0.008, 0),
+                                            64);
       }
       auto problem =
           make_problem(4096, 4096, 1024, origami::transpose_t::T, origami::transpose_t::N, 2);
