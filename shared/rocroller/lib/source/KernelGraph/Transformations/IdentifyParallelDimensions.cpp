@@ -286,13 +286,15 @@ namespace rocRoller
                             {
                                 redundantArgs.push_back({scaleADims[i], aFreeDims[i]});
                             }
-                            Log::debug("IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
-                                       aFreeDims.size());
+                            Log::debug(
+                                "IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
+                                aFreeDims.size());
                         }
                         else
                         {
-                            Log::debug("IdentifyParallelDimensions: ScaleA is scalar (SingleScale mode), "
-                                       "skipping dimension matching");
+                            Log::debug(
+                                "IdentifyParallelDimensions: ScaleA is scalar (SingleScale mode), "
+                                "skipping dimension matching");
                         }
                     }
 
@@ -319,13 +321,15 @@ namespace rocRoller
                                 size_t scaleBIdx = bContractedDims.size() + i;
                                 redundantArgs.push_back({scaleBDims[scaleBIdx], bFreeDims[i]});
                             }
-                            Log::debug("IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
-                                       bFreeDims.size());
+                            Log::debug(
+                                "IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
+                                bFreeDims.size());
                         }
                         else
                         {
-                            Log::debug("IdentifyParallelDimensions: ScaleB is scalar (SingleScale mode), "
-                                       "skipping dimension matching");
+                            Log::debug(
+                                "IdentifyParallelDimensions: ScaleB is scalar (SingleScale mode), "
+                                "skipping dimension matching");
                         }
                     }
 
