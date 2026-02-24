@@ -192,3 +192,160 @@ SCENARIO("IdentifyParallelDimensions transformation works for GEMM", "[kernel-gr
         }
     }
 }
+
+SCENARIO("IdentifyParallelDimensions transformation works for scaled MatrixMultiply",
+         "[kernel-graph]")
+{
+    using namespace rocRoller;
+    auto ctx = TestContext::ForDefaultTarget();
+
+    // MatrixMultiply computes: D = A × B (no C tensor, only inputs A,B and output D)
+    auto example = rocRollerTest::Graphs::MatrixMultiply(DataType::Float,
+                                                         DataType::Float,
+                                                         DataType::Float,
+                                                         Operations::ScaleMode::Separate,
+                                                         Operations::ScaleMode::Separate);
+
+    GIVEN("The initial kernel graph for a scaled MatrixMultiply")
+    {
+        auto kgraph = KernelGraph::translate(example.getCommand());
+
+        THEN("A, ScaleA, B, ScaleB, and D tensor sizes are added as kernel args.")
+        {
+            auto cleanArgs = KernelGraph::CleanArguments(ctx.get(), example.getCommand());
+
+            kgraph = cleanArgs.apply(kgraph);
+
+            // A tensor dimensions (M, K)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_1"));
+            // ScaleA dimensions (M, K/blockSize)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_1"));
+            // B tensor dimensions (K, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_1"));
+            // ScaleB dimensions (K/blockSize, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_7_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_7_size_1"));
+            // D (output) tensor dimensions (M, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_11_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_11_size_1"));
+        }
+
+        WHEN("The IdentifyParallelDimensions transformation is applied")
+        {
+            auto ipd = KernelGraph::IdentifyParallelDimensions();
+            kgraph   = ipd.apply(kgraph);
+
+            THEN("Redundant dimensions between A, ScaleA, B, ScaleB, and D are eliminated.")
+            {
+                auto cleanArgs = KernelGraph::CleanArguments(ctx.get(), example.getCommand());
+
+                kgraph = cleanArgs.apply(kgraph);
+
+                // A tensor: M and K dimensions retained
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_1"));
+
+                // ScaleA: M matches A's M (redundant), K/blockSize unique (retained)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_2_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_1"));
+
+                // B tensor: K redundant with A, only N retained
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_5_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_1"));
+
+                // ScaleB: K/blockSize matches ScaleA (redundant), N matches B (redundant)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_7_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_7_size_1"));
+
+                // D (output): M matches A (redundant), N matches B (redundant)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_11_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_11_size_1"));
+            }
+        }
+    }
+}
+
+SCENARIO("IdentifyParallelDimensions transformation works for scaled GEMM", "[kernel-graph]")
+{
+    using namespace rocRoller;
+    auto ctx = TestContext::ForDefaultTarget();
+
+    // GEMM computes: D = alpha*A*B + beta*C (has both C input and D output tensors)
+    auto example = rocRollerTest::Graphs::GEMM(DataType::Float);
+    example.setScaling(Operations::ScaleMode::Separate,
+                       Operations::ScaleMode::Separate,
+                       DataType::E8M0,
+                       DataType::E8M0,
+                       32);
+
+    GIVEN("The initial kernel graph for a scaled GEMM")
+    {
+        auto kgraph = KernelGraph::translate(example.getCommand());
+
+        THEN("A, ScaleA, B, ScaleB, C, and D tensor sizes are added as kernel args.")
+        {
+            auto cleanArgs = KernelGraph::CleanArguments(ctx.get(), example.getCommand());
+
+            kgraph = cleanArgs.apply(kgraph);
+
+            // A tensor dimensions (M, K)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_1"));
+            // ScaleA dimensions (M, K/blockSize)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_1"));
+            // B tensor dimensions (K, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_1"));
+            // ScaleB dimensions (K/blockSize, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_7_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_7_size_1"));
+            // C (input) tensor dimensions (M, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_10_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_10_size_1"));
+            // D (output) tensor dimensions (M, N)
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_21_size_0"));
+            CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_21_size_1"));
+        }
+
+        WHEN("The IdentifyParallelDimensions transformation is applied")
+        {
+            auto ipd = KernelGraph::IdentifyParallelDimensions();
+            kgraph   = ipd.apply(kgraph);
+
+            THEN("Redundant dimensions between A, ScaleA, B, ScaleB, C, and D are eliminated.")
+            {
+                auto cleanArgs = KernelGraph::CleanArguments(ctx.get(), example.getCommand());
+
+                kgraph = cleanArgs.apply(kgraph);
+
+                // A tensor: M and K dimensions retained
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_0_size_1"));
+
+                // ScaleA: M matches A's M (redundant), K/blockSize unique (retained)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_2_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_2_size_1"));
+
+                // B tensor: K redundant with A, only N retained
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_5_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), HasKernelArgNamed("Tensor_5_size_1"));
+
+                // ScaleB: K/blockSize matches ScaleA (redundant), N matches B (redundant)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_7_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_7_size_1"));
+
+                // C (input): M matches A (redundant), N matches B (redundant)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_10_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_10_size_1"));
+
+                // D (output): M matches A (redundant), N matches B (redundant)
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_21_size_0"));
+                CHECK_THAT(ctx->kernel()->arguments(), !HasKernelArgNamed("Tensor_21_size_1"));
+            }
+        }
+    }
+}
