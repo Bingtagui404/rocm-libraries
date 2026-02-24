@@ -254,9 +254,9 @@ namespace rocRoller
                     }
                 }
 
-                // Handle block-scaled matrix multiplication scale tensors
-                // ScaleA structure: [A_free_dims..., blocked_contracted_dims...]
-                // ScaleB structure: [blocked_contracted_dims..., B_free_dims...]
+                // Handle block scaled tensors (gemm-spefic layout for when not pretiled)
+                // ScaleA dimensions: [M, K/blockSize]
+                // ScaleB dimensions: [K/blockSize, N]
                 auto maybeScaleA = graph.mapper.get(nodeID, NaryArgument::LHS_SCALE);
                 auto maybeScaleB = graph.mapper.get(nodeID, NaryArgument::RHS_SCALE);
 
@@ -272,8 +272,14 @@ namespace rocRoller
                                          .to<std::vector>();
 
                         // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
-                        if(scaleADims.size() > 0)
+                        // and is not pre tiled (4-dimensional)
+                        if(scaleADims.size() == 2)
                         {
+                            AssertFatal(aFreeDims.size() + aContractedDims.size() == 2,
+                                        "ScaleA handling only supports GEMM tensor contraction",
+                                        ShowValue(aFreeDims.size()),
+                                        ShowValue(aContractedDims.size()));
+
                             size_t expectedScaleASize = aFreeDims.size() + aContractedDims.size();
                             AssertFatal(scaleADims.size() == expectedScaleASize,
                                         ShowValue(scaleADims.size()),
@@ -294,7 +300,7 @@ namespace rocRoller
                         {
                             Log::debug(
                                 "IdentifyParallelDimensions: ScaleA is scalar (SingleScale mode), "
-                                "skipping dimension matching");
+                                "or pre-tiled, skipping dimension matching");
                         }
                     }
 
@@ -306,8 +312,14 @@ namespace rocRoller
                                          .to<std::vector>();
 
                         // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
-                        if(scaleBDims.size() > 0)
+                        // and is not pre tiled (4-dimensional)
+                        if(scaleBDims.size() == 2)
                         {
+                            AssertFatal(bFreeDims.size() + bContractedDims.size() == 2,
+                                        "ScaleB handling only supports GEMM tensor contraction",
+                                        ShowValue(bFreeDims.size()),
+                                        ShowValue(bContractedDims.size()));
+
                             size_t expectedScaleBSize = bContractedDims.size() + bFreeDims.size();
                             AssertFatal(scaleBDims.size() == expectedScaleBSize,
                                         ShowValue(scaleBDims.size()),
@@ -329,13 +341,13 @@ namespace rocRoller
                         {
                             Log::debug(
                                 "IdentifyParallelDimensions: ScaleB is scalar (SingleScale mode), "
-                                "skipping dimension matching");
+                                "or pre-tiled, skipping dimension matching");
                         }
                     }
 
-                    // Match blocked contracted dimensions when both scales exist and have dimensions
-                    if(maybeScaleA > 0 && maybeScaleB > 0 && scaleADims.size() > 0
-                       && scaleBDims.size() > 0)
+                    // Match blocked contracted dimensions
+                    if(maybeScaleA > 0 && maybeScaleB > 0 && scaleADims.size() == 2
+                       && scaleBDims.size() == 2)
                     {
                         for(size_t i = 0; i < aContractedDims.size(); i++)
                         {
@@ -449,14 +461,27 @@ namespace rocRoller
 
                 // Recompute User size using merged SubDimension expressions
                 std::vector<Expression::ExpressionPtr> sizes, strides;
+                bool                                   allSubdimsValid = true;
                 for(auto subdimTag : subdims)
                 {
                     auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
-                    AssertFatal(subdim && subdim->size && subdim->stride,
-                                ShowValue(subdimTag),
-                                "SubDimension node missing size or stride");
+                    if(!subdim || !subdim->size || !subdim->stride)
+                    {
+                        Log::debug("  SubDimension {} missing size or stride, skipping User size "
+                                   "recomputation",
+                                   subdimTag);
+                        allSubdimsValid = false;
+                        break;
+                    }
                     sizes.push_back(subdim->size);
                     strides.push_back(subdim->stride);
+                }
+
+                if(!allSubdimsValid)
+                {
+                    Log::debug("  Skipping User {} size update due to incomplete SubDimensions",
+                               userTag);
+                    continue;
                 }
 
                 auto newSize = computeUserSize(sizes, strides);
