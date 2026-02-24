@@ -21,7 +21,7 @@
 
 #include "origami/gemm.hpp"
 #include "origami/streamk.hpp"
-
+#include "origami/simulator/tensilelite/formocast_simulator.hpp"
 namespace origami {
 double calculate_work_utilization(const problem_t& problem, const config_t& config) {
   const size_t M = problem.size.m;
@@ -709,6 +709,122 @@ double compute_memory_latency(const problem_t& problem,
   return L_mem;
 }
 
+// Use formocast equations to compute prefetch latency
+double compute_prefetch_latency(const config_t& config,
+                                const int& bpeA,
+                                const int& bpeB) {
+
+    double acc_per_wave = config.mt.m * config.mt.n / config.tensile.wave_num / 64;
+    int numGRA = config.mt.m * config.mt.k * bpeA / (config.tensile.wave_num * 64) / config.tensile.grvw_a;
+    int numGRB = config.mt.n * config.mt.k * bpeB / (config.tensile.wave_num * 64) / config.tensile.grvw_b;
+
+    //issue 2nd prefetch
+    double grCycles2 = numGRA * 4 / config.tensile.wave_num;
+    grCycles2 += numGRB * 4 / config.tensile.wave_num;
+    return (grCycles2 + 1024 * config.mt.k/64 + acc_per_wave * 4);                       
+}
+
+double compute_memory_costs(const problem_t& problem,
+                            const hardware_t& hardware,
+                            const config_t& config,
+                            size_t num_active_cus,
+                            size_t splitting_factor) {
+    
+  const auto hw_consts = Formocast().getHardwareConstants(hardware.arch);
+  const auto a_bytes = data_type_to_bytes(problem.a_dtype); 
+  const auto b_bytes = data_type_to_bytes(problem.b_dtype);
+  const bool a_trans = (problem.a_transpose == transpose_t::T);
+  const bool b_trans = (problem.b_transpose == transpose_t::T);
+  size_t grid_m = math::safe_ceil_div(problem.size.m, config.mt.m);
+  size_t grid_n = math::safe_ceil_div(problem.size.n, config.mt.n);
+  uint32_t threadnum = 64 * config.tensile.wave_num;
+  double lda = a_trans? problem.size.k : problem.size.m;
+  double ldb = b_trans? problem.size.n : problem.size.k;
+  int N_WGs_per_tile_XCD = std::min(config.workgroup_mapping, static_cast<int>(grid_n));
+  int M_WGs_per_tile_XCD = std::min(
+        static_cast<int>(grid_m), math::safe_ceil_div(int(hardware.N_CU / hardware.NUM_XCD), N_WGs_per_tile_XCD));
+  int M_WGs_per_tile =
+        std::min(static_cast<int>(grid_m), math::safe_ceil_div(int(hardware.N_CU), N_WGs_per_tile_XCD));
+  int N_WGs_per_tile =
+        std::min(static_cast<int>(grid_n), N_WGs_per_tile_XCD * math::safe_ceil_div(M_WGs_per_tile, static_cast<int>(grid_m)));
+  
+  // K calculations
+  double k_per_split = math::safe_ceil_div(static_cast<uint32_t>(problem.size.k), static_cast<uint32_t>(splitting_factor));
+  uint32_t loopCnt = k_per_split / config.mt.k;
+  uint32_t K_tail = k_per_split - (loopCnt * config.mt.k);
+
+  simulator::L1CacheHitRate l1 = simulator::computeL1CacheHitRate(
+                hw_consts.L1CacheCapacity, hw_consts.L1CacheLineSize, hw_consts.L1BusWidthPerCU, 
+                config.mt.m, config.mt.n, a_bytes, b_bytes, config.cache_hints_a, config.cache_hints_b, config.tensile.grvw_a,
+                config.tensile.grvw_b, config.tensile.direct_to_vgpr_a, config.tensile.direct_to_vgpr_b, false, false,
+                config.tensile.vector_width_a, config.tensile.vector_width_b, a_trans, b_trans, lda, ldb, config.tensile.num_loads_coalesced_a,
+                config.tensile.num_loads_coalesced_b, threadnum, config.tensile.wave_group_m, config.tensile.wave_group_n, false);
+  
+  simulator::L2CacheHitRate l2 = simulator::computeL2CacheHitRate(problem.size.m, problem.size.n, problem.size.k, 
+                config.mt.m, config.mt.n, config.mt.k, hw_consts.L2CacheCapacity, hardware.N_CU,
+                hardware.NUM_XCD, 1, config.workgroup_mapping, problem.batch, a_bytes, b_bytes, 
+                config.cache_hints_a, config.cache_hints_b, false);
+  
+  simulator::L3CacheHitRate l3 = simulator::computeL3CacheHitRate(problem.size.m, problem.size.n, problem.size.k,
+                hw_consts.L3CacheCapacity, hardware.N_CU, a_bytes, b_bytes, config.cache_hints_a, config.cache_hints_b,
+                grid_n, grid_m, N_WGs_per_tile, M_WGs_per_tile);
+  
+  // Calculate load requests and memory access costs
+  double tcc_ea0_coalscedA;
+  double tcc_ea0_coalscedB;
+  double A_L1_req = simulator::getLoadRequest(std::min(config.mt.m, problem.size.m), config.mt.k, hw_consts.L1CacheLineSize, 
+                                         config.tensile.grvw_a, a_bytes, config.tensile.direct_to_vgpr_a, 
+                                         a_trans,           // isTransposed
+                                         false,    // isSwizzled (for transposed case)
+                                         config.tensile.vector_width_a,           // VW (for transposed case)
+                                         hw_consts.L1BusWidthPerCU,  // L1BusWidthPerCU (for non-transposed case)
+                                         config.tensile.num_loads_coalesced_a,          // NumLoadsCoalesced (for non-transposed case)
+                                         config.tensile.wave_group_m,      // numWaveX (for non-transposed case)
+                                         tcc_ea0_coalscedA);
+
+  double B_L1_req = simulator::getLoadRequest(std::min(config.mt.n, problem.size.n), config.mt.k, hw_consts.L1CacheLineSize, 
+                                         config.tensile.grvw_b, b_bytes, config.tensile.direct_to_vgpr_b, 
+                                         !b_trans,          // isTransposed (B is transposed when trB=false)
+                                         false,    // isSwizzled (for transposed case)
+                                         config.tensile.vector_width_b,           // VW (for transposed case)
+                                         hw_consts.L1BusWidthPerCU,  // L1BusWidthPerCU (for non-transposed case)
+                                         config.tensile.num_loads_coalesced_b,          // NumLoadsCoalesced (for non-transposed case)
+                                         config.tensile.wave_group_n,      // numWaveX (for non-transposed case)
+                                         tcc_ea0_coalscedB);
+  Formocast::CacheHitRates cache_hits;
+  cache_hits.A_L1_hit = l1.tile0HitRate;
+  cache_hits.B_L1_hit = l1.tile1HitRate;
+  cache_hits.A_L2_hit = l2.tile0HitRate;
+  cache_hits.B_L2_hit = l2.tile1HitRate;
+  cache_hits.A_L3_hit = l3.tile0HitRate;
+  cache_hits.B_L3_hit = l3.tile1HitRate;
+  cache_hits.totalL2HitRate = l2.totalHitRate;
+  cache_hits.totalL3HitRate = l3.totalHitRate;
+
+  double A_L2_req = A_L1_req * (1 - cache_hits.A_L1_hit) / 2 * tcc_ea0_coalscedA;
+  double A_L3_req = A_L2_req * (1 - cache_hits.A_L2_hit) / tcc_ea0_coalscedA;
+  double A_hbm_req = A_L3_req * (1 - cache_hits.A_L3_hit);
+  double B_L2_req = B_L1_req * (1 - cache_hits.B_L1_hit) / 2 * tcc_ea0_coalscedB;
+  double B_L3_req = B_L2_req * (1 - cache_hits.B_L2_hit) / tcc_ea0_coalscedB;
+  double B_hbm_req = B_L3_req * (1 - cache_hits.B_L3_hit);
+
+  uint32_t numberWGs = grid_m * grid_n * problem.batch * splitting_factor;
+  uint32_t WGs_per_tile = std::min(uint32_t(hw_consts.NumCUs), numberWGs);
+  uint32_t WGs_per_tile_XCD = math::safe_ceil_div(WGs_per_tile, hw_consts.NumXCDs);
+  double L2BandWidthPerCU     = hw_consts.L2ReadArbEff * 128 * 16 / WGs_per_tile_XCD; //90% eff
+  if (L2BandWidthPerCU > hw_consts.L2ReadArbEff * 128 * 16 / (hw_consts.NumCUs/hw_consts.NumXCDs))
+    L2BandWidthPerCU = hw_consts.L2ReadArbEff * 128 * 16 / (hw_consts.NumCUs/hw_consts.NumXCDs);
+  double L3BandWidthPerCU     = hw_consts.L3BandWidth / WGs_per_tile;
+  double HBMBandWidthPerCU    = hw_consts.hbmBandWidth / WGs_per_tile;
+
+  Formocast::MemoryAccessCosts mem_costs = Formocast().calculateMemoryAccessCosts(std::min(config.mt.m, problem.size.m), 
+                                                                                  std::min(config.mt.n, problem.size.n),
+                                                                                  hw_consts, cache_hits, L2BandWidthPerCU, 
+                                                                                  L3BandWidthPerCU, HBMBandWidthPerCU,
+                                                                                  false, false, A_L1_req, B_L1_req,
+                                                                                  A_L2_req, A_L3_req, A_hbm_req,
+                                                                                  B_L2_req, B_L3_req, B_hbm_req);
+}
 /* ---------------------------------------------------------------------------------------- */
 /* Tile-related functions                                                                   */
 /* ---------------------------------------------------------------------------------------- */
@@ -742,6 +858,9 @@ double compute_tile_latency(const problem_t& problem,
       compute_memory_latency(problem, hardware, config, num_active_cus, splitting_factor);
 
   // Formocast prefetch //
+  const auto a_bytes = data_type_to_bytes(problem.a_dtype); 
+  const auto b_bytes = data_type_to_bytes(problem.b_dtype);
+  double L_prefetch = compute_prefetch_latency(config, a_bytes, b_bytes);
 
   // Formocast memory load //
 
@@ -771,6 +890,10 @@ double compute_tile_latency(const problem_t& problem,
   double L_prologue = L_mem;
   L_prologue *= effective_tile_penalty;
   L_prologue *= occupancy_factor;
+
+  double Lpre_prologue = L_prefetch + heuristic.main_memory_load_latency;
+  Lpre_prologue *= effective_tile_penalty;
+  Lpre_prologue *= occupancy_factor;
 
   // 3-2) Epilogue: writes from all active CUs with limited bandwidth
   double mem_bw_occ            = compute_mem_bw_from_occupancy(hardware, num_active_cus);
@@ -876,9 +999,21 @@ double compute_tile_latency(const problem_t& problem,
 
   // Apply final tile total weight
   L_tile_total *= heuristic.weight_tile_total;
+
+  // 6) Total tile latency
+  double Lpre_tile_total = L_tile_single * static_cast<double>(num_iter);
+  Lpre_tile_total += heuristic.weight_prologue * Lpre_prologue;
+  Lpre_tile_total += heuristic.weight_epilogue * L_epilogue;
+  Lpre_tile_total += heuristic.weight_wg_setup * L_WG_setup;
+  Lpre_tile_total += heuristic.weight_loop_overhead * static_cast<double>(num_iter);
+
+  // Apply final tile total weight
+  Lpre_tile_total *= heuristic.weight_tile_total;
   
   if(debug)
   {
+    OLOG_DEBUG("L_prefetch (tensile): " << L_prefetch);
+    OLOG_DEBUG("Lpre_prologue (tensile): " << Lpre_prologue);
     OLOG_DEBUG("L_mem: " << L_mem);
     OLOG_DEBUG("L_compute: " << L_compute);
     OLOG_DEBUG("L_cvt: " << L_cvt);
@@ -889,6 +1024,7 @@ double compute_tile_latency(const problem_t& problem,
     OLOG_DEBUG("L_tile_single: " << L_tile_single);
     OLOG_DEBUG("L_epilogue: " << L_epilogue);
     OLOG_DEBUG("L_tile_total: " << L_tile_total);
+    OLOG_DEBUG("Lpre_tile_total: " << Lpre_tile_total);
   }
   return L_tile_total;
 }

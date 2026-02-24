@@ -193,6 +193,12 @@ double compute_memory_latency(const problem_t& problem,
                               std::size_t num_active_cus,
                               std::size_t splitting_factor);
 
+double compute_prefetch_latency(const config_t& config,
+                                const int& bpeA,
+                                const int& bpeB);
+
+double compute_loads();
+
 /**
  * @brief Computes the latency to compute a K-COMPLETE tile.
  *
