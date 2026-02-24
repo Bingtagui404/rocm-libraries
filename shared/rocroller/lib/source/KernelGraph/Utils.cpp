@@ -1713,6 +1713,9 @@ namespace rocRoller
                         ShowValue(strides.size()),
                         "Size and stride vectors must have same length");
 
+            if(sizes.empty())
+                return Expression::literal(0u);
+
             auto userSize = Expression::literal(1u);
             for(size_t i = 0; i < sizes.size(); ++i)
             {
