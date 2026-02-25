@@ -230,9 +230,10 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
         unsigned int index       = 0;
         const unsigned int lid   = threadIdx.x;
         const unsigned int grpid = blockIdx.x;
+        FpPrecType curN          = cast<FpPrecType>(0.);
 
         // Note: this variable is only used when mio_config::layout_nhwc is false.
-        unsigned int chwid;
+        [[maybe_unused]] unsigned int chwid;
         if constexpr(!mio_config::layout_nhwc)
         {
             chwid = grpid * mio_bn_config::hw;
@@ -261,8 +262,37 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
                     hwidx = (k + (lid << 2)) - (nidx * mio_bn_config::hw);
                     index = nidx * mio_bn_config::chw + chwid + hwidx;
                     read4 = *(reinterpret_cast<const fp_type4*>(in + index));
-                    miopen::batchnorm::_accumulate(mean, read4);
-                    miopen::batchnorm::_accumulate_mad(variance, read4, read4);
+                    // Using Welford's algorithm for calculating variance
+                    // Manually unrolled calculation for the mean and variance of 4 elements, plus a
+                    // merger step
+
+                    typename mapped_vector_type<FpPrecType, 4>::type read4Prec =
+                        cast<typename mapped_vector_type<FpPrecType, 4>::type>(read4);
+                    FpPrecType mean4     = read4Prec.x;
+                    FpPrecType oldMean4  = cast<FpPrecType>(0.);
+                    FpPrecType variance4 = cast<FpPrecType>(0.);
+
+                    oldMean4 = mean4;
+                    mean4 += read4Prec.y;
+                    mean4 *= 0.5f;
+                    variance4 = fma(read4Prec.y - mean4, read4Prec.y - oldMean4, variance4);
+
+                    oldMean4 = mean4;
+                    mean4    = mean4 * 2.0f + read4Prec.z;
+                    mean4 *= 0.333333333f;
+                    variance4 = fma(read4Prec.z - mean4, read4Prec.z - oldMean4, variance4);
+
+                    oldMean4 = mean4;
+                    mean4    = mean4 * 3.0f + read4Prec.w;
+                    mean4 *= 0.25f;
+                    variance4 = fma(read4Prec.w - mean4, read4Prec.w - oldMean4, variance4);
+
+                    // merge the local mean and variance with the currently computed ones
+
+                    FpPrecType delta = mean4 - mean;
+                    mean             = (mean4 * 4.0f + mean * curN) / (curN + 4.f);
+                    variance += variance4 + delta * delta * 4.f * curN / (curN + 4.f);
+                    curN += 4.f;
                 }
             }};
 
@@ -279,8 +309,37 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
                 if(index + 3 < (mio_bn_config::nchw))
                 {
                     read4 = *(reinterpret_cast<const fp_type4*>(in + index));
-                    miopen::batchnorm::_accumulate(mean, read4);
-                    miopen::batchnorm::_accumulate_mad(variance, read4, read4);
+                    // Using Welford's algorithm for calculating variance
+                    // Manually unrolled calculation for the mean and variance of 4 elements, plus a
+                    // merger step
+
+                    typename mapped_vector_type<FpPrecType, 4>::type read4Prec =
+                        cast<typename mapped_vector_type<FpPrecType, 4>::type>(read4);
+                    FpPrecType mean4     = read4Prec.x;
+                    FpPrecType oldMean4  = cast<FpPrecType>(0.);
+                    FpPrecType variance4 = cast<FpPrecType>(0.);
+
+                    oldMean4 = mean4;
+                    mean4 += read4Prec.y;
+                    mean4 *= 0.5f;
+                    variance4 = fma(read4Prec.y - mean4, read4Prec.y - oldMean4, variance4);
+
+                    oldMean4 = mean4;
+                    mean4    = mean4 * 2.0f + read4Prec.z;
+                    mean4 *= 0.333333333f;
+                    variance4 = fma(read4Prec.z - mean4, read4Prec.z - oldMean4, variance4);
+
+                    oldMean4 = mean4;
+                    mean4    = mean4 * 3.0f + read4Prec.w;
+                    mean4 *= 0.25f;
+                    variance4 = fma(read4Prec.w - mean4, read4Prec.w - oldMean4, variance4);
+
+                    // merge the local mean and variance with the currently computed ones
+
+                    FpPrecType delta = mean4 - mean;
+                    mean             = (mean4 * 4.0f + mean * curN) / (curN + 4.f);
+                    variance += variance4 + delta * delta * 4.f * curN / (curN + 4.f);
+                    curN += 4.f;
                 }
             }
         }
@@ -300,17 +359,19 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
                         {
                             index = nidx * mio_bn_config::chw + chwid + hwidx;
                         }
-                        const auto xin = cast<FpPrecType>(in[index]);
-                        mean += xin;
-                        variance = fma(xin, xin, variance);
+                        const auto xin     = cast<FpPrecType>(in[index]);
+                        FpPrecType oldMean = mean;
+                        mean               = (mean * curN + xin) / (curN + 1.f);
+                        curN += 1.f;
+                        variance = fma(xin - mean, xin - oldMean, variance);
                     }
                 }};
 
             if constexpr(rem > 0u)
             {
-                // Note: hip compiler has a bug, it throws compiler warning for comparing unsigned
-                // int with 0 value, when rem is 0. but when rem is 0, this code block should not be
-                // compiled due to the if constexpr used above.
+                // Note: The HIP compiler has a bug, it throws compiler warning for comparing
+                // unsigned int with 0 value, when rem is 0. but when rem is 0, this code block
+                // should not be compiled due to the if constexpr used above.
                 if(lid < rem)
                 {
                     unsigned int remkey = lid + less;
@@ -325,43 +386,40 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
                         index = nidx * mio_bn_config::chw + chwid + hwidx;
                     }
 
-                    const auto xin =
-                        index < mio_bn_config::nchw ? cast<FpPrecType>(in[index]) : FpPrecType{0};
-                    mean += xin;
-                    variance = fma(xin, xin, variance);
+                    bool contributeToVariance = (index < mio_bn_config::nchw);
+                    FpPrecType xin =
+                        contributeToVariance ? cast<FpPrecType>(in[index]) : cast<FpPrecType>(0.);
+                    FpPrecType oldMean = mean;
+                    mean = contributeToVariance ? ((mean * curN + xin) / (curN + 1.f)) : mean;
+                    curN += contributeToVariance ? 1.f : 0.f;
+                    variance += contributeToVariance ? ((xin - mean) * (xin - oldMean)) : 0;
                 }
             }
         }
 
         __syncthreads();
 
-        constexpr auto lcl_data_size =
-            mio_bn_config::use_amdgcn ? mio_bn_config::lds_gcn_size : mio_bn_config::lds_size;
+        constexpr auto lcl_data_size = mio_bn_config::lds_size;
+        // mio_bn_config::use_amdgcn ? mio_bn_config::lds_gcn_size : mio_bn_config::lds_size;
         __shared__ FpAccumType lcl_data_x[lcl_data_size];
         __shared__ FpAccumType lcl_data_y[lcl_data_size];
-        if constexpr(mio_bn_config::use_amdgcn)
-        {
-            miopen::reduction::gcn_reduce2<FpAccumType, lcl_data_size>(
-                reinterpret_cast<FpAccumType&>(mean),
-                reinterpret_cast<FpAccumType&>(variance),
-                static_cast<FpAccumType>(INHW),
-                lcl_data_x,
-                lcl_data_y,
-                lid);
-        }
-        else
-        {
-            miopen::reduction::lds_reduce2<FpAccumType, lcl_data_size>(
-                reinterpret_cast<FpAccumType&>(mean),
-                reinterpret_cast<FpAccumType&>(variance),
-                static_cast<FpAccumType>(INHW),
-                lcl_data_x,
-                lcl_data_y,
-                lid);
-        }
+        __shared__ FpAccumType lcl_data_c[lcl_data_size];
+
+        // temporarily disable gcn_reduce2_welford until the assembly code of the reduction is
+        // patched to reflect the conditional changes
+
+        miopen::reduction::lds_reduce2_welford<FpAccumType, lcl_data_size>(
+            mean,
+            variance,
+            curN,
+            static_cast<FpAccumType>(INHW),
+            lcl_data_x,
+            lcl_data_y,
+            lcl_data_c,
+            lid);
 
         // REDUCTION COMPLETE ---------------------------
-        variance = fma(-mean, mean, variance);
+
         if(variance < FpPrecType{0})
         {
             variance = FpPrecType{0};
@@ -1010,11 +1068,11 @@ extern "C" __global__ void __launch_bounds__(
         typename mio_bn_config::fp_prec_type alpha,
         typename mio_bn_config::fp_prec_type beta)
 {
-    using fp_type          = typename mio_bn_config::fp_type;
-    using fp_prec_type     = typename mio_bn_config::fp_prec_type;
-    using fp_accum_type    = typename mio_bn_config::fp_accum_type;
-    using fp_accum_c_type  = typename mio_bn_config::fp_accum_c_type;
-    using fp_prec_c_type   = typename mio_bn_config::fp_prec_c_type;
+    using fp_type          = typename mio_bn_config::fp_type;         // ushort (bfp16 lol)
+    using fp_prec_type     = typename mio_bn_config::fp_prec_type;    // float
+    using fp_accum_type    = typename mio_bn_config::fp_accum_type;   // float
+    using fp_accum_c_type  = typename mio_bn_config::fp_accum_c_type; // float
+    using fp_prec_c_type   = typename mio_bn_config::fp_prec_c_type;  // float
     constexpr auto variant = mio_bn_config::variant;
 
     using forward_train_spatial_impl = miopen::batchnorm::
