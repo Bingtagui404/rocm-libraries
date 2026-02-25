@@ -824,6 +824,7 @@ double compute_memory_costs(const problem_t& problem,
                                                                                   false, false, A_L1_req, B_L1_req,
                                                                                   A_L2_req, A_L3_req, A_hbm_req,
                                                                                   B_L2_req, B_L3_req, B_hbm_req);
+  return mem_costs.mem_overall;
 }
 /* ---------------------------------------------------------------------------------------- */
 /* Tile-related functions                                                                   */
@@ -863,6 +864,11 @@ double compute_tile_latency(const problem_t& problem,
   double L_prefetch = compute_prefetch_latency(config, a_bytes, b_bytes);
 
   // Formocast memory load //
+  double L_memory = compute_memory_costs(problem,
+                                         hardware,
+                                         config,
+                                         num_active_cus,
+                                         splitting_factor);
 
   // TODO Does work utilization need to be 128-byte rounded for a cache line?
   double utilization        = calculate_work_utilization(problem, config);
@@ -984,6 +990,11 @@ double compute_tile_latency(const problem_t& problem,
   L_tile_single *= effective_tile_penalty;
   L_tile_single += L_cvt;
 
+  double L_tile_single_tensile =
+      std::max(L_compute * heuristic.weight_compute, L_memory * heuristic.weight_memory);
+  L_tile_single_tensile *= heuristic.main_loop_efficiency;
+  L_tile_single_tensile *= effective_tile_penalty;
+  L_tile_single_tensile += L_cvt;
   // 5) Number of K-iterations (excluding epilogue), at least 1
   
   long num_iter =
@@ -1001,7 +1012,7 @@ double compute_tile_latency(const problem_t& problem,
   L_tile_total *= heuristic.weight_tile_total;
 
   // 6) Total tile latency
-  double Lpre_tile_total = L_tile_single * static_cast<double>(num_iter);
+  double Lpre_tile_total = L_tile_single_tensile * static_cast<double>(num_iter);
   Lpre_tile_total += heuristic.weight_prologue * Lpre_prologue;
   Lpre_tile_total += heuristic.weight_epilogue * L_epilogue;
   Lpre_tile_total += heuristic.weight_wg_setup * L_WG_setup;
@@ -1014,6 +1025,7 @@ double compute_tile_latency(const problem_t& problem,
   {
     OLOG_DEBUG("L_prefetch (tensile): " << L_prefetch);
     OLOG_DEBUG("Lpre_prologue (tensile): " << Lpre_prologue);
+    OLOG_DEBUG("L_memory: " << L_memory);
     OLOG_DEBUG("L_mem: " << L_mem);
     OLOG_DEBUG("L_compute: " << L_compute);
     OLOG_DEBUG("L_cvt: " << L_cvt);
@@ -1022,6 +1034,7 @@ double compute_tile_latency(const problem_t& problem,
     OLOG_DEBUG("problem_k_quant: " << problem_k_quant);
     OLOG_DEBUG("L_prologue: " << L_prologue);
     OLOG_DEBUG("L_tile_single: " << L_tile_single);
+    OLOG_DEBUG("L_tile_single_tensile: " << L_tile_single_tensile);
     OLOG_DEBUG("L_epilogue: " << L_epilogue);
     OLOG_DEBUG("L_tile_total: " << L_tile_total);
     OLOG_DEBUG("Lpre_tile_total: " << Lpre_tile_total);

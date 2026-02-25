@@ -257,10 +257,10 @@ namespace origami
         B_L3_clk = B_L3_req * 64 / L3BandWidthPerCU;
         B_hbm_clk = B_hbm_req * 8 / HBMBandWidthPerCU;
 
-        double L1_overall   = (A_L1_clk + B_L1_clk) / hw.math_frequency;
-        double L2_overall   = (A_L2_clk + B_L2_clk) / hw.math_frequency;
-        double L3_overall   = (A_L3_clk + B_L3_clk) / hw.mem_frequency;
-        double hbm_overall  = (A_hbm_clk + B_hbm_clk) / hw.mem_frequency;
+        double L1_overall   = (A_L1_clk + B_L1_clk); /// hw.math_frequency;
+        double L2_overall   = (A_L2_clk + B_L2_clk); /// hw.math_frequency;
+        double L3_overall   = (A_L3_clk + B_L3_clk); /// hw.mem_frequency;
+        double hbm_overall  = (A_hbm_clk + B_hbm_clk);// / hw.mem_frequency;
         mem.mem_overall     = L1_overall + L2_overall + L3_overall + hbm_overall;
 
         mem.mem_l1 = L1_overall;
