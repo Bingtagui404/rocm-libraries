@@ -229,6 +229,14 @@ def runPerformanceCommand (platform, project)
                 echo "\$PASSPHRASE" | ssh-add \$GEMMAIPERF_KEY
                 [ -d gemmaiperf ] && rm -rf gemmaiperf
                 git clone git@github.com:ROCm/gemmaiperf.git
+
+                # Install gemmaiperf dependencies
+                if [ -f gemmaiperf/requirements.txt ]; then
+                    pip install -r gemmaiperf/requirements.txt --user
+                else
+                    # Fallback: install known dependencies
+                    pip install pandas mysql-connector-python --user
+                fi
             """)
         }
 
