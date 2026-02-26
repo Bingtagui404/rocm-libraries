@@ -216,12 +216,11 @@ def runPerformanceCommand (platform, project)
         def rrperfSuite = platform.jenkinsLabel.contains('gfx12') ? "all_gfx120X" : "all"
         
         // Clone gemmaiperf repository for database insertion
-        withCredentials([
-            sshUserPrivateKey(credentialsId: "github-gemmaiperf-ssh-key", 
-                            keyFileVariable: "GEMMAIPERF_KEY", 
-                            usernameVariable: "KEY_USER", 
-                            passphraseVariable: "PASSPHRASE")
-        ]){
+        withCredentials(
+            [
+            sshUserPrivateKey(credentialsId:"github-rocmmathlibrariesbot-ssh_key-mathci_enterprise_job", keyFileVariable:"PUBLIC_KEY_FILE"),
+            sshUserPrivateKey(credentialsId:"github_enterprise-a1_mlselibci_npi-ssh_key-mathci_enterprise_job", keyFileVariable: "ENTERPRISE_KEY_FILE"),
+            ])
             platform.runCommand(this, """#!/usr/bin/env bash
                 set -ex
                 cd ${project.paths.project_build_prefix}/
