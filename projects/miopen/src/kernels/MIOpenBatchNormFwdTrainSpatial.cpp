@@ -399,8 +399,8 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
 
         __syncthreads();
 
-        constexpr auto lcl_data_size = mio_bn_config::lds_size;
-        // mio_bn_config::use_amdgcn ? mio_bn_config::lds_gcn_size : mio_bn_config::lds_size;
+        constexpr auto lcl_data_size =
+            mio_bn_config::use_amdgcn ? mio_bn_config::lds_gcn_size : mio_bn_config::lds_size;
         __shared__ FpAccumType lcl_data_x[lcl_data_size];
         __shared__ FpAccumType lcl_data_y[lcl_data_size];
         __shared__ FpAccumType lcl_data_c[lcl_data_size];
@@ -408,15 +408,30 @@ struct MIOpenBatchNormFwdTrainSpatialImpl<1, FpType, FpPrecType, FpAccumType>
         // temporarily disable gcn_reduce2_welford until the assembly code of the reduction is
         // patched to reflect the conditional changes
 
-        miopen::reduction::lds_reduce2_welford<FpAccumType, lcl_data_size>(
-            mean,
-            variance,
-            curN,
-            static_cast<FpAccumType>(INHW),
-            lcl_data_x,
-            lcl_data_y,
-            lcl_data_c,
-            lid);
+        if constexpr(mio_bn_config::use_amdgcn)
+        {
+            miopen::reduction::gcn_reduce2_welford<FpAccumType, lcl_data_size>(
+                mean,
+                variance,
+                curN,
+                static_cast<FpAccumType>(INHW),
+                lcl_data_x,
+                lcl_data_y,
+                lcl_data_c,
+                lid);
+        }
+        else
+        {
+            miopen::reduction::lds_reduce2_welford<FpAccumType, lcl_data_size>(
+                mean,
+                variance,
+                curN,
+                static_cast<FpAccumType>(INHW),
+                lcl_data_x,
+                lcl_data_y,
+                lcl_data_c,
+                lid);
+        }
 
         // REDUCTION COMPLETE ---------------------------
 
