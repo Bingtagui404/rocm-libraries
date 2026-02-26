@@ -383,7 +383,8 @@ def runPerformanceCommand (platform, project)
                         --db_user \$DB_USER \\
                         --db_pass \$DB_PASS \\
                         --db_label \$DB_LABEL \\
-                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..."
+                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..." \\
+                        --comment "testing CI db insertion"
                     set -e
                     
                     # Archive the CSV file
