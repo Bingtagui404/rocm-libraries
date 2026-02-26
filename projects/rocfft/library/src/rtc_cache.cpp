@@ -476,7 +476,24 @@ static RTCProcessType get_rtc_process_type()
 
 static std::string gpu_arch_strip_flags(const std::string gpu_arch_with_flags)
 {
-    return gpu_arch_with_flags.substr(0, gpu_arch_with_flags.find(':'));
+    // get base architecture (e.g., "gfx942" from "gfx942:sramecc+:xnack+")
+    std::string base = gpu_arch_with_flags.substr(0, gpu_arch_with_flags.find(':'));
+
+    // XNACK flag must be preserved - XNACK+ and XNACK- code objects are
+    // not interchangeable. Stripping xnack causes incorrect behavior
+    // when HSA_XNACK=1.
+    auto xnack_pos = gpu_arch_with_flags.find(":xnack");
+    if(xnack_pos != std::string::npos)
+    {
+        // find the end of the xnack flag (either next ':' or end of string)
+        auto end_pos = gpu_arch_with_flags.find(':', xnack_pos + 1);
+        if(end_pos == std::string::npos)
+            end_pos = gpu_arch_with_flags.length();
+        return base + gpu_arch_with_flags.substr(xnack_pos, end_pos - xnack_pos);
+    }
+
+    // only strip sramecc and other non-critical flags
+    return base;
 }
 
 static std::vector<char> cached_compile_impl(const std::string&          kernel_name,
@@ -659,21 +676,12 @@ std::vector<char> RTCCache::cached_compile(const std::string&          kernel_na
                                            kernel_src_gen_t            generate_src,
                                            const std::array<char, 32>& generator_sum)
 {
-#ifdef ADDRESS_SANITIZER
-    // The address sanitizer is reported to work better when we include xnack+, so don't strip this
-    // from the architecture string when building:
-    const std::string gpu_arch = gpu_arch_with_flags;
-#else
-    // Supplied gpu arch may have extra flags on it
-    // (e.g. gfx90a:sramecc+:xnack-), Strip those from the arch name
-    // since omitting them will generate code that handles either
-    // case.
-    //
-    // As of this writing, there are no known performance benefits to
-    // including the flags.  If that changes, we may need to be more
-    // selective about which flags to strip.
-    const std::string gpu_arch = gpu_arch_strip_flags(gpu_arch_with_flags);
-#endif
+    // Supplied gpu arch may have extra flags on it (e.g. gfx90a:sramecc+:xnack+).
+    // Strip sramecc since it doesn't affect code generation, but XNACK
+    // must be preserved because XNACK+ and XNACK- code objects use different
+    // memory access instructions and are not interchangeable.
+    // Setting HSA_XNACK=1 with XNACK- code objects would cause incorrect results.
+    const std::string                     gpu_arch = gpu_arch_strip_flags(gpu_arch_with_flags);
     std::shared_future<std::vector<char>> result;
 
     const pending_key                    key{kernel_name, gpu_arch};

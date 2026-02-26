@@ -126,9 +126,12 @@ set(DEFAULT_GPUS
   gfx900
   gfx906
   gfx908
-  gfx90a
-  gfx942
-  gfx950
+  gfx90a:xnack-
+  gfx90a:xnack+
+  gfx942:xnack-
+  gfx942:xnack+
+  gfx950:xnack-
+  gfx950:xnack+
   gfx1030
   gfx1100
   gfx1101
