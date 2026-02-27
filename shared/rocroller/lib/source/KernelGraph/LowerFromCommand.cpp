@@ -148,20 +148,20 @@ namespace rocRoller
                     User(tload.getTag(), tensor.data()->name(), userSize));
 
                 std::vector<int> dims;
-                auto             totalSizeExpr = sizes[0];
+                auto             logicalElements = sizes[0];
                 for(size_t i = 0; i < sizes.size(); ++i)
                 {
                     dims.push_back(
                         m_graph.coordinates.addElement(SubDimension(i, sizes[i], strides[i])));
                     if(i > 0)
-                        totalSizeExpr = totalSizeExpr * sizes[i];
+                        logicalElements = logicalElements * sizes[i];
                 }
 
                 m_graph.coordinates.addElement(Split(), std::vector<int>{user}, dims);
 
                 auto unit_stride = Expression::literal(1u);
                 auto linear      = m_graph.coordinates.addElement(
-                    Linear(tload.getTag(), totalSizeExpr, unit_stride));
+                    Linear(tload.getTag(), logicalElements, unit_stride));
 
                 m_graph.coordinates.addElement(Flatten(), dims, std::vector<int>{linear});
                 m_graph.coordinates.addElement(DataFlow(), {user}, {linear});
@@ -371,7 +371,8 @@ namespace rocRoller
                 std::vector<int> dims;
                 for(size_t i = 0; i < strides.size(); ++i)
                 {
-                    auto dim = m_graph.coordinates.addElement(SubDimension(i, nullptr, strides[i]));
+                    auto dim
+                        = m_graph.coordinates.addElement(SubDimension(i, sizes[i], strides[i]));
                     dims.push_back(dim);
                 }
 
