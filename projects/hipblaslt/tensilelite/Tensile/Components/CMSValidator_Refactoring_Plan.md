@@ -1,7 +1,6 @@
 # CMSValidator Refactoring Plan
 
-This document outlines architectural improvements for the CMSValidator module and provides step-by-step implementation plans for each recommendation. It covers only outstanding work; completed items (R2: Replace Float Indices, R3: Dead Code Removal, R4: Named Constants, R7: Unified Timeline) have been removed.
-
+This document outlines architectural improvements for the CMSValidator module and provides step-by-step implementation plans for each recommendation.
 ---
 
 ## Table of Contents
@@ -16,7 +15,6 @@ This document outlines architectural improvements for the CMSValidator module an
    - [R11: Improve Test Infrastructure](#r11-improve-test-infrastructure)
    - [R12: Document Limitations Formally](#r12-document-limitations-formally)
    - [R13: Standardize ValidatorInstruction Class Hierarchy](#r13-standardize-validatorinstruction-class-hierarchy)
-   - [R14: Model 4x4 MFMA Packs as Dual-Role Instructions](#r14-model-4x4-mfma-packs-as-dual-role-instructions)
 3. [Implementation Plans](#implementation-plans)
 
 ---
@@ -33,7 +31,6 @@ This document outlines architectural improvements for the CMSValidator module an
 | 11 | Testing infrastructure gaps | Medium | Testability |
 | 12 | Undocumented limitations | Low | Documentation |
 | 13 | Inconsistent instruction class interfaces | Medium | Type Safety / Maintainability |
-| 14 | 4x4 MFMA packs are MFMAs modeled as Packs | High | Correctness / Clarity |
 
 ---
 
@@ -160,9 +157,9 @@ from typing import Callable
 @dataclass
 class PackContext:
     """Everything a pack handler might need."""
-    packs: list[Pack]
+    packs: list[Pack | MFMAPack]
     local_reads: list[LocalRead]
-    all_packs_in_loop: list[Pack]  # For middle-16 lookups
+    all_packs_in_loop: list[Pack | MFMAPack]  # For middle-16 lookups
     kernel: dict
     mfmas_by_index: dict[int, MFMA]
     mfma_reorder: list[int]
@@ -217,9 +214,12 @@ def _handle_tf32(ctx: PackContext) -> None:
 
 @pack_handler("tf32_4x4mfma")
 def _handle_tf32_4x4mfma(ctx: PackContext) -> None:
-    """TF32 4x4 MFMA: groups of PACK_GROUP_SIZE_TF32_4X4 with CVT0 -> MFMA -> CVT1 chain."""
+    """TF32 4x4 MFMA: groups of PACK_GROUP_SIZE_TF32_4X4 with CVT0 -> MFMAPack -> CVT1 chain.
+
+    MFMAPack objects already have min_quad_cycles_before_result_used set at construction time,
+    so no _set_min_quad_cycles call is needed here.
+    """
     _hook_up_packs_f32_mfma(ctx.packs, ctx.local_reads)
-    _set_min_quad_cycles(ctx.packs, cycles=QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1)
     _set_pack_needed_by(ctx.packs, ctx.mfmas_by_index, ...)
 ```
 
@@ -559,172 +559,7 @@ for _, gr in grs:
 
 ---
 
-### R14: Model 4x4 MFMA Packs as Dual-Role Instructions
-
-**Current State**: In the TF32 4x4 MFMA emulation path (`UseMFMAF32XEmulation`), packs come in groups of `PACK_GROUP_SIZE_TF32_4X4` (10). Indices `TF32_4X4_MFMA_START` to `TF32_4X4_MFMA_END` (4-5) within each group are actually `v_mfma_f32_4x4x4_16b_bf16` instructions — real MFMAs — but they are modeled as `Pack` objects. This creates a pervasive type lie that forces special-case handling throughout the codebase:
-
-**Problem 1: `isinstance(instruction, Pack)` checks must inspect `issue_index` to determine behavior**
-
-The `precompute_issue_times()` function cannot rely on type information alone. It must use `isinstance(instruction, Pack)` *and then* check `issue_index % PACK_GROUP_SIZE_TF32_4X4` against `TF32_4X4_MFMA_START..TF32_4X4_MFMA_END` to determine if the instruction is actually an MFMA:
-```python
-# precompute_issue_times:
-if isinstance(instruction, Pack) and is_4x4mfma_tf32_packs:
-    idx_in_group = instruction.issue_index % PACK_GROUP_SIZE_TF32_4X4
-    if idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END):
-        return (MFMAType.MFMA_4X4, QUAD_CYCLES_MFMA_4X4_FINISH)  # It's actually an MFMA!
-```
-
-This is a code smell: the type system says "Pack" but the runtime behavior says "MFMA with different timing characteristics."
-
-**Problem 2: MFMA-specific timing rules are scattered across Pack handling code**
-
-The 4x4 MFMA packs have fundamentally different timing from real packs:
-- They take 2 quad-cycles (1 issue + `QUAD_CYCLES_MFMA_4X4_FINISH` finish) instead of 1 quad-cycle like regular packs
-- They incur MFMA type-switch penalties when interleaved with standard MFMAs
-- They have a `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`-quad-cycle result latency before CVT1 can consume their output (ISA section 7.6)
-- They need to be tracked as `MFMAType.MFMA_4X4` in the quad-cycle estimation
-
-All of these MFMA-specific behaviors are expressed via `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` checks inside Pack handling code, rather than being expressed through the type system.
-
-**Problem 3: Pack validation logic doesn't distinguish between CVT and MFMA semantics**
-
-The `Pack.validate()` method applies the same validation pattern to all packs, but the 4x4 MFMA packs have different constraint semantics:
-- Their `must_start_after` depends on other packs (CVT0), not on local reads
-- Their `needed_by` points to other packs (CVT1) or to later packs that consume their results, not to MFMAs
-- Their quad-cycle requirements (`QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1` cycles before result used) stem from ISA MFMA completion rules, not from CVT timing
-
-**Problem 4: The `_handle_min_pack_quad_cycles` function has special cases for the MFMA packs**
-```python
-# _handle_min_pack_quad_cycles:
-if is_4x4mfma:
-    for pack in packs:
-        idx_in_group = pack.issue_index % PACK_GROUP_SIZE_TF32_4X4
-        if TF32_4X4_MFMA_START <= idx_in_group < TF32_4X4_MFMA_END:
-            # Middle 2 packs are 4x4 MFMAs
-            pack.min_quad_cycles_before_result_used = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1
-```
-
-**Target State**: Introduce a `MFMAPack` class (or similar) that inherits from both `MFMA` and `Pack` (or from a shared base) so the type system captures the dual role:
-
-```python
-@dataclass
-class MFMAPack(ValidatorInstruction):
-    """A v_mfma_f32_4x4x4_16b_bf16 instruction used as part of TF32 emulation pack groups.
-
-    These instructions appear at indices TF32_4X4_MFMA_START-TF32_4X4_MFMA_END within each
-    group of PACK_GROUP_SIZE_TF32_4X4 in the 4x4 MFMA TF32 emulation path. They are real
-    MFMA instructions but participate in the pack dependency chain (CVT0 -> MFMAPack -> CVT1).
-
-    Timing characteristics (MFMA-like):
-    - 2 quad-cycles total (1 issue + QUAD_CYCLES_MFMA_4X4_FINISH finish)
-    - Incurs MFMA type-switch penalty when interleaved with standard MFMAs
-    - QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1 quad-cycle result latency before CVT1 can use output (ISA 7.6)
-
-    Dependency characteristics (Pack-like):
-    - must_start_after: CVT0 packs that produce its inputs
-    - needed_by: CVT1 packs that consume its outputs
-    - Has issue_index for group-relative positioning
-    """
-    name: str
-    issued_at: SchedulePosition
-    issue_index: int
-    needed_by: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_INF))
-    must_start_after: ValidatorInstruction = field(default_factory=lambda: MFMA(POSITION_NEG_INF))
-    min_quad_cycles_before_result_used: int = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1
-
-    # Override to reflect MFMA-like timing
-    __min_issue_quad_cycles__: int = 1
-
-    def done_idx(self) -> SchedulePosition:
-        return self.issued_at
-
-    def validate(self) -> Optional[str]:
-        # Validate must_start_after (CVT0 packs must be done)
-        if self.issued_at < self.must_start_after.done_idx():
-            return _error_issued_too_early(...)
-
-        # Validate needed_by (must finish before CVT1 packs)
-        if self.issued_at >= self.needed_by.issued_at:
-            return _error_issued_too_late(...)
-
-        # Validate quad-cycle gap to needed_by
-        if self.estimated_quad_cycles_before_result_used < self.min_quad_cycles_before_result_used:
-            return _error_quad_cycle_violation(...)
-
-        return None
-```
-
-With this change, `precompute_issue_times()` can use the type system directly:
-```python
-def get_mfma_info(instruction: ValidatorInstruction) -> tuple[MFMAType, Optional[int]]:
-    if isinstance(instruction, MFMA):
-        return (MFMAType.STANDARD, QUAD_CYCLES_STANDARD_MFMA_FINISH)
-    if isinstance(instruction, MFMAPack):
-        return (MFMAType.MFMA_4X4, QUAD_CYCLES_MFMA_4X4_FINISH)
-    return (MFMAType.NONE, None)
-```
-
-And `_handle_min_pack_quad_cycles` no longer needs `idx_in_group` checks — the `min_quad_cycles_before_result_used` default on `MFMAPack` handles it at construction time.
-
-**Construction**: In `_populate_instructions()` (or wherever Pack objects are created from the schedule), when `UseMFMAF32XEmulation` is true and the pack's `issue_index % PACK_GROUP_SIZE_TF32_4X4` is in `range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)`, construct an `MFMAPack` instead of a `Pack`.
-
-**Benefits**:
-- Type system accurately reflects hardware reality (these are MFMAs, not CVTs)
-- Eliminates `isinstance(Pack) + idx_in_group` pattern (appears in at least 4 places)
-- Quad-cycle estimation becomes type-driven rather than index-arithmetic-driven
-- Validation logic is tailored to the actual instruction semantics
-- New instruction types (e.g., FP8 packs with different MFMA variants) can follow the same pattern
-- Eliminates the need for the `is_4x4mfma_tf32_packs` parameter threaded through `precompute_issue_times`
-
-**Relationship to other recommendations**:
-- **Pairs well with R6** (registry pattern): A `MFMAPack`-aware pack handler would be cleaner
-- **Benefits from R13** (class hierarchy): Unified `needed_by` type makes `MFMAPack` constraints consistent with other instructions
-
----
-
 ## Implementation Plans
-
-### Plan for R14: Model 4x4 MFMA Packs as Dual-Role Instructions
-
-**Estimated Effort**: Medium (1 day)
-
-**Step 1**: Define the `MFMAPack` class
-
-Add a new `MFMAPack` dataclass alongside `Pack` and `MFMA`. It should have:
-- Fields: `name`, `issued_at: SchedulePosition`, `issue_index`, `needed_by`, `must_start_after`, `min_quad_cycles_before_result_used` (default `QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1`), `estimated_quad_cycles_before_result_used`
-- `done_idx()` returns `self.issued_at`
-- `validate()` checks `must_start_after`, `needed_by`, and quad-cycle gap
-
-**Step 2**: Update instruction construction
-
-Find where `Pack` objects are created for the 4x4 MFMA path. When `UseMFMAF32XEmulation` is true and `issue_index % PACK_GROUP_SIZE_TF32_4X4 in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)`, construct `MFMAPack` instead of `Pack`.
-
-**Step 3**: Update `_hook_up_packs_f32_mfma`
-
-The dependency setup in `_hook_up_packs_f32_mfma` already handles packs at indices `TF32_4X4_MFMA_START..TF32_4X4_MFMA_END` differently via `pack_dependencies`. Verify that the `MFMAPack` objects work correctly with the existing dependency logic. The `pack_group` list will now contain a mix of `Pack` and `MFMAPack` objects.
-
-**Step 4**: Update `_set_pack_needed_by`
-
-In `_set_pack_needed_by`, the special handling for `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` (which sets `needed_by` and `continue`s) should now be handled by checking `isinstance(pack, MFMAPack)` instead of `idx_in_group` arithmetic.
-
-**Step 5**: Update `_handle_min_pack_quad_cycles`
-
-Remove the `idx_in_group in range(TF32_4X4_MFMA_START, TF32_4X4_MFMA_END)` special case. The `min_quad_cycles_before_result_used = QUAD_CYCLES_MFMA_4X4_BEFORE_CVT1` is now a default on `MFMAPack`, set at construction time.
-
-**Step 6**: Update `precompute_issue_times`
-
-Replace the `isinstance(Pack) + idx_in_group` check with `isinstance(instruction, MFMAPack)`. Remove the `is_4x4mfma_tf32_packs` parameter — the type system now carries this information.
-
-**Step 7**: Update `estimate_quad_cycles`
-
-Remove the `kernel.get("UseMFMAF32XEmulation", False)` parameter from the `precompute_issue_times` call. The function no longer needs it.
-
-**Step 8**: Run tests
-```bash
-pytest Tensile/Tests/unit/test_CMSValidator*.py -v
-```
-
----
 
 ### Plan for R1: Split File Into Modules
 
@@ -748,7 +583,7 @@ touch Tensile/Components/CMSValidator/utils/__init__.py
 - Update imports in original file
 
 **Step 3**: Extract `SchedulePosition` and instruction classes
-- Move `SchedulePosition`, `ValidatorInstruction`, `LocalRead`, `GlobalRead`, `Pack`, `MFMA`, `SWait`, `Barrier`, `SNop` to `instructions.py`
+- Move `SchedulePosition`, `ValidatorInstruction`, `LocalRead`, `GlobalRead`, `Pack`, `MFMAPack`, `MFMA`, `SWait`, `Barrier`, `SNop` to `instructions.py`
 - Update imports
 
 **Step 4**: Extract utility functions
@@ -1044,11 +879,10 @@ pytest Tensile/Tests/unit/test_CMSValidator*.py -v
 ## Recommended Implementation Order
 
 1. **R5: Define Typed Context** (quick win, improves IDE support; `ValidatorPassContext` is a partial step)
-2. **R14: Model 4x4 MFMA Packs as Dual-Role Instructions** (high-value correctness/clarity win, eliminates scattered `idx_in_group` checks; can be done standalone)
-3. **R13: Standardize Class Hierarchy** (unify `needed_by` type — standalone, no dependencies)
-4. **R12: Document Limitations** (quick win, documentation only)
-5. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
-6. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
-7. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
-8. **R10: Separate Timeline** (large effort, do last)
-9. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
+2. **R13: Standardize Class Hierarchy** (unify `needed_by` type — standalone, no dependencies)
+3. **R12: Document Limitations** (quick win, documentation only)
+4. **R9: Clarify Validation Logic** (partially done, further enabled by R13)
+5. **R1: Split File Into Modules** (large effort, do after other changes stabilize; constants already extracted to module-level)
+6. **R6: Registry Pattern for Packs** (medium effort, can do standalone or with R1)
+7. **R10: Separate Timeline** (large effort, do last)
+8. **R11: Improve Test Infrastructure** (ongoing, do incrementally)
