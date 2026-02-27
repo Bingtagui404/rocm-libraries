@@ -479,8 +479,9 @@ TEST_F(TestGraphDescriptorOps, ConvolutionAttributesPreserved)
     auto computeType = HIPDNN_DATA_FLOAT;
     convDesc->setAttribute(
         HIPDNN_ATTR_CONVOLUTION_COMP_TYPE, HIPDNN_TYPE_DATA_TYPE, 1, &computeType);
-    auto convMode = static_cast<int64_t>(ConvMode::CROSS_CORRELATION);
-    convDesc->setAttribute(HIPDNN_ATTR_CONVOLUTION_CONV_MODE, HIPDNN_TYPE_INT64, 1, &convMode);
+    hipdnnConvolutionMode_t convMode = HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION;
+    convDesc->setAttribute(
+        HIPDNN_ATTR_CONVOLUTION_CONV_MODE, HIPDNN_TYPE_CONVOLUTION_MODE, 1, &convMode);
     convDesc->finalize();
 
     auto desc = getDescriptor();
@@ -1129,8 +1130,9 @@ public:
                                dilation.data());
         convDesc->setAttribute(
             HIPDNN_ATTR_CONVOLUTION_COMP_TYPE, HIPDNN_TYPE_DATA_TYPE, 1, &computeDataType);
-        auto convMode = static_cast<int64_t>(ConvMode::CROSS_CORRELATION);
-        convDesc->setAttribute(HIPDNN_ATTR_CONVOLUTION_CONV_MODE, HIPDNN_TYPE_INT64, 1, &convMode);
+        hipdnnConvolutionMode_t convMode = HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION;
+        convDesc->setAttribute(
+            HIPDNN_ATTR_CONVOLUTION_CONV_MODE, HIPDNN_TYPE_CONVOLUTION_MODE, 1, &convMode);
         convDesc->finalize();
 
         // Build graph via GraphDescriptor

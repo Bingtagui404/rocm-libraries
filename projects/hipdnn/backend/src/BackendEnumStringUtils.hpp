@@ -8,6 +8,7 @@
 #include "HipdnnBackendDescriptorType.h"
 #include "HipdnnBackendPluginLoadingMode.h"
 #include "HipdnnBackendPluginUnloadingMode.h"
+#include "HipdnnConvolutionMode.h"
 #include "HipdnnDataType.h"
 #include "HipdnnStatus.h"
 
@@ -130,6 +131,8 @@ inline const char* hipdnnGetAttributeTypeString(hipdnnBackendAttributeType_t typ
         return "HIPDNN_TYPE_NORM_FWD_PHASE";
     case HIPDNN_TYPE_RNG_DISTRIBUTION:
         return "HIPDNN_TYPE_RNG_DISTRIBUTION";
+    case HIPDNN_TYPE_CONVOLUTION_MODE:
+        return "HIPDNN_TYPE_CONVOLUTION_MODE";
 
     // Extension API
     case HIPDNN_TYPE_FLATBUFFER_DATA_STRUCT_EXT:
@@ -373,6 +376,19 @@ inline const char* hipdnnGetPluginUnloadingModeString(hipdnnPluginUnloadingMode_
         return "HIPDNN_PLUGIN_UNLOAD_EAGER";
     default:
         return "HIPDNN_PLUGIN_UNLOAD_UNKNOWN";
+    }
+}
+
+inline const char* hipdnnGetConvolutionModeString(hipdnnConvolutionMode_t mode)
+{
+    switch(mode)
+    {
+    case HIPDNN_CONVOLUTION_MODE_CONVOLUTION:
+        return "HIPDNN_CONVOLUTION_MODE_CONVOLUTION";
+    case HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION:
+        return "HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION";
+    default:
+        return "HIPDNN_CONVOLUTION_MODE_UNKNOWN";
     }
 }
 

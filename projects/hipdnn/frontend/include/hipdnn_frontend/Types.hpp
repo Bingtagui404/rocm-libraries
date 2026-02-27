@@ -13,6 +13,7 @@
 #pragma once
 
 #include <HipdnnBackendHeuristicType.h>
+#include <HipdnnConvolutionMode.h>
 #include <HipdnnDataType.h>
 #include <hipdnn_data_sdk/data_objects/convolution_fwd_attributes_generated.h>
 #include <hipdnn_data_sdk/data_objects/data_types_generated.h>
@@ -256,6 +257,28 @@ inline hipdnn_data_sdk::data_objects::ConvMode toSdkType(const ConvolutionMode& 
         return hipdnn_data_sdk::data_objects::ConvMode::CONVOLUTION;
     default:
         return hipdnn_data_sdk::data_objects::ConvMode::UNSET;
+    }
+}
+
+/**
+ * @brief Convert frontend ConvolutionMode to backend hipdnnConvolutionMode_t
+ *
+ * Maps frontend convolution mode enum to the backend C API enum type for use
+ * with HIPDNN_TYPE_CONVOLUTION_MODE attributes.
+ *
+ * @param type The frontend ConvolutionMode value
+ * @return The corresponding hipdnnConvolutionMode_t value
+ */
+inline hipdnnConvolutionMode_t toBackendConvMode(const ConvolutionMode& type)
+{
+    switch(type)
+    {
+    case ConvolutionMode::CROSS_CORRELATION:
+        return HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION;
+    case ConvolutionMode::CONVOLUTION:
+        return HIPDNN_CONVOLUTION_MODE_CONVOLUTION;
+    default:
+        return HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION; // Safe default
     }
 }
 

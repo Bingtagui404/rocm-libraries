@@ -52,6 +52,7 @@
 #include "HipdnnBackendLimits.h"
 #include "HipdnnBackendPluginLoadingMode.h"
 #include "HipdnnBackendPluginUnloadingMode.h"
+#include "HipdnnConvolutionMode.h"
 #include "HipdnnDataType.h"
 #include "HipdnnStatus.h"
 
