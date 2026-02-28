@@ -268,9 +268,9 @@ inline hipdnn_data_sdk::data_objects::ConvMode toSdkType(const ConvolutionMode& 
  * with HIPDNN_TYPE_CONVOLUTION_MODE attributes.
  *
  * @param type The frontend ConvolutionMode value
- * @return The corresponding hipdnnConvolutionMode_t value
+ * @return The corresponding hipdnnConvolutionMode_t value, or std::nullopt if not set
  */
-inline hipdnnConvolutionMode_t toBackendConvMode(const ConvolutionMode& type)
+inline std::optional<hipdnnConvolutionMode_t> toBackendConvMode(const ConvolutionMode& type)
 {
     switch(type)
     {
@@ -279,7 +279,7 @@ inline hipdnnConvolutionMode_t toBackendConvMode(const ConvolutionMode& type)
     case ConvolutionMode::CONVOLUTION:
         return HIPDNN_CONVOLUTION_MODE_CONVOLUTION;
     default:
-        return HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION; // Safe default
+        return std::nullopt;
     }
 }
 
