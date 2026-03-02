@@ -227,10 +227,10 @@ def runPerformanceCommand (platform, project)
 
             # Install gemmaiperf dependencies
             if [ -f gemmaiperf/requirements.txt ]; then
-                pip install -r gemmaiperf/requirements.txt --user
+                pip install -r gemmaiperf/requirements.txt
             else
                 # Fallback: install known dependencies
-                pip install pandas mysql-connector-python --user
+                pip install pandas mysql-connector-python
             fi
         """)
 
