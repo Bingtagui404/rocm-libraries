@@ -21,6 +21,7 @@ add_executable(
     IntegrationKnobsApi.cpp
     IntegrationLoggingPipeline.cpp
     IntegrationPluginLoading.cpp
+    IntegrationPluginLogLevel.cpp
     IntegrationSetPluginPathsExt.cpp
     IntegrationSetPluginUnloadingModeExt.cpp
     IntegrationTensorDescriptorApi.cpp

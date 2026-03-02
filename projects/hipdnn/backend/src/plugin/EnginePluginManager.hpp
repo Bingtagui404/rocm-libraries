@@ -24,6 +24,16 @@ public:
     {
     }
 
+    /**
+     * @brief Get a shared pointer to the current plugin manager if one exists.
+     *
+     * This method provides access to the currently loaded plugin manager, if any.
+     * Used by the logging system to notify plugins of log level changes.
+     *
+     * @return A shared pointer to the EnginePluginManager, or nullptr if no plugins are loaded.
+     */
+    static std::shared_ptr<EnginePluginManager> getPluginManager();
+
 private:
     void validateBeforeAdding(const EnginePlugin& plugin) override
     {

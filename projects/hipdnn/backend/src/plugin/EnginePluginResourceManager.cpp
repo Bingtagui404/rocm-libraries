@@ -42,6 +42,12 @@ std::shared_ptr<EnginePluginManager> persistentPmPtr;
 
 } // namespace
 
+std::shared_ptr<EnginePluginManager> EnginePluginManager::getPluginManager()
+{
+    std::lock_guard<std::mutex> lock(pluginMutex);
+    return pmPtr.lock();
+}
+
 void EnginePluginResourceManager::setPluginPaths(
     const std::vector<std::filesystem::path>& pluginPaths,
     hipdnnPluginLoadingMode_ext_t loadingMode)

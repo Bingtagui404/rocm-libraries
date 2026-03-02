@@ -4,6 +4,7 @@
 #include "Logging.hpp"
 #include "PlatformUtils.hpp"
 #include "UserCallbackSink.hpp"
+#include "plugin/EnginePluginManager.hpp"
 
 #include <cstdint>
 #include <hipdnn_data_sdk/logging/CallbackTypes.h>
@@ -589,6 +590,17 @@ hipdnnStatus_t setGlobalLogLevel(hipdnnSeverity_t level)
 {
     // Set the global log level in data_sdk cache (backend's copy)
     hipdnn_data_sdk::logging::setLogLevel(level);
+
+    // Notify all loaded plugins of the log level change
+    auto pluginManager = plugin::EnginePluginManager::getPluginManager();
+    if(pluginManager)
+    {
+        for(const auto& plugin : pluginManager->getPlugins())
+        {
+            // setLogLevel returns success even if the plugin doesn't support the API
+            plugin->setLogLevel(level);
+        }
+    }
 
     return HIPDNN_STATUS_SUCCESS;
 }
