@@ -225,7 +225,9 @@ def runPerformanceCommand (platform, project)
                 set -ex
                 cd ${project.paths.project_build_prefix}/
                 eval `ssh-agent`
-                ssh-add \$ENTERPRISE_KEY_FILE
+                ssh-add ${PUBLIC_KEY_FILE}
+                ssh-add ${ENTERPRISE_KEY_FILE}
+                ssh-add -L
                 [ -d gemmaiperf ] && rm -rf gemmaiperf
                 git clone git@github.com:ROCm/gemmaiperf.git
 
