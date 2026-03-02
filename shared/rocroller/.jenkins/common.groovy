@@ -216,30 +216,23 @@ def runPerformanceCommand (platform, project)
         def rrperfSuite = platform.jenkinsLabel.contains('gfx12') ? "all_gfx120X" : "all"
         
         // Clone gemmaiperf repository for database insertion
-        withCredentials(
-            [
-            sshUserPrivateKey(credentialsId:"github-rocmmathlibrariesbot-ssh_key-mathci_enterprise_job", keyFileVariable:"PUBLIC_KEY_FILE"),
-            sshUserPrivateKey(credentialsId:"github_enterprise-a1_mlselibci_npi-ssh_key-mathci_enterprise_job", keyFileVariable: "ENTERPRISE_KEY_FILE"),
-            ]){
-            platform.runCommand(this, """#!/usr/bin/env bash
-                set -ex
-                cd ${project.paths.project_build_prefix}/
-                eval `ssh-agent`
-                ssh-add ${PUBLIC_KEY_FILE}
-                ssh-add ${ENTERPRISE_KEY_FILE}
-                ssh-add -L
-                [ -d gemmaiperf ] && rm -rf gemmaiperf
-                git clone git@github.com:ROCm/gemmaiperf.git
+        platform.runCommand(this, """#!/usr/bin/env bash
+            set -ex
+            cd ${project.paths.project_build_prefix}/
 
-                # Install gemmaiperf dependencies
-                if [ -f gemmaiperf/requirements.txt ]; then
-                    pip install -r gemmaiperf/requirements.txt --user
-                else
-                    # Fallback: install known dependencies
-                    pip install pandas mysql-connector-python --user
-                fi
-            """)
-        }
+            ${sshBlock}
+
+            [ -d gemmaiperf ] && rm -rf gemmaiperf
+            git clone git@github.com:ROCm/gemmaiperf.git
+
+            # Install gemmaiperf dependencies
+            if [ -f gemmaiperf/requirements.txt ]; then
+                pip install -r gemmaiperf/requirements.txt --user
+            else
+                # Fallback: install known dependencies
+                pip install pandas mysql-connector-python --user
+            fi
+        """)
 
         if (env.CHANGE_ID)
         {
