@@ -8,6 +8,7 @@
 
 #include <hipdnn_backend.h>
 #include <hipdnn_data_sdk/logging/LogLevel.hpp>
+#include <hipdnn_test_sdk/utilities/FileUtilities.hpp>
 #include <hipdnn_test_sdk/utilities/LogRecorder.hpp>
 #include <hipdnn_test_sdk/utilities/ScopedEnvironmentVariableSetter.hpp>
 #include <test_plugins/TestPluginConstants.hpp>
