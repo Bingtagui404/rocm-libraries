@@ -325,7 +325,8 @@ std::string PointwiseOperationDescriptor::toString() const
            + (_data.in_2_tensor_uid ? std::to_string(*_data.in_2_tensor_uid) : "nullopt");
     str += ", axis_uid="
            + (_data.axis_tensor_uid ? std::to_string(*_data.axis_tensor_uid) : "nullopt");
-    str += ", operation=" + std::to_string(static_cast<int>(_data.operation));
+    str += ", operation=";
+    str += hipdnn_data_sdk::data_objects::EnumNamePointwiseMode(_data.operation);
     str += ", relu_lower_clip="
            + (_data.relu_lower_clip ? std::to_string(*_data.relu_lower_clip) : "nullopt");
     str += ", relu_upper_clip="

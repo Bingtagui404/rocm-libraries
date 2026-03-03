@@ -222,6 +222,68 @@ TEST_F(IntegrationPointwiseDescriptorLowering, UnaryPointwiseRoundTrip)
     EXPECT_EQ(pwNode->operation, PointwiseModeSdk::RELU_FWD);
 }
 
+// RELU_FWD with activation scalar parameters round-trip
+TEST_F(IntegrationPointwiseDescriptorLowering, ScalarAttributesPreservedInRoundTrip)
+{
+    auto graph = std::make_shared<TestableGraph>();
+    graph->set_name("TestScalarAttrsGraph")
+        .set_io_data_type(DataType::FLOAT)
+        .set_intermediate_data_type(DataType::FLOAT)
+        .set_compute_data_type(DataType::FLOAT);
+
+    auto in0 = std::make_shared<TensorAttributes>();
+    in0->set_uid(K_TENSOR_IN0_UID).set_name("IN0").set_data_type(DataType::FLOAT);
+    in0->set_dim(toVec(K_TENSOR_DIMS)).set_stride(toVec(K_TENSOR_STRIDES));
+
+    constexpr float kLowerClip = -1.0F;
+    constexpr float kUpperClip = 6.0F;
+    constexpr float kLowerClipSlope = 0.01F;
+
+    PointwiseAttributes pwAttrs;
+    pwAttrs.set_name("leaky_relu_op");
+    pwAttrs.set_mode(PointwiseMode::RELU_FWD);
+    pwAttrs.set_relu_lower_clip(kLowerClip);
+    pwAttrs.set_relu_upper_clip(kUpperClip);
+    pwAttrs.set_relu_lower_clip_slope(kLowerClipSlope);
+
+    auto out0 = graph->pointwise(in0, pwAttrs);
+    out0->set_uid(K_TENSOR_OUT0_UID).set_output(true).set_name("OUT0");
+
+    auto result = graph->validate();
+    ASSERT_EQ(result.code, ErrorCode::OK) << result.err_msg;
+
+    result = graph->build_operation_graph_via_descriptors(_handle);
+    ASSERT_EQ(result.code, ErrorCode::OK) << result.err_msg;
+
+    auto rawDesc = graph->get_raw_graph_descriptor();
+    size_t serializedSize = 0;
+    ASSERT_EQ(hipdnnBackendGetSerializedBinaryGraph_ext(rawDesc, 0, &serializedSize, nullptr),
+              HIPDNN_STATUS_SUCCESS);
+
+    std::vector<uint8_t> serializedData(serializedSize);
+    ASSERT_EQ(hipdnnBackendGetSerializedBinaryGraph_ext(
+                  rawDesc, serializedSize, &serializedSize, serializedData.data()),
+              HIPDNN_STATUS_SUCCESS);
+
+    hipdnn_data_sdk::data_objects::GraphT graphT;
+    hipdnn_data_sdk::data_objects::GetGraph(serializedData.data())->UnPackTo(&graphT);
+
+    ASSERT_EQ(graphT.nodes.size(), 1u);
+    auto* pwNode = graphT.nodes[0]->attributes.AsPointwiseAttributes();
+    ASSERT_NE(pwNode, nullptr);
+
+    EXPECT_EQ(pwNode->operation, PointwiseModeSdk::RELU_FWD);
+
+    ASSERT_TRUE(pwNode->relu_lower_clip.has_value());
+    EXPECT_FLOAT_EQ(pwNode->relu_lower_clip.value(), kLowerClip);
+
+    ASSERT_TRUE(pwNode->relu_upper_clip.has_value());
+    EXPECT_FLOAT_EQ(pwNode->relu_upper_clip.value(), kUpperClip);
+
+    ASSERT_TRUE(pwNode->relu_lower_clip_slope.has_value());
+    EXPECT_FLOAT_EQ(pwNode->relu_lower_clip_slope.value(), kLowerClipSlope);
+}
+
 // Ternary pointwise (BINARY_SELECT) round-trip with 3 inputs
 TEST_F(IntegrationPointwiseDescriptorLowering, TernaryPointwiseRoundTrip)
 {

@@ -65,7 +65,9 @@ inline Error createPointwiseOperation(
     auto operation = hipdnn_frontend::toBackendPointwiseMode(attributes.get_mode());
     if(!operation.has_value())
     {
-        return {ErrorCode::INVALID_VALUE, "Unsupported operation"};
+        return {ErrorCode::INVALID_VALUE,
+                "Unsupported pointwise mode: "
+                    + std::to_string(static_cast<int>(attributes.get_mode()))};
     }
     HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
                                                HIPDNN_ATTR_POINTWISE_MODE,
