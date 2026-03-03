@@ -26,29 +26,38 @@ inline Error createPointwiseOperation(
     // Create tensor descriptors (if needed) and set them on the operation
     HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
                                              HIPDNN_ATTR_OPERATION_POINTWISE_IN_0,
-                                             attributes.get_in_0(),
+                                             attributes.get_input_0(),
                                              tensorDescs,
                                              "pointwise IN_0"));
     HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
                                              HIPDNN_ATTR_OPERATION_POINTWISE_OUT_0,
-                                             attributes.get_out_0(),
+                                             attributes.get_output_0(),
                                              tensorDescs,
                                              "pointwise OUT_0"));
-    HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
-                                             HIPDNN_ATTR_OPERATION_POINTWISE_IN_1,
-                                             attributes.get_in_1(),
-                                             tensorDescs,
-                                             "pointwise IN_1"));
-    HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
-                                             HIPDNN_ATTR_OPERATION_POINTWISE_IN_2,
-                                             attributes.get_in_2(),
-                                             tensorDescs,
-                                             "pointwise IN_2"));
-    HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
-                                             HIPDNN_ATTR_OPERATION_POINTWISE_AXIS,
-                                             attributes.get_axis(),
-                                             tensorDescs,
-                                             "pointwise AXIS"));
+    if(attributes.get_input_1())
+    {
+        HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
+                                                 HIPDNN_ATTR_OPERATION_POINTWISE_IN_1,
+                                                 attributes.get_input_1(),
+                                                 tensorDescs,
+                                                 "pointwise IN_1"));
+    }
+    if(attributes.get_input_2())
+    {
+        HIPDNN_CHECK_ERROR(ensureAndSetTensorRef(opDesc.get(),
+                                                 HIPDNN_ATTR_OPERATION_POINTWISE_IN_2,
+                                                 attributes.get_input_2(),
+                                                 tensorDescs,
+                                                 "pointwise IN_2"));
+    }
+    if(attributes.get_axis().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_OPERATION_POINTWISE_AXIS,
+                                                   HIPDNN_TYPE_INT64,
+                                                   *attributes.get_axis(),
+                                                   "pointwise AXIS"));
+    }
 
     // Set pointwise parameters
 
@@ -63,36 +72,54 @@ inline Error createPointwiseOperation(
                                                HIPDNN_TYPE_POINTWISE_MODE,
                                                *operation,
                                                "pointwise mode"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_RELU_LOWER_CLIP,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_relu_lower_clip(),
-                                               "pointwise relu_lower_clip"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_RELU_UPPER_CLIP,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_relu_upper_clip(),
-                                               "pointwise relu_upper_clip"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_RELU_LOWER_CLIP_SLOPE,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_relu_lower_clip_slope(),
-                                               "pointwise relu_lower_clip_slope"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_SWISH_BETA,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_swish_beta(),
-                                               "pointwise swish_beta"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_ELU_ALPHA,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_elu_alpha(),
-                                               "pointwise elu_alpha"));
-    HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
-                                               HIPDNN_ATTR_POINTWISE_SOFTPLUS_BETA,
-                                               HIPDNN_TYPE_FLOAT,
-                                               attributes.get_softplus_beta(),
-                                               "pointwise softplus_beta"));
+    if(attributes.get_relu_lower_clip().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_RELU_LOWER_CLIP,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_relu_lower_clip(),
+                                                   "pointwise relu_lower_clip"));
+    }
+    if(attributes.get_relu_upper_clip().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_RELU_UPPER_CLIP,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_relu_upper_clip(),
+                                                   "pointwise relu_upper_clip"));
+    }
+    if(attributes.get_relu_lower_clip_slope().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_RELU_LOWER_CLIP_SLOPE,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_relu_lower_clip_slope(),
+                                                   "pointwise relu_lower_clip_slope"));
+    }
+    if(attributes.get_swish_beta().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_SWISH_BETA,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_swish_beta(),
+                                                   "pointwise swish_beta"));
+    }
+    if(attributes.get_elu_alpha().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_ELU_ALPHA,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_elu_alpha(),
+                                                   "pointwise elu_alpha"));
+    }
+    if(attributes.get_softplus_beta().has_value())
+    {
+        HIPDNN_CHECK_ERROR(setDescriptorAttrScalar(opDesc.get(),
+                                                   HIPDNN_ATTR_POINTWISE_SOFTPLUS_BETA,
+                                                   HIPDNN_TYPE_FLOAT,
+                                                   *attributes.get_softplus_beta(),
+                                                   "pointwise softplus_beta"));
+    }
 
     HIPDNN_CHECK_ERROR(setDescriptorAttrDataType(opDesc.get(),
                                                  HIPDNN_ATTR_POINTWISE_COMP_TYPE,

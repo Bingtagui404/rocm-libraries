@@ -168,7 +168,7 @@ TEST_F(IntegrationPointwiseDescriptorLowering, PointwiseGraphRoundTrip)
     EXPECT_EQ(pwNode->in_0_tensor_uid, K_TENSOR_IN0_UID);
     EXPECT_EQ(pwNode->out_0_tensor_uid, K_TENSOR_OUT0_UID);
     EXPECT_EQ(pwNode->in_1_tensor_uid, K_TENSOR_IN1_UID);
-    EXPECT_EQ(pwNode->mode, PointwiseModeSdk::ADD);
+    EXPECT_EQ(pwNode->operation, PointwiseModeSdk::ADD);
 }
 
 // Unary pointwise (RELU_FWD) round-trip with single input
@@ -219,7 +219,7 @@ TEST_F(IntegrationPointwiseDescriptorLowering, UnaryPointwiseRoundTrip)
 
     EXPECT_EQ(pwNode->in_0_tensor_uid, K_TENSOR_IN0_UID);
     EXPECT_EQ(pwNode->out_0_tensor_uid, K_TENSOR_OUT0_UID);
-    EXPECT_EQ(pwNode->mode, PointwiseModeSdk::RELU_FWD);
+    EXPECT_EQ(pwNode->operation, PointwiseModeSdk::RELU_FWD);
 }
 
 // Ternary pointwise (BINARY_SELECT) round-trip with 3 inputs
@@ -280,7 +280,7 @@ TEST_F(IntegrationPointwiseDescriptorLowering, TernaryPointwiseRoundTrip)
     EXPECT_EQ(pwNode->out_0_tensor_uid, K_TENSOR_OUT0_UID);
     EXPECT_EQ(pwNode->in_1_tensor_uid, K_TENSOR_IN1_UID);
     EXPECT_EQ(pwNode->in_2_tensor_uid, K_TENSOR_IN2_UID);
-    EXPECT_EQ(pwNode->mode, PointwiseModeSdk::BINARY_SELECT);
+    EXPECT_EQ(pwNode->operation, PointwiseModeSdk::BINARY_SELECT);
 }
 
 // Verifies that tensor UIDs auto-assigned by the frontend are preserved
@@ -344,14 +344,15 @@ TEST_F(IntegrationPointwiseDescriptorLowering, AutoAssignedUidsPreservedInRoundT
     // Tensor UIDs in the node should match tensors in the graph
     EXPECT_TRUE(uids.count(pwNode->in_0_tensor_uid) > 0)
         << "IN_0 tensor UID " << pwNode->in_0_tensor_uid << " not found in graph tensors";
-    EXPECT_TRUE(uids.count(pwNode->in_1_tensor_uid) > 0)
-        << "IN_1 tensor UID " << pwNode->in_1_tensor_uid << " not found in graph tensors";
+    ASSERT_TRUE(pwNode->in_1_tensor_uid.has_value()) << "IN_1 tensor UID should be set";
+    EXPECT_TRUE(uids.count(pwNode->in_1_tensor_uid.value()) > 0)
+        << "IN_1 tensor UID " << pwNode->in_1_tensor_uid.value() << " not found in graph tensors";
     EXPECT_TRUE(uids.count(pwNode->out_0_tensor_uid) > 0)
         << "OUT_0 tensor UID " << pwNode->out_0_tensor_uid << " not found in graph tensors";
 
     // All three tensor UIDs referenced by the node should be distinct
     std::unordered_set<int64_t> nodeUids
-        = {pwNode->in_0_tensor_uid, pwNode->in_1_tensor_uid, pwNode->out_0_tensor_uid};
+        = {pwNode->in_0_tensor_uid, pwNode->in_1_tensor_uid.value(), pwNode->out_0_tensor_uid};
     EXPECT_EQ(nodeUids.size(), 3u) << "Pointwise node tensor UIDs are not distinct";
 }
 

@@ -62,27 +62,30 @@ void PointwiseOperationDescriptor::setAttribute(hipdnnBackendAttributeName_t att
         break;
     case HIPDNN_ATTR_OPERATION_POINTWISE_IN_1:
         setTensorDescriptor(_in1Desc,
-                            _data.in_1_tensor_uid,
+                            _in1Uid,
                             attributeType,
                             elementCount,
                             arrayOfElements,
                             "PointwiseOperationDescriptor::setAttribute()");
+        _data.in_1_tensor_uid = _in1Uid;
         break;
     case HIPDNN_ATTR_OPERATION_POINTWISE_IN_2:
         setTensorDescriptor(_in2Desc,
-                            _data.in_2_tensor_uid,
+                            _in2Uid,
                             attributeType,
                             elementCount,
                             arrayOfElements,
                             "PointwiseOperationDescriptor::setAttribute()");
+        _data.in_2_tensor_uid = _in2Uid;
         break;
     case HIPDNN_ATTR_OPERATION_POINTWISE_AXIS:
         setTensorDescriptor(_axisDesc,
-                            _data.axis_tensor_uid,
+                            _axisUid,
                             attributeType,
                             elementCount,
                             arrayOfElements,
                             "PointwiseOperationDescriptor::setAttribute()");
+        _data.axis_tensor_uid = _axisUid;
         break;
     case HIPDNN_ATTR_POINTWISE_MODE:
         setPointwiseMode(_data.operation,
@@ -316,16 +319,24 @@ std::string PointwiseOperationDescriptor::toString() const
     std::string str = "PointwiseOperationDescriptor: {";
     str += "in_0_uid=" + std::to_string(_data.in_0_tensor_uid);
     str += ", out_0_uid=" + std::to_string(_data.out_0_tensor_uid);
-    str += ", in_1_uid=" + std::to_string(_data.in_1_tensor_uid);
-    str += ", in_2_uid=" + std::to_string(_data.in_2_tensor_uid);
-    str += ", axis_uid=" + std::to_string(_data.axis_tensor_uid);
+    str += ", in_1_uid="
+           + (_data.in_1_tensor_uid ? std::to_string(*_data.in_1_tensor_uid) : "nullopt");
+    str += ", in_2_uid="
+           + (_data.in_2_tensor_uid ? std::to_string(*_data.in_2_tensor_uid) : "nullopt");
+    str += ", axis_uid="
+           + (_data.axis_tensor_uid ? std::to_string(*_data.axis_tensor_uid) : "nullopt");
     str += ", operation=" + std::to_string(static_cast<int>(_data.operation));
-    str += ", relu_lower_clip=" + std::to_string(_data.relu_lower_clip);
-    str += ", relu_upper_clip=" + std::to_string(_data.relu_upper_clip);
-    str += ", relu_lower_clip_slope=" + std::to_string(_data.relu_lower_clip_slope);
-    str += ", swish_beta=" + std::to_string(_data.swish_beta);
-    str += ", elu_alpha=" + std::to_string(_data.elu_alpha);
-    str += ", softplus_beta=" + std::to_string(_data.softplus_beta);
+    str += ", relu_lower_clip="
+           + (_data.relu_lower_clip ? std::to_string(*_data.relu_lower_clip) : "nullopt");
+    str += ", relu_upper_clip="
+           + (_data.relu_upper_clip ? std::to_string(*_data.relu_upper_clip) : "nullopt");
+    str += ", relu_lower_clip_slope="
+           + (_data.relu_lower_clip_slope ? std::to_string(*_data.relu_lower_clip_slope)
+                                          : "nullopt");
+    str += ", swish_beta=" + (_data.swish_beta ? std::to_string(*_data.swish_beta) : "nullopt");
+    str += ", elu_alpha=" + (_data.elu_alpha ? std::to_string(*_data.elu_alpha) : "nullopt");
+    str += ", softplus_beta="
+           + (_data.softplus_beta ? std::to_string(*_data.softplus_beta) : "nullopt");
     str += ", compute_data_type=";
     str += hipdnn_data_sdk::data_objects::EnumNameDataType(_computeDataType);
     str += "}";
