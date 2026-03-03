@@ -346,10 +346,12 @@ def runPerformanceCommand (platform, project)
             platform.runCommand(this, command)
 
             // Database insertion for PR builds
+            echo "=== Starting database insertion for PR build ==="
             def dbInsertCommand = """#!/usr/bin/env bash
                 set -ex
+                echo "=== dbInsertCommand script started ==="
                 cd ${project.paths.project_build_prefix}/
-                
+
                 # Find CSV file location
                 CSV_FILE=""
                 if masterCompare; then
@@ -380,26 +382,34 @@ def runPerformanceCommand (platform, project)
                         --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..." \\
                         --comment "testing CI db insertion"
                     set -e
-                    
+
                     # Archive the CSV file
                     cp \$CSV_FILE performance_${platform.gpu}_${rrperfSuite}.csv
                 else
                     echo "Warning: CSV file not found for database insertion"
                 fi
             """
-            
+
             // Run database insertion with credentials
-            withCredentials([
-                string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
-                string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
-                string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
-            ]) {
-                platform.runCommand(this, dbInsertCommand)
+            echo "=== [PR build] Attempting database insertion with credentials ==="
+            try {
+                withCredentials([
+                    string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
+                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
+                    string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
+                    string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+                ]) {
+                    echo "=== [PR build] Credentials loaded, running dbInsertCommand ==="
+                    platform.runCommand(this, dbInsertCommand)
+                }
+                echo "=== [PR build] Database insertion completed successfully ==="
+            } catch (Exception e) {
+                echo "=== [PR build] Database insertion failed: ${e.message} ==="
+                echo "=== [PR build] Continuing without database insertion ==="
             }
 
             platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_archive.zip")
-            
+
             // Archive CSV file if it exists
             try {
                 platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_${rrperfSuite}.csv")
@@ -571,22 +581,30 @@ def runPerformanceCommand (platform, project)
                         --db_label \$DB_LABEL \\
                         --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..."
                     set -e
-                    
+
                     # Archive the CSV file
                     cp \$CSV_FILE performance_${platform.gpu}_${rrperfSuite}.csv
                 else
                     echo "Warning: CSV file not found for database insertion"
                 fi
             """
-            
+
             // Run database insertion with credentials
-            withCredentials([
-                string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
-                string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
-                string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
-            ]) {
-                platform.runCommand(this, dbInsertCommand)
+            echo "=== [develop build] Attempting database insertion with credentials ==="
+            try {
+                withCredentials([
+                    string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
+                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
+                    string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
+                    string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+                ]) {
+                    echo "=== [develop build] Credentials loaded, running dbInsertCommand ==="
+                    platform.runCommand(this, dbInsertCommand)
+                }
+                echo "=== [develop build] Database insertion completed successfully ==="
+            } catch (Exception e) {
+                echo "=== [develop build] Database insertion failed: ${e.message} ==="
+                echo "=== [develop build] Continuing without database insertion ==="
             }
 
             platform.archiveArtifacts(this, "${project.paths.project_build_prefix}/performance_${platform.gpu}_archive.zip")
