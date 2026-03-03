@@ -6,10 +6,12 @@
 #include "HipdnnBackendAttributeType.h"
 #include "HipdnnDataType.h"
 #include "HipdnnException.hpp"
+#include "HipdnnPointwiseMode.h"
 #include "TensorDescriptor.hpp"
 #include <cstring>
 #include <hipdnn_data_sdk/data_objects/convolution_common_generated.h>
 #include <hipdnn_data_sdk/data_objects/data_types_generated.h>
+#include <hipdnn_data_sdk/data_objects/pointwise_attributes_generated.h>
 #include <memory>
 #include <vector>
 
@@ -109,6 +111,19 @@ void getConvMode(hipdnn_data_sdk::data_objects::ConvMode source,
                  int64_t* elementCount,
                  void* arrayOfElements,
                  const char* errorPrefix);
+
+void setPointwiseMode(hipdnn_data_sdk::data_objects::PointwiseMode& target,
+                      hipdnnBackendAttributeType_t attributeType,
+                      int64_t elementCount,
+                      const void* arrayOfElements,
+                      const char* errorPrefix);
+
+void getPointwiseMode(hipdnn_data_sdk::data_objects::PointwiseMode source,
+                      hipdnnBackendAttributeType_t attributeType,
+                      int64_t requestedElementCount,
+                      int64_t* elementCount,
+                      void* arrayOfElements,
+                      const char* errorPrefix);
 
 void setTensorDescriptor(std::shared_ptr<TensorDescriptor>& descTarget,
                          int64_t& uidTarget,

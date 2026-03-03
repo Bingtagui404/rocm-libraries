@@ -160,4 +160,12 @@ typedef enum
      */
     HIPDNN_BACKEND_OPERATION_CONVOLUTION_WRW_DESCRIPTOR,
 
+    /**
+     * @brief Pointwise operation descriptor
+     *
+     * Represents a pointwise (element-wise) operation with 1-3 input tensors
+     * and activation parameters. Supports unary, binary, and ternary operations.
+     */
+    HIPDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR,
+
 } hipdnnBackendDescriptorType_t;
