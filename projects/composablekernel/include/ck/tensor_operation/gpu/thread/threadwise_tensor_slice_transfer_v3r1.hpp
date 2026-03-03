@@ -86,10 +86,12 @@ struct ThreadwiseTensorSliceTransfer_v3r1
         detail::lambda_scalar_per_access<DstVectorDim, DstScalarPerVector_>{}, Number<nDim>{});
 
     // SpaceFillingCurve types for precomputed index lookups
-    using SrcSpaceFillingCurve =
-        SpaceFillingCurve<SliceLengths, SrcDimAccessOrder, remove_cv_t<decltype(src_scalar_per_access_)>>;
-    using DstSpaceFillingCurve =
-        SpaceFillingCurve<SliceLengths, DstDimAccessOrder, remove_cv_t<decltype(dst_scalar_per_access_)>>;
+    using SrcSpaceFillingCurve = SpaceFillingCurve<SliceLengths,
+                                                   SrcDimAccessOrder,
+                                                   remove_cv_t<decltype(src_scalar_per_access_)>>;
+    using DstSpaceFillingCurve = SpaceFillingCurve<SliceLengths,
+                                                   DstDimAccessOrder,
+                                                   remove_cv_t<decltype(dst_scalar_per_access_)>>;
 
     __device__ constexpr ThreadwiseTensorSliceTransfer_v3r1(
         const SrcDesc& src_desc,
