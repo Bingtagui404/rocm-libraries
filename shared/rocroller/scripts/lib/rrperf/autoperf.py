@@ -134,6 +134,12 @@ def get_args(parser: argparse.ArgumentParser):
         help="Commits/tags/branches where a failure does not cause the"
         " overall command to fail.",
     )
+    parser.add_argument(
+        "--dump_csv",
+        help="Dump benchmark CSV with included headers.",
+        action="store_true",
+        default=False,
+    )
 
 
 def run(args):
@@ -156,6 +162,7 @@ def autoperf(
     plot_min=False,
     exclude_boxplot=False,
     x_value: str = "timestamp",
+    dump_csv: bool = False,
     **kwargs,
 ):
     if no_fail is None:
@@ -202,6 +209,7 @@ def autoperf(
             suite=suite,
             id_filter=id_filter,
             recast=True,
+            dump_csv=dump_csv,
         )
         if target in no_fail_targets:
             success_no_fail &= target_success
