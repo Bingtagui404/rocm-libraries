@@ -142,7 +142,7 @@ def dump_csv(suite: str, rundir: Path, outdir: Path = None):
                 rec.get("N", 0),
                 rec.get("K", 0),
                 rec.get("us", 0),
-                rec.get("type_A", 4.0),
+                rec.get("type_A", "float"),
             ),
             4,
         )
