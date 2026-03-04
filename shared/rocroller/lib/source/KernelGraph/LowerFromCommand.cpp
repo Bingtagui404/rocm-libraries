@@ -140,12 +140,11 @@ namespace rocRoller
             {
                 auto tensor = m_command->getOperation<Operations::Tensor>(tload.getSrcTag());
 
-                auto const sizes    = toExpressionPtrVec(tensor.sizes());
-                auto const strides  = toExpressionPtrVec(tensor.strides());
-                auto       userSize = computeUserSize(sizes, strides);
+                auto const sizes   = toExpressionPtrVec(tensor.sizes());
+                auto const strides = toExpressionPtrVec(tensor.strides());
 
-                auto user = m_graph.coordinates.addElement(
-                    User(tload.getTag(), tensor.data()->name(), userSize));
+                auto user
+                    = m_graph.coordinates.addElement(User(tload.getTag(), tensor.data()->name()));
 
                 std::vector<int> dims;
                 auto             logicalElements = sizes[0];
@@ -251,12 +250,11 @@ namespace rocRoller
 
                 auto tensor = m_command->getOperation<Operations::Tensor>(srcTag);
 
-                auto const sizes    = toExpressionPtrVec(tensor.sizes(), tensor.literalSizes());
-                auto const strides  = toExpressionPtrVec(tensor.strides(), tensor.literalStrides());
-                auto       userSize = computeUserSize(sizes, strides);
+                auto const sizes   = toExpressionPtrVec(tensor.sizes(), tensor.literalSizes());
+                auto const strides = toExpressionPtrVec(tensor.strides(), tensor.literalStrides());
 
-                auto user = m_graph.coordinates.addElement(
-                    User(tload.getTag(), tensor.data()->name(), userSize));
+                auto user
+                    = m_graph.coordinates.addElement(User(tload.getTag(), tensor.data()->name()));
 
                 std::vector<int> dims;
                 for(size_t i = 0; i < sizes.size(); ++i)
@@ -364,9 +362,8 @@ namespace rocRoller
 
                 auto tensor = m_command->getOperation<Operations::Tensor>(tstore.getDstTag());
 
-                auto const strides  = toExpressionPtrVec(tensor.strides());
-                auto const sizes    = toExpressionPtrVec(tensor.sizes());
-                auto       userSize = computeUserSize(sizes, strides);
+                auto const strides = toExpressionPtrVec(tensor.strides());
+                auto const sizes   = toExpressionPtrVec(tensor.sizes());
 
                 std::vector<int> dims;
                 for(size_t i = 0; i < strides.size(); ++i)
@@ -378,7 +375,7 @@ namespace rocRoller
 
                 auto linear = m_dim.at(tstore.getSrcTag());
                 auto user   = m_graph.coordinates.addElement(
-                    User(tstore.getSrcTag(), tensor.data()->name(), userSize));
+                    User(tstore.getSrcTag(), tensor.data()->name()));
 
                 m_graph.coordinates.addElement(Split(), std::vector<int>{linear}, dims);
                 m_graph.coordinates.addElement(Join(), dims, std::vector<int>{user});
@@ -400,6 +397,11 @@ namespace rocRoller
              *                DestructMacroTile                         Join
              *     MacroTile ------------------> { SubDimension, ... } -----> User
              *
+             * and:
+             *
+             *                DataFlow
+             *     MacroTile ---------> User.
+             *
              */
             void operator()(Operations::T_Store_Tiled const& tstore)
             {
@@ -414,17 +416,17 @@ namespace rocRoller
 
                 auto tensor = m_command->getOperation<Operations::Tensor>(tstore.getDstTag());
 
-                auto const sizes    = toExpressionPtrVec(tensor.sizes(), tensor.literalSizes());
-                auto const strides  = toExpressionPtrVec(tensor.strides(), tensor.literalStrides());
-                auto       userSize = computeUserSize(sizes, strides);
+                auto const sizes   = toExpressionPtrVec(tensor.sizes(), tensor.literalSizes());
+                auto const strides = toExpressionPtrVec(tensor.strides(), tensor.literalStrides());
 
                 auto user = m_graph.coordinates.addElement(
-                    User(tstore.getSrcTag(), tensor.data()->name(), userSize));
+                    User(tstore.getSrcTag(), tensor.data()->name()));
 
                 std::vector<int> dims;
                 for(size_t i = 0; i < strides.size(); ++i)
                 {
-                    auto dim = m_graph.coordinates.addElement(SubDimension(i, nullptr, strides[i]));
+                    auto dim
+                        = m_graph.coordinates.addElement(SubDimension(i, sizes[i], strides[i]));
                     dims.push_back(dim);
                 }
 

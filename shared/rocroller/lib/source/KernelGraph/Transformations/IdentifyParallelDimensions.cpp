@@ -384,15 +384,162 @@ namespace rocRoller
             return visitor.redundantArgs;
         }
 
+        /**
+         * Visitor to recursively replace expression pointers with canonical ones
+         */
+        struct ReplaceExpressionsVisitor
+        {
+            std::vector<std::pair<Expression::ExpressionPtr, Expression::ExpressionPtr>> const&
+                replacements;
+
+            template <Expression::CUnary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr) const
+            {
+                Expr cpy = expr;
+                cpy.arg  = call(expr.arg);
+                return std::make_shared<Expression::Expression>(cpy);
+            }
+
+            template <Expression::CBinary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr) const
+            {
+                Expr cpy = expr;
+                cpy.lhs  = call(expr.lhs);
+                cpy.rhs  = call(expr.rhs);
+                return std::make_shared<Expression::Expression>(cpy);
+            }
+
+            template <Expression::CTernary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr) const
+            {
+                Expr cpy = expr;
+                cpy.lhs  = call(expr.lhs);
+                cpy.r1hs = call(expr.r1hs);
+                cpy.r2hs = call(expr.r2hs);
+                return std::make_shared<Expression::Expression>(cpy);
+            }
+
+            template <Expression::CNary Expr>
+            Expression::ExpressionPtr operator()(Expr const& expr) const
+            {
+                auto cpy = expr;
+                std::ranges::for_each(cpy.operands, [this](auto& op) { op = call(op); });
+                return std::make_shared<Expression::Expression>(std::move(cpy));
+            }
+
+            Expression::ExpressionPtr operator()(Expression::ScaledMatrixMultiply const& expr) const
+            {
+                Expression::ScaledMatrixMultiply cpy = expr;
+                cpy.matA                             = call(expr.matA);
+                cpy.matB                             = call(expr.matB);
+                cpy.matC                             = call(expr.matC);
+                cpy.scaleA                           = call(expr.scaleA);
+                cpy.scaleB                           = call(expr.scaleB);
+                return std::make_shared<Expression::Expression>(cpy);
+            }
+
+            template <Expression::CValue Value>
+            Expression::ExpressionPtr operator()(Value const& expr) const
+            {
+                return std::make_shared<Expression::Expression>(expr);
+            }
+
+            Expression::ExpressionPtr call(Expression::ExpressionPtr expr) const
+            {
+                if(!expr)
+                    return expr;
+
+                // Check if this entire expression should be replaced using identical()
+                for(auto const& [target, replacement] : replacements)
+                {
+                    if(Expression::identical(expr, target))
+                        return replacement;
+                }
+
+                // Otherwise, recursively process sub-expressions
+                return std::visit(*this, *expr);
+            }
+        };
+
+        /**
+         * Visitor to apply expression replacements to all dimensions and operations in the graph
+         */
+        struct ReplaceInGraphVisitor
+        {
+            ReplaceExpressionsVisitor replaceVisitor;
+
+            template <CoordinateGraph::CCoordinateTransformEdge T>
+            CoordinateGraph::Edge visitCoordinateEdge(int tag, T const& edge)
+            {
+                return edge;
+            }
+
+            template <CoordinateGraph::CDataFlowEdge T>
+            CoordinateGraph::Edge visitCoordinateEdge(int tag, T const& edge)
+            {
+                return edge;
+            }
+
+            template <CoordinateGraph::CDimension T>
+            CoordinateGraph::Dimension visitDimension(int tag, T const& dim)
+            {
+                auto d   = dim;
+                d.size   = replaceVisitor.call(dim.size);
+                d.stride = replaceVisitor.call(dim.stride);
+                d.offset = replaceVisitor.call(dim.offset);
+                return d;
+            }
+
+            template <ControlGraph::COperation T>
+            ControlGraph::Operation visitOperation(int tag, T const& op)
+            {
+                return op;
+            }
+
+            ControlGraph::Operation visitOperation(int tag, ControlGraph::Assign const& op)
+            {
+                auto newOp       = op;
+                newOp.expression = replaceVisitor.call(op.expression);
+                return newOp;
+            }
+
+            ControlGraph::Operation visitOperation(int tag, ControlGraph::ConditionalOp const& op)
+            {
+                auto newOp      = op;
+                newOp.condition = replaceVisitor.call(op.condition);
+                return newOp;
+            }
+
+            ControlGraph::Operation visitOperation(int tag, ControlGraph::AssertOp const& op)
+            {
+                auto newOp      = op;
+                newOp.condition = replaceVisitor.call(op.condition);
+                return newOp;
+            }
+
+            ControlGraph::Operation visitOperation(int tag, ControlGraph::ForLoopOp const& op)
+            {
+                auto newOp      = op;
+                newOp.condition = replaceVisitor.call(op.condition);
+                return newOp;
+            }
+        };
+
         KernelGraph IdentifyParallelDimensions::apply(KernelGraph const& original)
         {
-            auto copy = original;
-
+            auto copy         = original;
             auto parallelDims = mergeSets(identifyParallelDimensionSets(copy));
+
+            // Redundant expression to canonical expression
+            std::vector<std::pair<Expression::ExpressionPtr, Expression::ExpressionPtr>>
+                replacements;
 
             for(auto const& dimSet : parallelDims)
             {
-                Expression::ExpressionPtr dimSize;
+                AssertFatal(dimSet.size() > 1,
+                            "Parallel dimension sets should have at least 2 dimensions");
+
+                Expression::ExpressionPtr canonicalSize = nullptr;
 
                 for(int dim : dimSet)
                 {
@@ -401,96 +548,34 @@ namespace rocRoller
 
                     if(subDim->size)
                     {
-                        dimSize = subDim->size;
+                        canonicalSize = subDim->size;
                         break;
                     }
                 }
-
-                AssertFatal(dimSize);
 
                 for(int dim : dimSet)
                 {
                     auto subDim = copy.coordinates.get<CoordinateGraph::SubDimension>(dim);
                     AssertFatal(subDim);
 
-                    subDim->size = dimSize;
+                    if(Expression::identical(subDim->size, canonicalSize))
+                        continue;
+
+                    replacements.push_back({subDim->size, canonicalSize});
+                    subDim->size = canonicalSize;
                     copy.coordinates.setElement(dim, *subDim);
                 }
             }
 
-            // This pass recomputes User.size (tensor limit) using the merged SubDimension
-            // sizes, eliminating redundant kernel arguments.
-            for(auto userTag : copy.coordinates.getNodes())
+            // Replace all occurrences of non-canonical expressions in the graph
+            if(!replacements.empty())
             {
-                auto user = copy.coordinates.get<CoordinateGraph::User>(userTag);
-                if(!user || !user->size)
-                    continue;
-
                 Log::debug(
-                    "IdentifyParallelDimensions: Checking User {} for SubDimension connections",
-                    userTag);
+                    "IdentifyParallelDimensions: Replacing {} expression(s) with canonical ones",
+                    replacements.size());
 
-                // Find SubDimensions connected to this User
-                // Pattern 1 (input tensors): User → Split → SubDimensions
-                // Pattern 2 (output tensors): SubDimensions → Join → User
-                std::vector<int> subdims;
-
-                // Try Split edges (input tensors: A, B, C)
-                subdims = copy.coordinates
-                              .getOutputNodeIndices(userTag,
-                                                    CoordinateGraph::isEdge<CoordinateGraph::Split>)
-                              .to<std::vector>();
-
-                // Try Join edges (output tensors: D)
-                if(subdims.empty())
-                {
-                    subdims = copy.coordinates
-                                  .getInputNodeIndices(
-                                      userTag, CoordinateGraph::isEdge<CoordinateGraph::Join>)
-                                  .to<std::vector>();
-                }
-
-                if(subdims.empty())
-                {
-                    Log::debug("  No SubDimensions found via Split or Join edges");
-                    Log::debug("  User may be scratch space (LDS tensors created later by AddLDS)");
-                    continue;
-                }
-
-                Log::debug("  Found {} SubDimensions", subdims.size());
-
-                // Recompute User size using merged SubDimension expressions
-                std::vector<Expression::ExpressionPtr> sizes, strides;
-                bool                                   allSubdimsValid = true;
-                for(auto subdimTag : subdims)
-                {
-                    auto subdim = copy.coordinates.get<CoordinateGraph::SubDimension>(subdimTag);
-                    if(!subdim || !subdim->size || !subdim->stride)
-                    {
-                        Log::debug("  SubDimension {} missing size or stride, skipping User size "
-                                   "recomputation",
-                                   subdimTag);
-                        allSubdimsValid = false;
-                        break;
-                    }
-                    sizes.push_back(subdim->size);
-                    strides.push_back(subdim->stride);
-                }
-
-                if(!allSubdimsValid)
-                {
-                    Log::debug("  Skipping User {} size update due to incomplete SubDimensions",
-                               userTag);
-                    continue;
-                }
-
-                auto newSize = computeUserSize(sizes, strides);
-                user->size   = newSize;
-                copy.coordinates.setElement(userTag, *user);
-                Log::debug("IdentifyParallelDimensions: Updated User {} size expression using {} "
-                           "SubDimensions",
-                           userTag,
-                           subdims.size());
+                auto visitor = ReplaceInGraphVisitor{ReplaceExpressionsVisitor{replacements}};
+                copy         = rewriteDimensions(copy, visitor);
             }
 
             return copy;

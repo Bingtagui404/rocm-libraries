@@ -851,22 +851,6 @@ namespace rocRoller
          */
         std::optional<int>
             getExchangeForMultiply(KernelGraph const& graph, int multiplyTag, NaryArgument arg);
-
-        /**
-         * @brief Compute User coordinate size from dimension sizes and strides.
-         *
-         * Implements the formula: 1 + Σ(stride[i] * (size[i] - 1))
-         *
-         * This computes the total buffer size required for a tensor with given
-         * dimension sizes and strides, accounting for non-contiguous layouts.
-         *
-         * @param sizes Vector of expressions representing dimension sizes
-         * @param strides Vector of expressions representing dimension strides
-         * @return Expression computing the total User coordinate size
-         */
-        Expression::ExpressionPtr
-            computeUserSize(std::vector<Expression::ExpressionPtr> const& sizes,
-                            std::vector<Expression::ExpressionPtr> const& strides);
     }
 }
 

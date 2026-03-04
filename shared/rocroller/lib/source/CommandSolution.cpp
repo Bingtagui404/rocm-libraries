@@ -319,11 +319,11 @@ namespace rocRoller
                                            && m_commandParameters->prefetchMixMemOps
                                            && m_commandParameters->prefetchLDSFactor == 1;
 
+        transforms.push_back(std::make_shared<KernelGraph::UpdateParameters>(m_commandParameters));
         transforms.push_back(std::make_shared<KernelGraph::IdentifyParallelDimensions>());
 
         transforms.push_back(std::make_shared<KernelGraph::OrderMemory>(
             !m_commandParameters->allowAmbiguousMemoryNodes));
-        transforms.push_back(std::make_shared<KernelGraph::UpdateParameters>(m_commandParameters));
         transforms.push_back(std::make_shared<KernelGraph::AddLDS>(m_commandParameters, m_context));
         transforms.push_back(std::make_shared<KernelGraph::LowerLinear>(m_context));
         transforms.push_back(
