@@ -3369,26 +3369,7 @@ public:
 
         print_header(algorithm);
 
-        // Run all benchmarks.
-        size_t family_index = 0;
-        for(auto& b_unique_ptr : specializations)
-        {
-            auto b    = b_unique_ptr.get();
-            auto meta = b->meta();
-            auto algo = meta.get<std::string>("algo");
-
-            if(m_settings.dry)
-            {
-                output_dry_specialization(algo, meta, family_index);
-            }
-            else
-            {
-                auto state = new_state(algo, meta, family_index);
-                b->run(state);
-            }
-
-            family_index++;
-        }
+        run_all_specializations();
 
         get_logger().output_summary();
     }
@@ -3665,6 +3646,30 @@ private:
                                            m_family_col_width,
                                            specializations.size(),
                                            m_settings.noise_timeout_secs);
+        }
+    }
+
+    /// Runs all benchmark specializations.
+    void run_all_specializations()
+    {
+        size_t family_index = 0;
+        for(auto& b_unique_ptr : specializations)
+        {
+            auto b    = b_unique_ptr.get();
+            auto meta = b->meta();
+            auto algo = meta.get<std::string>("algo");
+
+            if(m_settings.dry)
+            {
+                output_dry_specialization(algo, meta, family_index);
+            }
+            else
+            {
+                auto state = new_state(algo, meta, family_index);
+                b->run(state);
+            }
+
+            family_index++;
         }
     }
 
