@@ -319,6 +319,8 @@ namespace rocRoller
                                            && m_commandParameters->prefetchMixMemOps
                                            && m_commandParameters->prefetchLDSFactor == 1;
 
+        // UpdateParameters should go before IdentifyParallelDimensions so the User.size expression
+        // that it sets is updated in IdentifyParallelDimensions
         transforms.push_back(std::make_shared<KernelGraph::UpdateParameters>(m_commandParameters));
         transforms.push_back(std::make_shared<KernelGraph::IdentifyParallelDimensions>());
 

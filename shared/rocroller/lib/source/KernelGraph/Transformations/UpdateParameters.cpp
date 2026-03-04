@@ -339,12 +339,9 @@ namespace rocRoller
 
         struct SetUserSizeVisitor
         {
-            KernelGraph&         graph;
-            CommandParametersPtr params;
-
             SetUserSizeVisitor(KernelGraph& graph, CommandParametersPtr params)
-                : graph(graph)
-                , params(params)
+                : m_graph(graph)
+                , m_params(params)
             {
             }
 
@@ -372,22 +369,23 @@ namespace rocRoller
                 std::vector<int>   subDims;
 
                 // Try load path
-                subDims = graph.coordinates.getInputNodeIndices(tag, isEdge<ConstructMacroTile>)
+                subDims = m_graph.coordinates.getInputNodeIndices(tag, isEdge<ConstructMacroTile>)
                               .to<std::vector>();
                 if(!subDims.empty())
                 {
                     maybeUserTag
-                        = only(graph.coordinates.getInputNodeIndices(subDims[0], isEdge<Split>));
+                        = only(m_graph.coordinates.getInputNodeIndices(subDims[0], isEdge<Split>));
                 }
                 else
                 {
                     // Try store path
-                    subDims = graph.coordinates.getOutputNodeIndices(tag, isEdge<DestructMacroTile>)
-                                  .to<std::vector>();
+                    subDims
+                        = m_graph.coordinates.getOutputNodeIndices(tag, isEdge<DestructMacroTile>)
+                              .to<std::vector>();
                     if(!subDims.empty())
                     {
                         maybeUserTag = only(
-                            graph.coordinates.getOutputNodeIndices(subDims[0], isEdge<Join>));
+                            m_graph.coordinates.getOutputNodeIndices(subDims[0], isEdge<Join>));
                     }
                 }
 
@@ -399,8 +397,8 @@ namespace rocRoller
                     return dim;
                 }
 
-                auto userTag   = *maybeUserTag;
-                auto maybeUser = graph.coordinates.get<User>(userTag);
+                auto userTag   = maybeUserTag.value();
+                auto maybeUser = m_graph.coordinates.get<User>(userTag);
                 if(!maybeUser)
                 {
                     Log::debug(
@@ -410,13 +408,13 @@ namespace rocRoller
                     return dim;
                 }
 
-                // Filter subdimensions to keep only those with dynamic (non-literal) sizes
                 auto hasDynamicSize = [&](int subDimTag) -> bool {
-                    auto size = getSize(graph.coordinates.getNode(subDimTag));
+                    auto size = getSize(m_graph.coordinates.getNode(subDimTag));
                     return !rocRoller::Expression::evaluationTimes(
                         size)[rocRoller::Expression::EvaluationTime::Translate];
                 };
 
+                // Filter subdimensions to keep only those with dynamic (non-literal) sizes
                 std::vector<int> dynamicSubDims;
                 for(auto subDimTag : subDims)
                 {
@@ -424,6 +422,8 @@ namespace rocRoller
                         dynamicSubDims.push_back(subDimTag);
                 }
 
+                // Current implementation assumes 2D Users (e.g., GEMM M×N, K×N, M×K)
+                // or 4D Users with two fixed size dimensions and two dynamic subdimensions (GEMM scales).
                 AssertFatal(dynamicSubDims.size() == 2,
                             "SetUserSizeVisitor: Expected 2 dynamic subdimensions for MacroTile "
                             "{}, got {}",
@@ -433,11 +433,11 @@ namespace rocRoller
                 // Determine which dimension has the largest stride based on memory layout
                 // Column-major (rightmost fastest): leftmost dim has largest stride
                 // Row-major (leftmost fastest): rightmost dim has largest stride
-                bool rightmostFastest  = params->transposeMemoryAccess[dim.layoutType];
+                bool rightmostFastest  = m_params->transposeMemoryAccess[dim.layoutType];
                 int  maxStrideDimIndex = rightmostFastest ? 0 : 1;
 
                 auto subDim
-                    = graph.coordinates.get<SubDimension>(dynamicSubDims[maxStrideDimIndex]);
+                    = m_graph.coordinates.get<SubDimension>(dynamicSubDims[maxStrideDimIndex]);
                 AssertFatal(
                     subDim && subDim->size && subDim->stride,
                     "SubDimension must have size and stride defined for User.size calculation");
@@ -445,7 +445,7 @@ namespace rocRoller
                 // User.size = maximum extent = (stride × size) of the slowest-changing dimension
                 auto user = *maybeUser;
                 user.size = subDim->stride * subDim->size;
-                graph.coordinates.setElement(userTag, user);
+                m_graph.coordinates.setElement(userTag, user);
 
                 Log::debug("SetUserSizeVisitor: Set User {}.size to {} based on SubDimension {} "
                            "for MacroTile {}",
@@ -462,6 +462,10 @@ namespace rocRoller
             {
                 return op;
             }
+
+        private:
+            KernelGraph&         m_graph;
+            CommandParametersPtr m_params;
         };
 
         KernelGraph UpdateParameters::apply(KernelGraph const& original)

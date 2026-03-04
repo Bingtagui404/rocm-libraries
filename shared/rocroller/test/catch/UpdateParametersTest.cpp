@@ -117,22 +117,32 @@ TEST_CASE("SetUserSize for manually constructed load graph", "[kernel-graph][upd
     auto user = kgraph.coordinates.addElement(User({}, "input"));
 
     // Create Command and CommandArguments for dynamic sizes
-    auto command = std::make_shared<Command>();
-    auto sizeMTag = command->allocateTag();
-    auto sizeKTag = command->allocateTag();
+    auto command    = std::make_shared<Command>();
+    auto sizeMTag   = command->allocateTag();
+    auto sizeKTag   = command->allocateTag();
     auto strideMTag = command->allocateTag();
 
-    auto sizeMArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeMTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeM");
-    auto sizeKArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeKTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeK");
-    auto strideMArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, strideMTag, ArgumentType::Value, DataDirection::ReadOnly, "strideM");
+    auto sizeMArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeMTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeM");
+    auto sizeKArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeKTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeK");
+    auto strideMArg = command->allocateArgument(VariableType{DataType::UInt64},
+                                                strideMTag,
+                                                ArgumentType::Value,
+                                                DataDirection::ReadOnly,
+                                                "strideM");
 
     // Create subdimensions with dynamic sizes using CommandArgumentPtr
     auto sizeM = std::make_shared<Expression::Expression>(sizeMArg);
     auto sizeK = std::make_shared<Expression::Expression>(sizeKArg);
-    auto strideM = std::make_shared<Expression::Expression>(strideMArg);  // Row-major: stride of M is K
+    auto strideM
+        = std::make_shared<Expression::Expression>(strideMArg); // Row-major: stride of M is K
     auto strideK = Expression::literal(1u);
 
     auto subDim0 = kgraph.coordinates.addElement(SubDimension(0, sizeM, strideM));
@@ -147,9 +157,9 @@ TEST_CASE("SetUserSize for manually constructed load graph", "[kernel-graph][upd
     kgraph.coordinates.addElement(DataFlow(), {user}, {tileTag});
 
     // Set MacroTile properties
-    auto tile = *kgraph.coordinates.get<MacroTile>(tileTag);
+    auto tile       = *kgraph.coordinates.get<MacroTile>(tileTag);
     tile.layoutType = LayoutType::MATRIX_A;
-    tile.rank = 2;
+    tile.rank       = 2;
     tile.memoryType = MemoryType::WAVE;
     kgraph.coordinates.setElement(tileTag, tile);
 
@@ -192,22 +202,32 @@ TEST_CASE("SetUserSize for manually constructed store graph", "[kernel-graph][up
     auto tileTag = kgraph.coordinates.addElement(MacroTile());
 
     // Create Command and CommandArguments for dynamic sizes
-    auto command = std::make_shared<Command>();
-    auto sizeMTag = command->allocateTag();
-    auto sizeNTag = command->allocateTag();
+    auto command    = std::make_shared<Command>();
+    auto sizeMTag   = command->allocateTag();
+    auto sizeNTag   = command->allocateTag();
     auto strideMTag = command->allocateTag();
 
-    auto sizeMArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeMTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeM");
-    auto sizeNArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeNTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeN");
-    auto strideMArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, strideMTag, ArgumentType::Value, DataDirection::ReadOnly, "strideM");
+    auto sizeMArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeMTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeM");
+    auto sizeNArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeNTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeN");
+    auto strideMArg = command->allocateArgument(VariableType{DataType::UInt64},
+                                                strideMTag,
+                                                ArgumentType::Value,
+                                                DataDirection::ReadOnly,
+                                                "strideM");
 
     // Create subdimensions with dynamic sizes using CommandArgumentPtr
     auto sizeM = std::make_shared<Expression::Expression>(sizeMArg);
     auto sizeN = std::make_shared<Expression::Expression>(sizeNArg);
-    auto strideM = std::make_shared<Expression::Expression>(strideMArg);  // Row-major: stride of M is N
+    auto strideM
+        = std::make_shared<Expression::Expression>(strideMArg); // Row-major: stride of M is N
     auto strideN = Expression::literal(1u);
 
     auto subDim0 = kgraph.coordinates.addElement(SubDimension(0, sizeM, strideM));
@@ -222,9 +242,9 @@ TEST_CASE("SetUserSize for manually constructed store graph", "[kernel-graph][up
     kgraph.coordinates.addElement(DataFlow(), {tileTag}, {user});
 
     // Set MacroTile properties
-    auto tile = *kgraph.coordinates.get<MacroTile>(tileTag);
+    auto tile       = *kgraph.coordinates.get<MacroTile>(tileTag);
     tile.layoutType = LayoutType::MATRIX_ACCUMULATOR;
-    tile.rank = 2;
+    tile.rank       = 2;
     tile.memoryType = MemoryType::WAVE;
     kgraph.coordinates.setElement(tileTag, tile);
 
@@ -267,23 +287,33 @@ TEST_CASE("SetUserSize with column-major layout", "[kernel-graph][update-paramet
     auto user = kgraph.coordinates.addElement(User({}, "input"));
 
     // Create Command and CommandArguments for dynamic sizes
-    auto command = std::make_shared<Command>();
-    auto sizeMTag = command->allocateTag();
-    auto sizeKTag = command->allocateTag();
+    auto command    = std::make_shared<Command>();
+    auto sizeMTag   = command->allocateTag();
+    auto sizeKTag   = command->allocateTag();
     auto strideKTag = command->allocateTag();
 
-    auto sizeMArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeMTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeM");
-    auto sizeKArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, sizeKTag, ArgumentType::Value, DataDirection::ReadOnly, "sizeK");
-    auto strideKArg = command->allocateArgument(
-        VariableType{DataType::UInt64}, strideKTag, ArgumentType::Value, DataDirection::ReadOnly, "strideK");
+    auto sizeMArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeMTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeM");
+    auto sizeKArg   = command->allocateArgument(VariableType{DataType::UInt64},
+                                              sizeKTag,
+                                              ArgumentType::Value,
+                                              DataDirection::ReadOnly,
+                                              "sizeK");
+    auto strideKArg = command->allocateArgument(VariableType{DataType::UInt64},
+                                                strideKTag,
+                                                ArgumentType::Value,
+                                                DataDirection::ReadOnly,
+                                                "strideK");
 
     // Create subdimensions with dynamic sizes using CommandArgumentPtr for column-major layout
-    auto sizeM = std::make_shared<Expression::Expression>(sizeMArg);
-    auto sizeK = std::make_shared<Expression::Expression>(sizeKArg);
-    auto strideM = Expression::literal(1u);  // Column-major: stride of M is 1
-    auto strideK = std::make_shared<Expression::Expression>(strideKArg);  // Column-major: stride of K is M
+    auto sizeM   = std::make_shared<Expression::Expression>(sizeMArg);
+    auto sizeK   = std::make_shared<Expression::Expression>(sizeKArg);
+    auto strideM = Expression::literal(1u); // Column-major: stride of M is 1
+    auto strideK
+        = std::make_shared<Expression::Expression>(strideKArg); // Column-major: stride of K is M
 
     auto subDim0 = kgraph.coordinates.addElement(SubDimension(0, sizeM, strideM));
     auto subDim1 = kgraph.coordinates.addElement(SubDimension(1, sizeK, strideK));
@@ -297,9 +327,9 @@ TEST_CASE("SetUserSize with column-major layout", "[kernel-graph][update-paramet
     kgraph.coordinates.addElement(DataFlow(), {user}, {tileTag});
 
     // Set MacroTile properties
-    auto tile = *kgraph.coordinates.get<MacroTile>(tileTag);
+    auto tile       = *kgraph.coordinates.get<MacroTile>(tileTag);
     tile.layoutType = LayoutType::MATRIX_B;
-    tile.rank = 2;
+    tile.rank       = 2;
     tile.memoryType = MemoryType::WAVE;
     kgraph.coordinates.setElement(tileTag, tile);
 

@@ -1060,8 +1060,6 @@ namespace rocRoller::KernelGraph
             if(!user)
                 return -1;
 
-            // Use User.size which has been updated by IdentifyParallelDimensions
-            // to reference non-redundant kernel arguments
             AssertFatal(user->size, "Invalid User dimension: missing size.", ShowValue(target));
             auto bufferSize = ToBytes(user->size, params.valueType);
             Log::debug("KernelGraph::makeBuffer: using User.size for user {}", target);

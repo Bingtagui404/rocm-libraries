@@ -116,11 +116,6 @@ namespace rocRoller
                 auto sameDimensionLoadTiledNodes
                     = loadNodesReachableWithoutDimensionModifyingNodes(graph.control, nodeID);
 
-                Log::debug(
-                    "IdentifyParallelDimensions::StoreTiled: store {} has {} reachable loads",
-                    nodeID,
-                    sameDimensionLoadTiledNodes.size());
-
                 for(int loadID : sameDimensionLoadTiledNodes)
                 {
                     auto loadTile = graph.mapper.get<CoordinateGraph::MacroTile>(loadID);
@@ -128,24 +123,18 @@ namespace rocRoller
                         = graph.coordinates.getInputNodeIndices(loadTile, isConstructMacroTile)
                               .to<std::vector>();
 
-                    Log::debug("  pairing load {} dims (size={}) with store dims (size={})",
-                               loadID,
-                               loadDims.size(),
-                               storeDims.size());
-
                     AssertFatal(loadDims.size() == storeDims.size(),
                                 ShowValue(loadDims.size()),
                                 ShowValue(storeDims.size()));
 
+                    Log::debug("IdentifyParallelDimensions: Matching {} dimensions between "
+                               "StoreTiled node {} and LoadTiled node {}",
+                               loadDims.size(),
+                               nodeID,
+                               loadID);
+
                     for(size_t i = 0; i < loadDims.size(); i++)
-                    {
-                        Log::debug("    dimension pair: load[{}]={} ↔ store[{}]={}",
-                                   i,
-                                   loadDims.at(i),
-                                   i,
-                                   storeDims.at(i));
                         redundantArgs.push_back({loadDims.at(i), storeDims.at(i)});
-                    }
                 }
             }
 
@@ -191,7 +180,7 @@ namespace rocRoller
                 std::vector<int> bFreeDims;
                 std::vector<int> bContractedDims;
 
-                for(size_t i = 0; i < aTileDims.size(); i++)
+                for(size_t i = 0; i < aTileDims.size(); ++i)
                 {
                     if(aContractedIndices.contains(i))
                         aContractedDims.push_back(aTileDims[i]);
@@ -199,7 +188,7 @@ namespace rocRoller
                         aFreeDims.push_back(aTileDims[i]);
                 }
 
-                for(size_t i = 0; i < bTileDims.size(); i++)
+                for(size_t i = 0; i < bTileDims.size(); ++i)
                 {
                     if(bContractedIndices.contains(i))
                         bContractedDims.push_back(bTileDims[i]);
@@ -207,15 +196,18 @@ namespace rocRoller
                         bFreeDims.push_back(bTileDims[i]);
                 }
 
-                // Match contracted dimensions between A and B
                 AssertFatal(aContractedDims.size() == bContractedDims.size(),
                             ShowValue(aContractedDims.size()),
                             ShowValue(bContractedDims.size()));
 
-                for(size_t i = 0; i < aContractedDims.size(); i++)
+                Log::debug("IdentifyParallelDimensions: Matching {} contracted dims between A and "
+                           "B for TensorContraction node {}",
+                           aContractedDims.size(),
+                           nodeID);
+
+                for(size_t i = 0; i < aContractedDims.size(); ++i)
                     redundantArgs.push_back({aContractedDims[i], bContractedDims[i]});
 
-                // Match free dimensions with output D
                 auto isDataFlowEdge = CoordinateGraph::isEdge<CoordinateGraph::DataFlow>;
                 auto isMacroTile    = [](CoordinateGraph::Dimension const& dim) {
                     return std::holds_alternative<CoordinateGraph::MacroTile>(dim);
@@ -241,20 +233,22 @@ namespace rocRoller
                                 ShowValue(aFreeDims.size()),
                                 ShowValue(bFreeDims.size()));
 
+                    Log::debug("IdentifyParallelDimensions: Matching {} free dims of A "
+                               "and {} free dims of B to output D of TensorContraction node {}",
+                               aFreeDims.size(),
+                               bFreeDims.size(),
+                               nodeID);
+
                     // Match A's free dimensions to D's first dimensions
-                    for(size_t i = 0; i < aFreeDims.size(); i++)
-                    {
+                    for(size_t i = 0; i < aFreeDims.size(); ++i)
                         redundantArgs.push_back({aFreeDims[i], dTileDims[i]});
-                    }
 
                     // Match B's free dimensions to D's remaining dimensions
-                    for(size_t i = 0; i < bFreeDims.size(); i++)
-                    {
+                    for(size_t i = 0; i < bFreeDims.size(); ++i)
                         redundantArgs.push_back({bFreeDims[i], dTileDims[aFreeDims.size() + i]});
-                    }
                 }
 
-                // Handle block scaled tensors (gemm-spefic layout for when not pretiled)
+                // Handle block scaled tensors
                 // ScaleA dimensions: [M, K/blockSize]
                 // ScaleB dimensions: [K/blockSize, N]
                 auto maybeScaleA = graph.mapper.get(nodeID, NaryArgument::LHS_SCALE);
@@ -264,22 +258,17 @@ namespace rocRoller
                 {
                     std::vector<int> scaleADims, scaleBDims;
 
-                    // Validate ScaleA dimensions if present
+                    // ScaleA present
                     if(maybeScaleA > 0)
                     {
                         scaleADims = graph.coordinates
                                          .getInputNodeIndices(maybeScaleA, isConstructMacroTile)
                                          .to<std::vector>();
 
-                        // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
-                        // and is not pre tiled (4-dimensional)
+                        // Only match dimensions if scale has dimensions (i.e., not SingleScale)
+                        // and is not pre tiled (4-dimensional). Only supports GEMM for now
                         if(scaleADims.size() == 2)
                         {
-                            AssertFatal(aFreeDims.size() + aContractedDims.size() == 2,
-                                        "ScaleA handling only supports GEMM tensor contraction",
-                                        ShowValue(aFreeDims.size()),
-                                        ShowValue(aContractedDims.size()));
-
                             size_t expectedScaleASize = aFreeDims.size() + aContractedDims.size();
                             AssertFatal(scaleADims.size() == expectedScaleASize,
                                         ShowValue(scaleADims.size()),
@@ -287,39 +276,28 @@ namespace rocRoller
                                         ShowValue(aFreeDims.size()),
                                         ShowValue(aContractedDims.size()));
 
+                            Log::debug("IdentifyParallelDimensions: Matching {} ScaleA free dims "
+                                       "with A in TensorContraction node {}",
+                                       aFreeDims.size(),
+                                       nodeID);
+
                             // Match ScaleA's free dimensions with A's free dimensions
-                            for(size_t i = 0; i < aFreeDims.size(); i++)
-                            {
+                            for(size_t i = 0; i < aFreeDims.size(); ++i)
                                 redundantArgs.push_back({scaleADims[i], aFreeDims[i]});
-                            }
-                            Log::debug(
-                                "IdentifyParallelDimensions: Matched {} ScaleA free dims with A",
-                                aFreeDims.size());
-                        }
-                        else
-                        {
-                            Log::debug(
-                                "IdentifyParallelDimensions: ScaleA is scalar (SingleScale mode), "
-                                "or pre-tiled, skipping dimension matching");
                         }
                     }
 
-                    // Validate ScaleB dimensions if present
+                    // ScaleB present
                     if(maybeScaleB > 0)
                     {
                         scaleBDims = graph.coordinates
                                          .getInputNodeIndices(maybeScaleB, isConstructMacroTile)
                                          .to<std::vector>();
 
-                        // Only validate and match dimensions if scale has dimensions (i.e., not SingleScale)
-                        // and is not pre tiled (4-dimensional)
+                        // Only match dimensions if scale has dimensions (i.e., not SingleScale)
+                        // and is not pre tiled (4-dimensional). Only supports GEMM for now
                         if(scaleBDims.size() == 2)
                         {
-                            AssertFatal(bFreeDims.size() + bContractedDims.size() == 2,
-                                        "ScaleB handling only supports GEMM tensor contraction",
-                                        ShowValue(bFreeDims.size()),
-                                        ShowValue(bContractedDims.size()));
-
                             size_t expectedScaleBSize = bContractedDims.size() + bFreeDims.size();
                             AssertFatal(scaleBDims.size() == expectedScaleBSize,
                                         ShowValue(scaleBDims.size()),
@@ -327,38 +305,36 @@ namespace rocRoller
                                         ShowValue(bContractedDims.size()),
                                         ShowValue(bFreeDims.size()));
 
-                            // Match ScaleB's free dimensions with B's free dimensions
-                            for(size_t i = 0; i < bFreeDims.size(); i++)
+                            Log::debug("IdentifyParallelDimensions: Matching {} ScaleB free dims "
+                                       "with B in TensorContraction node {}",
+                                       bFreeDims.size(),
+                                       nodeID);
+
+                            for(size_t i = 0; i < bFreeDims.size(); ++i)
                             {
                                 size_t scaleBIdx = bContractedDims.size() + i;
                                 redundantArgs.push_back({scaleBDims[scaleBIdx], bFreeDims[i]});
                             }
-                            Log::debug(
-                                "IdentifyParallelDimensions: Matched {} ScaleB free dims with B",
-                                bFreeDims.size());
-                        }
-                        else
-                        {
-                            Log::debug(
-                                "IdentifyParallelDimensions: ScaleB is scalar (SingleScale mode), "
-                                "or pre-tiled, skipping dimension matching");
                         }
                     }
 
-                    // Match blocked contracted dimensions
+                    // ScaleA and ScaleB both present
                     if(maybeScaleA > 0 && maybeScaleB > 0 && scaleADims.size() == 2
                        && scaleBDims.size() == 2)
                     {
-                        for(size_t i = 0; i < aContractedDims.size(); i++)
+                        Log::debug(
+                            "IdentifyParallelDimensions: Matching {} blocked contracted dims "
+                            "between "
+                            "ScaleA and ScaleB in TensorContraction node {}",
+                            aContractedDims.size(),
+                            nodeID);
+
+                        for(size_t i = 0; i < aContractedDims.size(); ++i)
                         {
                             size_t scaleAIdx = aFreeDims.size() + i;
                             size_t scaleBIdx = i;
                             redundantArgs.push_back({scaleADims[scaleAIdx], scaleBDims[scaleBIdx]});
                         }
-                        Log::debug("IdentifyParallelDimensions: Matched {} blocked contracted dims "
-                                   "between "
-                                   "ScaleA and ScaleB",
-                                   aContractedDims.size());
                     }
                 }
             }
@@ -385,12 +361,23 @@ namespace rocRoller
         }
 
         /**
-         * Visitor to recursively replace expression pointers with canonical ones
+         * Maps a canonical expression to the list of expressions that should be replaced with it
          */
-        struct ReplaceExpressionsVisitor
+        struct ReplacementMapping
         {
-            std::vector<std::pair<Expression::ExpressionPtr, Expression::ExpressionPtr>> const&
-                replacements;
+            Expression::ExpressionPtr              canonical;
+            std::vector<Expression::ExpressionPtr> toReplace;
+        };
+
+        /**
+         * Visitor to recursively replace expressions with canonical ones following a replacement mapping
+         */
+        struct ReplaceExprWithExprVisitor
+        {
+            ReplaceExprWithExprVisitor(std::vector<ReplacementMapping> const& replacements)
+                : m_replacements(replacements)
+            {
+            }
 
             template <Expression::CUnary Expr>
             Expression::ExpressionPtr operator()(Expr const& expr) const
@@ -449,16 +436,23 @@ namespace rocRoller
                 if(!expr)
                     return expr;
 
-                // Check if this entire expression should be replaced using identical()
-                for(auto const& [target, replacement] : replacements)
-                {
-                    if(Expression::identical(expr, target))
-                        return replacement;
-                }
+                // Find if this expression should be replaced
+                auto it = std::ranges::find_if(
+                    m_replacements, [&expr](ReplacementMapping const& mapping) {
+                        return std::ranges::any_of(mapping.toReplace, [&expr](auto const& target) {
+                            return Expression::identical(expr, target);
+                        });
+                    });
+
+                if(it != m_replacements.end())
+                    return it->canonical;
 
                 // Otherwise, recursively process sub-expressions
                 return std::visit(*this, *expr);
             }
+
+        private:
+            std::vector<ReplacementMapping> const& m_replacements;
         };
 
         /**
@@ -466,7 +460,18 @@ namespace rocRoller
          */
         struct ReplaceInGraphVisitor
         {
-            ReplaceExpressionsVisitor replaceVisitor;
+            ReplaceInGraphVisitor(std::vector<ReplacementMapping> const& replacements)
+                : m_exprVisitor{replacements}
+            {
+            }
+
+            /**
+             * Helper function that calls the expression visitor
+             */
+            Expression::ExpressionPtr replaceExpression(Expression::ExpressionPtr expr) const
+            {
+                return m_exprVisitor.call(expr);
+            }
 
             template <CoordinateGraph::CCoordinateTransformEdge T>
             CoordinateGraph::Edge visitCoordinateEdge(int tag, T const& edge)
@@ -484,9 +489,9 @@ namespace rocRoller
             CoordinateGraph::Dimension visitDimension(int tag, T const& dim)
             {
                 auto d   = dim;
-                d.size   = replaceVisitor.call(dim.size);
-                d.stride = replaceVisitor.call(dim.stride);
-                d.offset = replaceVisitor.call(dim.offset);
+                d.size   = replaceExpression(dim.size);
+                d.stride = replaceExpression(dim.stride);
+                d.offset = replaceExpression(dim.offset);
                 return d;
             }
 
@@ -499,40 +504,48 @@ namespace rocRoller
             ControlGraph::Operation visitOperation(int tag, ControlGraph::Assign const& op)
             {
                 auto newOp       = op;
-                newOp.expression = replaceVisitor.call(op.expression);
+                newOp.expression = replaceExpression(op.expression);
                 return newOp;
             }
 
             ControlGraph::Operation visitOperation(int tag, ControlGraph::ConditionalOp const& op)
             {
                 auto newOp      = op;
-                newOp.condition = replaceVisitor.call(op.condition);
+                newOp.condition = replaceExpression(op.condition);
                 return newOp;
             }
 
             ControlGraph::Operation visitOperation(int tag, ControlGraph::AssertOp const& op)
             {
                 auto newOp      = op;
-                newOp.condition = replaceVisitor.call(op.condition);
+                newOp.condition = replaceExpression(op.condition);
                 return newOp;
             }
 
             ControlGraph::Operation visitOperation(int tag, ControlGraph::ForLoopOp const& op)
             {
                 auto newOp      = op;
-                newOp.condition = replaceVisitor.call(op.condition);
+                newOp.condition = replaceExpression(op.condition);
                 return newOp;
             }
+
+        private:
+            ReplaceExprWithExprVisitor m_exprVisitor;
         };
 
         KernelGraph IdentifyParallelDimensions::apply(KernelGraph const& original)
         {
-            auto copy         = original;
-            auto parallelDims = mergeSets(identifyParallelDimensionSets(copy));
+            auto parallelDims = mergeSets(identifyParallelDimensionSets(original));
+            if(parallelDims.empty())
+            {
+                Log::debug("IdentifyParallelDimensions: No parallel dimensions found");
+                return original;
+            }
 
-            // Redundant expression to canonical expression
-            std::vector<std::pair<Expression::ExpressionPtr, Expression::ExpressionPtr>>
-                replacements;
+            auto copy = original;
+
+            // Canonical expression to vector of expressions to replace
+            std::vector<ReplacementMapping> replacements;
 
             for(auto const& dimSet : parallelDims)
             {
@@ -541,6 +554,7 @@ namespace rocRoller
 
                 Expression::ExpressionPtr canonicalSize = nullptr;
 
+                // Find canonical size (first non-null)
                 for(int dim : dimSet)
                 {
                     auto const& subDim = copy.coordinates.get<CoordinateGraph::SubDimension>(dim);
@@ -553,6 +567,11 @@ namespace rocRoller
                     }
                 }
 
+                AssertFatal(canonicalSize, "Replacement sets must have a canonical size");
+
+                std::vector<Expression::ExpressionPtr> toReplace;
+
+                // Collect expressions to replace with canonical
                 for(int dim : dimSet)
                 {
                     auto subDim = copy.coordinates.get<CoordinateGraph::SubDimension>(dim);
@@ -561,22 +580,25 @@ namespace rocRoller
                     if(Expression::identical(subDim->size, canonicalSize))
                         continue;
 
-                    replacements.push_back({subDim->size, canonicalSize});
-                    subDim->size = canonicalSize;
-                    copy.coordinates.setElement(dim, *subDim);
+                    if(subDim->size)
+                        toReplace.push_back(subDim->size);
                 }
+
+                if(!toReplace.empty())
+                    replacements.push_back({canonicalSize, std::move(toReplace)});
             }
 
-            // Replace all occurrences of non-canonical expressions in the graph
-            if(!replacements.empty())
-            {
-                Log::debug(
-                    "IdentifyParallelDimensions: Replacing {} expression(s) with canonical ones",
-                    replacements.size());
+            size_t totalReplacements = 0;
+            for(auto const& [canonical, toReplace] : replacements)
+                totalReplacements += toReplace.size();
 
-                auto visitor = ReplaceInGraphVisitor{ReplaceExpressionsVisitor{replacements}};
-                copy         = rewriteDimensions(copy, visitor);
-            }
+            Log::debug("IdentifyParallelDimensions: Replacing {} expression(s) with {} canonical "
+                       "expression(s)",
+                       totalReplacements,
+                       replacements.size());
+
+            auto visitor = ReplaceInGraphVisitor{replacements};
+            copy         = rewriteDimensions(copy, visitor);
 
             return copy;
         }
