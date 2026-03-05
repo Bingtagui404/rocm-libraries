@@ -213,7 +213,9 @@ heuristic_params_t heuristics_database_t::lookup(const problem_t& problem,
   // Apply matches in order of increasing specificity
   for (const auto& [spec, params] : matches) { result.merge_with(*params); }
 
-  // Apply TF32 emulation heuristics (runtime-dependent on arithmetic intensity)
+  /// TODO: TF32 heuristic is disabled since disadvantages outweigh benefits with memory bandwidth
+  /// modeling. MT256x256x32 kernel should be replaced with CMS kernel and new heuristic adjustment
+  /// should be added.
   // apply_tf32_heuristics(result, problem, hardware, config);
 
   return result;

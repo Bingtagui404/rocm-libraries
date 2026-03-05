@@ -489,6 +489,21 @@ class hardware_t {
 
   /**
    * @brief Construct hardware_t with explicit parameters.
+   *
+   * @param arch GPU architecture type
+   * @param N_CU Number of compute units
+   * @param lds_capacity LDS capacity in bytes
+   * @param NUM_XCD Number of XCDs
+   * @param mem1_perf_ratio Memory level 1 performance ratio
+   * @param mem2_perf_ratio Memory level 2 performance ratio
+   * @param mem3_perf_ratio Memory level 3 performance ratio
+   * @param L2_capacity L2 cache capacity in bytes
+   * @param compute_clock_ghz Compute clock frequency in GHz
+   * @param parallel_mi_cu Number of parallel matrix instructions per CU
+   * @param mem_bw_per_wg_coefficients_read Memory bandwidth coefficients per workgroup for read
+   * operations
+   * @param mem_bw_per_wg_coefficients_write Memory bandwidth coefficients per workgroup for write
+   * operations
    */
   hardware_t(
       architecture_t arch,
