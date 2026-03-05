@@ -11,17 +11,19 @@
 
 namespace origami {
 
-hardware_t::hardware_t(architecture_t arch,
-                       size_t N_CU,
-                       size_t lds_capacity,
-                       size_t NUM_XCD,
-                       double mem1_perf_ratio,
-                       double mem2_perf_ratio,
-                       double mem3_perf_ratio,
-                       size_t L2_capacity,
-                       double compute_clock_ghz,
-                       size_t parallel_mi_cu,
-                       std::tuple<double, double, double> mem_bw_per_wg_coefficients)
+hardware_t::hardware_t(
+    architecture_t arch,
+    size_t N_CU,
+    size_t lds_capacity,
+    size_t NUM_XCD,
+    double mem1_perf_ratio,
+    double mem2_perf_ratio,
+    double mem3_perf_ratio,
+    size_t L2_capacity,
+    double compute_clock_ghz,
+    size_t parallel_mi_cu,
+    std::array<std::tuple<double, double, double>, 4> mem_bw_per_wg_coefficients_read,
+    std::array<std::tuple<double, double, double>, 4> mem_bw_per_wg_coefficients_write)
     : arch(arch)
     , N_CU(N_CU)
     , lds_capacity(lds_capacity)
@@ -32,8 +34,49 @@ hardware_t::hardware_t(architecture_t arch,
     , CU_per_L2(N_CU / NUM_XCD)
     , compute_clock_ghz(compute_clock_ghz)
     , parallel_mi_cu(parallel_mi_cu)
-    , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
+    , mem_bw_per_wg_coefficients_read(mem_bw_per_wg_coefficients_read)
+    , mem_bw_per_wg_coefficients_write(mem_bw_per_wg_coefficients_write)
     , NUM_XCD(NUM_XCD) {}
+
+namespace {
+std::array<std::tuple<double, double, double>, 4> vec_to_coef_array(
+    const std::vector<std::tuple<double, double, double>>& v) {
+  std::array<std::tuple<double, double, double>, 4> a = {std::make_tuple(0., 0., 0.),
+                                                         std::make_tuple(0., 0., 0.),
+                                                         std::make_tuple(0., 0., 0.),
+                                                         std::make_tuple(0., 0., 0.)};
+  for (size_t i = 0; i < 4 && i < v.size(); ++i) a[i] = v[i];
+  if (v.size() == 1)
+    for (size_t i = 1; i < 4; ++i) a[i] = v[0];
+  return a;
+}
+}  // namespace
+
+hardware_t::hardware_t(
+    architecture_t arch,
+    size_t N_CU,
+    size_t lds_capacity,
+    size_t NUM_XCD,
+    double mem1_perf_ratio,
+    double mem2_perf_ratio,
+    double mem3_perf_ratio,
+    size_t L2_capacity,
+    double compute_clock_ghz,
+    size_t parallel_mi_cu,
+    const std::vector<std::tuple<double, double, double>>& mem_bw_per_wg_coefficients_read,
+    const std::vector<std::tuple<double, double, double>>& mem_bw_per_wg_coefficients_write)
+    : hardware_t(arch,
+                 N_CU,
+                 lds_capacity,
+                 NUM_XCD,
+                 mem1_perf_ratio,
+                 mem2_perf_ratio,
+                 mem3_perf_ratio,
+                 L2_capacity,
+                 compute_clock_ghz,
+                 parallel_mi_cu,
+                 vec_to_coef_array(mem_bw_per_wg_coefficients_read),
+                 vec_to_coef_array(mem_bw_per_wg_coefficients_write)) {}
 
 hardware_t::hardware_t(architecture_t arch,
                        size_t N_CU,
@@ -42,7 +85,7 @@ hardware_t::hardware_t(architecture_t arch,
                        size_t L2_capacity,
                        double compute_clock_ghz,
                        double memory_clock_ghz)
-   : hardware_t(
+    : hardware_t(
           arch,
           N_CU,
           lds_capacity,
@@ -53,7 +96,8 @@ hardware_t::hardware_t(architecture_t arch,
           L2_capacity,
           compute_clock_ghz,
           constants.parallel_mi_cu,
-          constants.mem_bw_per_wg_coefficients) {}
+          constants.mem_bw_per_wg_coefficients_read,
+          constants.mem_bw_per_wg_coefficients_write) {}
 
 hardware_t::hardware_t(hipDeviceProp_t properties)
     : hardware_t(get_hardware_for_properties(properties)) {}
@@ -69,7 +113,8 @@ hardware_t::hardware_t(const hardware_t& other)
     , CU_per_L2(other.CU_per_L2)
     , compute_clock_ghz(other.compute_clock_ghz)
     , parallel_mi_cu(other.parallel_mi_cu)
-    , mem_bw_per_wg_coefficients(other.mem_bw_per_wg_coefficients)
+    , mem_bw_per_wg_coefficients_read(other.mem_bw_per_wg_coefficients_read)
+    , mem_bw_per_wg_coefficients_write(other.mem_bw_per_wg_coefficients_write)
     , NUM_XCD(other.NUM_XCD) {}
 
 hardware_t hardware_t::get_hardware_for_properties(hipDeviceProp_t properties) {
@@ -135,9 +180,14 @@ void hardware_t::print() const {
   std::cout << "Compute clock (GHz)       : " << compute_clock_ghz << "\n";
   std::cout << "Parallel MI/CU            : " << parallel_mi_cu << "\n";
   std::cout << "Number of XCDs (NUM_XCD)  : " << NUM_XCD << "\n";
-  std::cout << "mem_bw_per_wg_coefficients: " << std::get<0>(mem_bw_per_wg_coefficients) << ", "
-            << std::get<1>(mem_bw_per_wg_coefficients) << ", "
-            << std::get<2>(mem_bw_per_wg_coefficients) << "\n\n";
+  std::cout << "mem_bw_per_wg_coefficients_read[3] (float4): "
+            << std::get<0>(mem_bw_per_wg_coefficients_read[3]) << ", "
+            << std::get<1>(mem_bw_per_wg_coefficients_read[3]) << ", "
+            << std::get<2>(mem_bw_per_wg_coefficients_read[3]) << "\n";
+  std::cout << "mem_bw_per_wg_coefficients_write[3] (float4): "
+            << std::get<0>(mem_bw_per_wg_coefficients_write[3]) << ", "
+            << std::get<1>(mem_bw_per_wg_coefficients_write[3]) << ", "
+            << std::get<2>(mem_bw_per_wg_coefficients_write[3]) << "\n\n";
 
   std::cout << "------------------ Instruction Map -------------------------\n";
   // Loop over the instruction_map and print each entry

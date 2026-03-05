@@ -149,7 +149,8 @@ NB_MODULE(origami, m) {
                           size_t,  // L2_capacity
                           double,  // compute_clock_ghz
                           size_t,  // parallel_mi_cu
-                          std::tuple<double, double, double>>())  // mem_bw_per_wg_coefficients
+                          std::vector<std::tuple<double, double, double>>,  // mem_bw_per_wg_coefficients_read
+                          std::vector<std::tuple<double, double, double>>>())  // mem_bw_per_wg_coefficients_write
       .def("print", &hardware_t::print)
       .def("get_valid_matrix_instructions", &hardware_t::get_valid_matrix_instructions,
            "Get valid matrix instruction dimensions for a given datatype")
@@ -164,7 +165,8 @@ NB_MODULE(origami, m) {
       .def_rw("CU_per_L2", &hardware_t::CU_per_L2)
       .def_rw("compute_clock_ghz", &hardware_t::compute_clock_ghz)
       .def_rw("parallel_mi_cu", &hardware_t::parallel_mi_cu)
-      .def_rw("mem_bw_per_wg_coefficients", &hardware_t::mem_bw_per_wg_coefficients)
+      .def_rw("mem_bw_per_wg_coefficients_read", &hardware_t::mem_bw_per_wg_coefficients_read)
+      .def_rw("mem_bw_per_wg_coefficients_write", &hardware_t::mem_bw_per_wg_coefficients_write)
       .def_rw("NUM_XCD", &hardware_t::NUM_XCD);
 
   m.def("get_hardware_for_device",

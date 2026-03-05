@@ -10,7 +10,8 @@
 namespace origami {
 
 /**
- * @brief calculate the work utilization which is the ratio of the useful problem volume to the total scheduled volume.
+ * @brief calculate the work utilization which is the ratio of the useful problem volume to the
+ * total scheduled volume.
  *
  * @param problem Problem description (M, N, K, etc.)
  * @param config Kernel configuration.
@@ -19,17 +20,21 @@ namespace origami {
 double calculate_work_utilization(const problem_t& problem, const config_t& config);
 
 /**
- * @brief calculate the output utilization which is the ratio of the useful problem volume to the total scheduled volume.
+ * @brief calculate the output utilization which is the ratio of the useful problem volume to the
+ * total scheduled volume.
  *
  * @param problem Problem description (M, N, K, etc.)
  * @param config Kernel configuration.
  * @param vector_elems elements in the vector.
  * @return double ratio of the useful problem volume to the total scheduled volume.
  */
-double calculate_output_utilization(const problem_t& problem, const config_t& config, size_t vector_elems);
+double calculate_output_utilization(const problem_t& problem,
+                                    const config_t& config,
+                                    size_t vector_elems);
 
 /**
- * @brief Computes the number of active compute units if there is only one wave and it is partial, Otherwise, returns hardware.N_CU
+ * @brief Computes the number of active compute units if there is only one wave and it is partial,
+ * Otherwise, returns hardware.N_CU
  *
  * @param problem Problem description (M, N, K, etc.)
  * @param hardware Hardware characteristics (@see origami::hardware_t)
@@ -37,7 +42,8 @@ double calculate_output_utilization(const problem_t& problem, const config_t& co
  * @param grid_selection Different algorithms to select the grid size for kernel execution.
  * @param max_cus maximum number of CU's
  * @param split split
- * @return tuple<size_t, size_t, size_t, size_t> tuple(num_wgs, num_active_cus, numWaves, splitFactor)
+ * @return tuple<size_t, size_t, size_t, size_t> tuple(num_wgs, num_active_cus, numWaves,
+ * splitFactor)
  */
 std::tuple<size_t, size_t, size_t, size_t> compute_cu_occupancy(const problem_t& problem,
                                                                 const hardware_t& hardware,
@@ -49,14 +55,22 @@ std::tuple<size_t, size_t, size_t, size_t> compute_cu_occupancy(const problem_t&
 /**
  * @brief Compute limited achievable memory bandwidth based on active CUs
  *
+ * @param problem Problem description (M, N, K, etc.)
  * @param hardware Hardware characteristics (@see origami::hardware_t)
- * @param num_active_cus number of CU's
- * @return double memory bandwidth
+ * @param config Kernel configuration.
+ * @param num_active_cus number of CUs
+ * @param is_write If true, use write-scale; otherwise use read-scale.
+ * @return double Memory bandwidth fraction in [0, 1]
  */
-double compute_mem_bw_from_occupancy(const hardware_t& hardware, size_t num_active_cus);
+double compute_mem_bw_from_occupancy(const problem_t& problem,
+                                     const hardware_t& hardware,
+                                     const config_t& config,
+                                     size_t num_active_cus,
+                                     bool is_write = false);
 
 /**
- * @brief This function rounds the number of elements up to the smallest value whose total size (given the element bit-width) is an exact multiple of a 128-byte memory transaction.
+ * @brief This function rounds the number of elements up to the smallest value whose total size
+ * (given the element bit-width) is an exact multiple of a 128-byte memory transaction.
  *
  * @param elements Macro tile dimension
  * @param element_size_bits size in bits
@@ -119,8 +133,8 @@ size_t compute_number_matrix_instructions(dim3_t mt, dim3_t mi);
  * @return double Latency in cycles.
  */
 double compute_cvt_overhead(const problem_t& problem,
-                                          const hardware_t& hardware,
-                                          const config_t& config);
+                            const hardware_t& hardware,
+                            const config_t& config);
 /**
  * @brief Compute the latency to process a single macro-tile for the given problem and hardware.
  *
@@ -213,7 +227,7 @@ double compute_tile_latency(const problem_t& problem,
  * @brief Computes the latency per K-complete macro-tile timestep.
  * A timestep is defined as the time it takes for one set of concurrent
  * K-complete output tiles to be computed on one or more CUs. Typically,
- * this is simply the time it takes for one CU to complete one K-complete 
+ * this is simply the time it takes for one CU to complete one K-complete
  * output tile.
  *
  * @param problem Problem description (M, N, K, etc.)

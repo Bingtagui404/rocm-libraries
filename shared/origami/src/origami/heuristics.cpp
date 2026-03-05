@@ -191,8 +191,8 @@ heuristic_params_t heuristics_database_t::lookup(const problem_t& problem,
     auto it = hand_optimized_map_.find(fast_key);
     if (it != hand_optimized_map_.end()) {
       if (origami::runtime_options::get().debug_enabled) {
-        OLOG_DEBUG("Hand-optimized kernel " << fast_key.to_string() << ", efficiency: "
-                   << it->second.main_loop_efficiency);
+        OLOG_DEBUG("Hand-optimized kernel " << fast_key.to_string()
+                                            << ", efficiency: " << it->second.main_loop_efficiency);
       }
       result = it->second;
     }
@@ -214,7 +214,7 @@ heuristic_params_t heuristics_database_t::lookup(const problem_t& problem,
   for (const auto& [spec, params] : matches) { result.merge_with(*params); }
 
   // Apply TF32 emulation heuristics (runtime-dependent on arithmetic intensity)
-  apply_tf32_heuristics(result, problem, hardware, config);
+  // apply_tf32_heuristics(result, problem, hardware, config);
 
   return result;
 }
@@ -244,21 +244,7 @@ void heuristics_database_t::add_entry(const heuristic_key_t& key,
 
 void heuristics_database_t::initialize_defaults() {
   // ========================================================================
-  // HEURISTIC 1: Problematic tile configuration (MT64x32x32)
-  // ========================================================================
-  {
-    auto key    = make_tile_key(64, 32, 32, transpose_t::N, transpose_t::N);
-    key.a_dtype = data_type_t::BFloat16;
-    key.b_dtype = data_type_t::BFloat16;
-
-    heuristic_params_t params;
-    params.weight_tile_total = 10.0;
-
-    add_entry(key, params);
-  }
-
-  // ========================================================================
-  // HEURISTIC 2: CMS Kernel Efficiencies (gfx950, BF16)
+  // HEURISTIC 1: CMS Kernel Efficiencies (gfx950)
   // ========================================================================
   {
     // BF16 NT configurations

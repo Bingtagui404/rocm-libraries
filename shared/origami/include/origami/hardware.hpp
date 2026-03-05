@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -99,41 +100,56 @@ class hardware_t {
     }
   }
 
+  /// Repeat (a,b,c) as quadratic coefficients for 4 different vector-width slots
+  static constexpr std::array<std::tuple<double, double, double>,
+                              static_cast<size_t>(mem_vector_width_t::Count)>
+  repeat_mem_bw_coef(double a, double b, double c) {
+    auto t = std::make_tuple(a, b, c);
+    return {{t, t, t, t}};
+  }
+
   /**
    * @brief Architecture-specific constants for memory and compute characteristics.
    *
    */
   struct architecture_constants {
-    size_t num_xcds;  ///< Number of XCDs (XCD = XGMI Complex Die)
+    size_t num_xcds;  ///< Number of XCDs
     double mem1_perf_ratio;
     double mem2_perf_ratio;
     double mem3_perf_ratio;
-    size_t parallel_mi_cu;  ///< Number of parallel matrix instructions per compute unit
-    std::tuple<double, double, double>
-        mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
-    double mem_clock_ratio;          ///< Memory clock ratio relative to compute clock
+    size_t parallel_mi_cu;   ///< Number of parallel matrix instructions per compute unit
+    double mem_clock_ratio;  ///< Memory clock ratio relative to compute clock
+    std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+        mem_bw_per_wg_coefficients_read;
+    std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+        mem_bw_per_wg_coefficients_write;
 
-    constexpr architecture_constants(size_t num_xcds,
-                                     double mem1_perf_ratio,
-                                     double mem2_perf_ratio,
-                                     double mem3_perf_ratio,
-                                     size_t parallel_mi_cu,
-                                     std::tuple<double, double, double> mem_bw_per_wg_coefficients,
-                                     double mem_clock_ratio)  // Obtained through microbenchmarking
+    constexpr architecture_constants(
+        size_t num_xcds,
+        double mem1_perf_ratio,
+        double mem2_perf_ratio,
+        double mem3_perf_ratio,
+        size_t parallel_mi_cu,
+        double mem_clock_ratio,
+        std::array<std::tuple<double, double, double>,
+                   static_cast<size_t>(mem_vector_width_t::Count)> mem_bw_per_wg_coefficients_read,
+        std::array<std::tuple<double, double, double>,
+                   static_cast<size_t>(mem_vector_width_t::Count)> mem_bw_per_wg_coefficients_write)
         : num_xcds(num_xcds)
         , mem1_perf_ratio(mem1_perf_ratio)
         , mem2_perf_ratio(mem2_perf_ratio)
         , mem3_perf_ratio(mem3_perf_ratio)
         , parallel_mi_cu(parallel_mi_cu)
-        , mem_bw_per_wg_coefficients(mem_bw_per_wg_coefficients)
-        , mem_clock_ratio(mem_clock_ratio) {}
+        , mem_clock_ratio(mem_clock_ratio)
+        , mem_bw_per_wg_coefficients_read(mem_bw_per_wg_coefficients_read)
+        , mem_bw_per_wg_coefficients_write(mem_bw_per_wg_coefficients_write) {}
   };
 
   /**
    * MALL value for those architectures that do not support it.
    * The value '1000' is just a big number.
    */
-  static constexpr double NO_MALL_AVAILABLE =  1.21875121875121875122 * 1000;
+  static constexpr double NO_MALL_AVAILABLE = 1.21875121875121875122 * 1000;
 
   /**
    * @brief Get architecture-specific constants for a given architecture.
@@ -147,29 +163,35 @@ class hardware_t {
    */
   static constexpr architecture_constants get_arch_constants(architecture_t arch) {
     switch (arch) {
+        // clang-format off
       case architecture_t::gfx90a:
-        return {1, 5.5, 1.21875121875121875122 * 1.2, 1.2, 4, std::make_tuple(0, 0.03, 0), 1.5};
+        return {1, 5.5, 1.21875121875121875122 * 1.2, 1.2, 4, 1.5, repeat_mem_bw_coef(0, 0.03, 0), repeat_mem_bw_coef(0, 0.03, 0)};
       case architecture_t::gfx942:
-        return {8, 17, 1.21875121875121875122 * 6, 4, 4, std::make_tuple(0, 0.015, 0), 1.5};
-      case architecture_t::gfx950:
-        return {8, 17, 1.21875121875121875122 * 7, 6, 4, std::make_tuple(0, 0.008, 0), 1.5};
+        return {8, 17, 1.21875121875121875122 * 6, 4, 4, 1.5, repeat_mem_bw_coef(0, 0.015, 0), repeat_mem_bw_coef(0, 0.015, 0)};
+      case architecture_t::gfx950: {
+        constexpr std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)> gfx950_mem_bw_read = {{
+          std::make_tuple(-5.584e-6, 0.002792, 0.0), std::make_tuple(-6.736e-6, 0.003368, 0.0), std::make_tuple(-1.2704e-5, 0.006352, 0.0), std::make_tuple(-2.5e-5, 0.01, 0.0)
+        }};
+        constexpr std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)> gfx950_mem_bw_write = {{
+          std::make_tuple(-2.1824e-5, 0.005456, 0.0), std::make_tuple(-3.7056e-5, 0.009264, 0.0), std::make_tuple(-5.2288e-5, 0.013072, 0.0), std::make_tuple(-6.4e-5, 0.016, 0.0)
+        }};
+        return {8, 17, 1.21875121875121875122 * 7, 6, 4, 1.5, gfx950_mem_bw_read, gfx950_mem_bw_write};
+      }
       case architecture_t::gfx1201:
-        return {1, 5.74, 1.21875121875121875122 * 2.41, 0.464, 2, std::make_tuple(0, 0.17, 0), 1.5};
+        return {1, 5.74, 1.21875121875121875122 * 2.41, 0.464, 2, 1.5, repeat_mem_bw_coef(0, 0.17, 0), repeat_mem_bw_coef(0, 0.17, 0)};
       case architecture_t::gfx1100:
-        return {1, 7.12, 1.21875121875121875122 * 3.48, 0.732, 2, std::make_tuple(0, 0.11, 0), 1.5};
+        return {1, 7.12, 1.21875121875121875122 * 3.48, 0.732, 2, 1.5, repeat_mem_bw_coef(0, 0.11, 0), repeat_mem_bw_coef(0, 0.11, 0)};
       case architecture_t::gfx1150:
-        // AMD Strix Point iGPU
-        return {1, 1.497, NO_MALL_AVAILABLE, 0.077, 16, std::make_tuple(0, 0.18, 0), 1.5};
+        return {1, 1.497, NO_MALL_AVAILABLE, 0.077, 16, 1.5, repeat_mem_bw_coef(0, 0.18, 0), repeat_mem_bw_coef(0, 0.18, 0)};
       case architecture_t::gfx1151:
-        // AMD Strix Halo iGPU
-        return {1, 2.47, 1.21875121875121875122 * 0.93, 0.215, 2, std::make_tuple(0, 0.22, 0), 1.5};
+        return {1, 2.47, 1.21875121875121875122 * 0.93, 0.215, 2, 1.5, repeat_mem_bw_coef(0, 0.22, 0), repeat_mem_bw_coef(0, 0.22, 0)};
       case architecture_t::gfx1152:
-        // AMD Radeon 840M iGPU
-        return {1, 0.849, NO_MALL_AVAILABLE, 0.096, 4, std::make_tuple(0, 0.13, 0), 1.5};
+        return {1, 0.849, NO_MALL_AVAILABLE, 0.096, 4, 1.5, repeat_mem_bw_coef(0, 0.13, 0), repeat_mem_bw_coef(0, 0.13, 0)};
       case architecture_t::gfx1153:
-        // AMD Radeon 820M iGPU
-        return {1, 0.240, NO_MALL_AVAILABLE, 0.066, 2, std::make_tuple(0, 0.19, 0), 1.5};
-      default: return {0, 0, 0, 0, 0, std::make_tuple(0, 0, 0), 0};
+        return {1, 0.240, NO_MALL_AVAILABLE, 0.066, 2, 1.5, repeat_mem_bw_coef(0, 0.19, 0), repeat_mem_bw_coef(0, 0.19, 0)};
+      default:
+        return {0, 0, 0, 0, 0, 0, repeat_mem_bw_coef(0, 0, 0), repeat_mem_bw_coef(0, 0, 0)};
+        // clang-format on
     }
   }
 
@@ -459,36 +481,47 @@ class hardware_t {
   size_t CU_per_L2;          ///< Number of compute units per L2 cache domain
   double compute_clock_ghz;  ///< Compute clock frequency in GHz
   size_t parallel_mi_cu;     ///< Number of parallel matrix instructions per compute unit
-  std::tuple<double, double, double>
-      mem_bw_per_wg_coefficients;  ///< Memory bandwidth coefficients per workgroup
-  size_t NUM_XCD;                  ///< Number of XCDs (XGMI Complex Die)
+  std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+      mem_bw_per_wg_coefficients_read;
+  std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+      mem_bw_per_wg_coefficients_write;
+  size_t NUM_XCD;  ///< Number of XCDs
 
   /**
    * @brief Construct hardware_t with explicit parameters.
-   *
-   * @param arch GPU architecture type
-   * @param N_CU Number of compute units
-   * @param lds_capacity LDS capacity in bytes
-   * @param NUM_XCD Number of XCDs
-   * @param mem1_perf_ratio Memory level 1 performance ratio
-   * @param mem2_perf_ratio Memory level 2 performance ratio
-   * @param mem3_perf_ratio Memory level 3 performance ratio
-   * @param L2_capacity L2 cache capacity in bytes
-   * @param compute_clock_ghz Compute clock frequency in GHz
-   * @param parallel_mi_cu Number of parallel matrix instructions per CU
-   * @param mem_bw_per_wg_coefficients Memory bandwidth coefficients per workgroup
    */
-  hardware_t(architecture_t arch,
-             size_t N_CU,
-             size_t lds_capacity,
-             size_t NUM_XCD,
-             double mem1_perf_ratio,
-             double mem2_perf_ratio,
-             double mem3_perf_ratio,
-             size_t L2_capacity,
-             double compute_clock_ghz,
-             size_t parallel_mi_cu,
-             std::tuple<double, double, double> mem_bw_per_wg_coefficients);
+  hardware_t(
+      architecture_t arch,
+      size_t N_CU,
+      size_t lds_capacity,
+      size_t NUM_XCD,
+      double mem1_perf_ratio,
+      double mem2_perf_ratio,
+      double mem3_perf_ratio,
+      size_t L2_capacity,
+      double compute_clock_ghz,
+      size_t parallel_mi_cu,
+      std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+          mem_bw_per_wg_coefficients_read,
+      std::array<std::tuple<double, double, double>, static_cast<size_t>(mem_vector_width_t::Count)>
+          mem_bw_per_wg_coefficients_write);
+
+  /**
+   * @brief Construct from vector of coefficients (e.g. for Python); copies first 4 to each array.
+   */
+  hardware_t(
+      architecture_t arch,
+      size_t N_CU,
+      size_t lds_capacity,
+      size_t NUM_XCD,
+      double mem1_perf_ratio,
+      double mem2_perf_ratio,
+      double mem3_perf_ratio,
+      size_t L2_capacity,
+      double compute_clock_ghz,
+      size_t parallel_mi_cu,
+      const std::vector<std::tuple<double, double, double>>& mem_bw_per_wg_coefficients_read,
+      const std::vector<std::tuple<double, double, double>>& mem_bw_per_wg_coefficients_write);
 
   /**
    * @brief Construct hardware_t using architecture constants and a clock frequency.

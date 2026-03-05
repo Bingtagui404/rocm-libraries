@@ -115,6 +115,9 @@ namespace TensileLite
                                 .cache_hints_b             = solution->sizeMapping.nonTemporalB,
                                 .workspace_size            = std::numeric_limits<size_t>::max(),
                                 .workspace_size_per_elem_c = std::numeric_limits<size_t>::max(),
+                                .global_read_vw_a          = solution->sizeMapping.grvwA,
+                                .global_read_vw_b          = solution->sizeMapping.grvwB,
+                                .store_vw                  = solution->sizeMapping.gwvwD,
                             };
 
                             lib.origami_config_list.emplace_back(origami_config);

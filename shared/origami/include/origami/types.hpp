@@ -72,6 +72,14 @@ enum class data_type_t : int {
   None = Count
 };
 
+enum class mem_vector_width_t : size_t {
+  Short,   // 2 bytes
+  Float,   // 4 bytes
+  Float2,  // 8 bytes
+  Float4,  // 16 bytes
+  Count
+};
+
 /**
  * @brief Convert integer to data_type_t enum.
  *
@@ -315,7 +323,7 @@ struct runtime_options {
    */
   void update_from_env();
 
-  private:
+ private:
   /**
    * @brief Default constructor that reads from environment variables.
    *
@@ -354,6 +362,11 @@ struct config_t {
   std::size_t workspace_size            = 0;
   std::size_t workspace_size_per_elem_c = 0;
 
+  /// Vector width parameters.
+  std::size_t global_read_vw_a = 4;
+  std::size_t global_read_vw_b = 4;
+  std::size_t store_vw         = 4;
+
   /// Reduction strategy.
   reduction_t reduction_strategy = reduction_t::none;
 
@@ -368,8 +381,9 @@ struct config_t {
   constexpr bool operator==(const config_t& o) const noexcept {
     return mt == o.mt && mi == o.mi && hand_optimized_main_loop == o.hand_optimized_main_loop &&
            cache_hints_a == o.cache_hints_a && cache_hints_b == o.cache_hints_b &&
-           workgroup_mapping == o.workgroup_mapping && prediction_mode == o.prediction_mode &&
-           target == o.target;
+           workgroup_mapping == o.workgroup_mapping && global_read_vw_a == o.global_read_vw_a &&
+           global_read_vw_b == o.global_read_vw_b && store_vw == o.store_vw &&
+           prediction_mode == o.prediction_mode && target == o.target;
   }
 
   std::size_t hash() const {
@@ -377,6 +391,8 @@ struct config_t {
            std::hash<size_t>()(mi.m) ^ std::hash<size_t>()(mi.n) ^ std::hash<size_t>()(mi.k) ^
            std::hash<int>()(hand_optimized_main_loop) ^ std::hash<int>()(cache_hints_a) ^
            std::hash<int>()(cache_hints_b) ^ std::hash<int>()(workgroup_mapping) ^
+           std::hash<size_t>()(global_read_vw_a) ^ std::hash<size_t>()(global_read_vw_b) ^
+           std::hash<size_t>()(store_vw) ^
            std::hash<std::uint32_t>()(static_cast<std::uint32_t>(prediction_mode)) ^
            std::hash<std::uint32_t>()(static_cast<std::uint32_t>(target));
   }
@@ -452,7 +468,7 @@ struct workgroup_mapping_t {
  *
  * Contains all the parameters needed to describe various staggerU parameters.
  */
- struct staggerU_t {
+struct staggerU_t {
   /// StaggerU mapping size.
   std::size_t staggerUMapping = 0;
 

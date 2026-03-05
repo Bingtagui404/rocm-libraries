@@ -305,7 +305,8 @@ def test_gfx950_bfloat16_recommended_matrix_instruction():
         25165824,  # L2_capacity
         2.1,    # compute_clock_ghz
         4,      # parallel_mi_cu
-        (1.0, 1.0, 1.0)  # mem_bw_per_wg_coefficients
+        [(1.0, 1.0, 1.0)] * 4,  # mem_bw_per_wg_coefficients_read
+        [(1.0, 1.0, 1.0)] * 4   # mem_bw_per_wg_coefficients_write
     )
     
     # Get recommended matrix instruction for bfloat16

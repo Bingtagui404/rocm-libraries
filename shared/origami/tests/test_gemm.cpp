@@ -638,49 +638,74 @@ TEST_CASE("GEMM: compute_mem_bw_from_occupancy unit test", "[gemm]") {
   for (int gpu_arch : test_architectures) {
     DYNAMIC_SECTION("gfx" << gpu_arch << " - compute_mem_bw_from_occupancy unit test") {
       auto hardware = make_hardware(gpu_arch);
+      auto problem  = make_problem(2047, 2047, 4096);
+      auto config   = make_config(256, 256, 64, 32, 32, 8, false, 1);
 
       // Test 1: Test with various num_active_cus values
       auto result_various_num_active_cus =
-          origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       REQUIRE(result_various_num_active_cus == 1.0);
 
-      // Test 2: Test with different mem_bw_per_wg_coefficients
-      hardware.mem_bw_per_wg_coefficients = std::make_tuple(0, 0.008, 0);
+      // Test 2: Test with different mem_bw_per_wg_coefficients (float4 slot used for default args)
+      hardware.mem_bw_per_wg_coefficients_read =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.008, 0);
+      hardware.mem_bw_per_wg_coefficients_write =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.008, 0);
       auto result_different_mem_bw_per_wg_coefficients =
-          origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       REQUIRE(result_different_mem_bw_per_wg_coefficients == 1.0);
 
-      hardware.mem_bw_per_wg_coefficients = std::make_tuple(0, 0.17, 0);
+      hardware.mem_bw_per_wg_coefficients_read =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.17, 0);
+      hardware.mem_bw_per_wg_coefficients_write =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.17, 0);
       result_different_mem_bw_per_wg_coefficients =
-          origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       REQUIRE(result_different_mem_bw_per_wg_coefficients == 1.0);
 
-      hardware.mem_bw_per_wg_coefficients = std::make_tuple(0, 0.22, 0);
+      hardware.mem_bw_per_wg_coefficients_read =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.22, 0);
+      hardware.mem_bw_per_wg_coefficients_write =
+          origami::hardware_t::repeat_mem_bw_coef(0, 0.22, 0);
       result_different_mem_bw_per_wg_coefficients =
-          origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       REQUIRE(result_different_mem_bw_per_wg_coefficients == 1.0);
 
       // Test 3: Test with values less than 1
-      hardware.mem_bw_per_wg_coefficients = std::make_tuple(0.000001, 0.001, 0);
+      hardware.mem_bw_per_wg_coefficients_read =
+          origami::hardware_t::repeat_mem_bw_coef(0.000001, 0.001, 0);
+      hardware.mem_bw_per_wg_coefficients_write =
+          origami::hardware_t::repeat_mem_bw_coef(0.000001, 0.001, 0);
       auto result_value_less_than_one =
-          origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       if (gpu_arch == 942)
         REQUIRE(result_value_less_than_one == Approx(0.3964).epsilon(1e-3));
       else if (gpu_arch == 950)
         REQUIRE(result_value_less_than_one == Approx(0.32153).epsilon(1e-3));
 
-      hardware.mem_bw_per_wg_coefficients = std::make_tuple(0.000002, 0.002, 0);
-      result_value_less_than_one = origami::compute_mem_bw_from_occupancy(hardware, hardware.N_CU);
+      hardware.mem_bw_per_wg_coefficients_read =
+          origami::hardware_t::repeat_mem_bw_coef(0.000002, 0.002, 0);
+      hardware.mem_bw_per_wg_coefficients_write =
+          origami::hardware_t::repeat_mem_bw_coef(0.000002, 0.002, 0);
+      result_value_less_than_one =
+          origami::compute_mem_bw_from_occupancy(problem, hardware, config, hardware.N_CU);
       if (gpu_arch == 942)
         REQUIRE(result_value_less_than_one == Approx(0.7928).epsilon(1e-3));
       else if (gpu_arch == 950)
         REQUIRE(result_value_less_than_one == Approx(0.64307).epsilon(1e-3));
 
       // Reset the value of mem_bw_per_wg_coefficients back
-      if (gpu_arch == 942)
-        hardware.mem_bw_per_wg_coefficients = std::make_tuple(0, 0.015, 0);
-      else if (gpu_arch == 950)
-        hardware.mem_bw_per_wg_coefficients = std::make_tuple(0, 0.008, 0);
+      if (gpu_arch == 942) {
+        hardware.mem_bw_per_wg_coefficients_read =
+            origami::hardware_t::repeat_mem_bw_coef(0, 0.015, 0);
+        hardware.mem_bw_per_wg_coefficients_write =
+            origami::hardware_t::repeat_mem_bw_coef(0, 0.015, 0);
+      } else if (gpu_arch == 950) {
+        hardware.mem_bw_per_wg_coefficients_read =
+            origami::hardware_t::repeat_mem_bw_coef(0, 0.008, 0);
+        hardware.mem_bw_per_wg_coefficients_write =
+            origami::hardware_t::repeat_mem_bw_coef(0, 0.008, 0);
+      }
 
       // Test 4: Verify calculation correctness (TODO)
     }
@@ -1243,66 +1268,6 @@ TEST_CASE("Heuristics: Optimized kernel efficiency lookup", "[heuristics]") {
 
   // Should find optimized kernel efficiency (1.0 / 1.15 ≈ 0.8696)
   REQUIRE(params.main_loop_efficiency == Approx(1.0 / 1.15).epsilon(1e-6));
-}
-
-TEST_CASE("Heuristics: Problematic tile configuration (64x32x32)", "[heuristics]") {
-  auto& db = origami::heuristics_database_t::get_instance();
-
-  auto hardware = make_hardware(950);
-  auto problem  = make_problem(1024, 1024, 1024);
-  auto config   = make_config(64, 32, 32, 16, 16, 16);
-
-  problem.a_dtype     = origami::data_type_t::BFloat16;
-  problem.b_dtype     = origami::data_type_t::BFloat16;
-  problem.mi_dtype    = origami::data_type_t::BFloat16;
-  problem.a_transpose = origami::transpose_t::N;
-  problem.b_transpose = origami::transpose_t::N;
-
-  auto params = db.lookup(problem, hardware, config);
-
-  // Should have 10x penalty for this problematic configuration
-  REQUIRE(params.weight_tile_total == 10.0);
-}
-
-TEST_CASE("Heuristics: TF32 emulation - memory bound", "[heuristics]") {
-  auto& db = origami::heuristics_database_t::get_instance();
-
-  auto hardware = make_hardware(950);
-  // Small problem: arith intensity = (3*2*512*512*512) / ((512*512 + 512*512 + 512*512) * 4) = 256
-  // < 1000
-  auto problem = make_problem(512, 512, 512);
-  auto config  = make_config(256, 256, 32, 16, 16, 16);
-
-  problem.a_dtype     = origami::data_type_t::Float;
-  problem.b_dtype     = origami::data_type_t::Float;
-  problem.mi_dtype    = origami::data_type_t::XFloat32;
-  problem.a_transpose = origami::transpose_t::N;
-  problem.b_transpose = origami::transpose_t::T;
-
-  auto params = db.lookup(problem, hardware, config);
-
-  // Should have optimization for memory-bound TF32 (arith < 1000)
-  REQUIRE(params.weight_tile_total == 0.6);
-}
-
-TEST_CASE("Heuristics: TF32 emulation - compute bound", "[heuristics]") {
-  auto& db = origami::heuristics_database_t::get_instance();
-
-  auto hardware = make_hardware(950);
-  // Large problem: arith intensity = (3*2*2048*2048*2048) / ((3 * 2048*2048) * 4) = 2048 > 1000
-  auto problem = make_problem(2048, 2048, 2048);
-  auto config  = make_config(256, 256, 32, 16, 16, 16);
-
-  problem.a_dtype     = origami::data_type_t::Float;
-  problem.b_dtype     = origami::data_type_t::Float;
-  problem.mi_dtype    = origami::data_type_t::XFloat32;
-  problem.a_transpose = origami::transpose_t::N;
-  problem.b_transpose = origami::transpose_t::T;
-
-  auto params = db.lookup(problem, hardware, config);
-
-  // Should have stronger optimization for compute-bound TF32 (arith >= 1000)
-  REQUIRE(params.weight_tile_total == 0.4);
 }
 
 TEST_CASE("Heuristics: Helper functions - make_kernel_variant_key", "[heuristics]") {

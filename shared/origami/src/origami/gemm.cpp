@@ -347,16 +347,45 @@ bool check_lds_capacity(const hardware_t& hardware,
 }
 
 // Compute limited achievable memory bandwidth based on active CUs
-double compute_mem_bw_from_occupancy(const hardware_t& hardware, size_t num_active_cus) {
+double compute_mem_bw_from_occupancy(const problem_t& problem,
+                                     const hardware_t& hardware,
+                                     const config_t& config,
+                                     size_t num_active_cus,
+                                     bool is_write) {
   const double CUs = static_cast<double>(num_active_cus);
 
   if (num_active_cus > hardware.N_CU) return 1.0;
 
-  const double bw_limited = std::get<0>(hardware.mem_bw_per_wg_coefficients) * CUs * CUs +
-                            std::get<1>(hardware.mem_bw_per_wg_coefficients) * CUs +
-                            std::get<2>(hardware.mem_bw_per_wg_coefficients);
+  size_t load_vec_bytes_a = config.global_read_vw_a * data_type_to_bytes(problem.a_dtype);
+  size_t load_vec_bytes_b = config.global_read_vw_b * data_type_to_bytes(problem.b_dtype);
+  size_t load_vec_bytes   = std::min(load_vec_bytes_a, load_vec_bytes_b);
+  mem_vector_width_t idx;
 
-  return std::min(bw_limited, 1.0);
+  if (load_vec_bytes <= 2) {
+    load_vec_bytes = 2;
+    idx            = mem_vector_width_t::Short;
+  } else if (load_vec_bytes <= 4) {
+    load_vec_bytes = 4;
+    idx            = mem_vector_width_t::Float;
+  } else if (load_vec_bytes <= 8) {
+    load_vec_bytes = 8;
+    idx            = mem_vector_width_t::Float2;
+  } else {
+    load_vec_bytes = 16;
+    idx            = mem_vector_width_t::Float4;
+  }
+
+  auto& coef     = is_write ? hardware.mem_bw_per_wg_coefficients_write[static_cast<size_t>(idx)]
+                            : hardware.mem_bw_per_wg_coefficients_read[static_cast<size_t>(idx)];
+  const double a = std::get<0>(coef), b = std::get<1>(coef), c = std::get<2>(coef);
+  double bw_limited = a * CUs * CUs + b * CUs + c;
+  // For concave parabola (a < 0), past the peak use peak value so we don't decline after
+  // saturation.
+  if (a < 0) {
+    const double peak_CUs = -b / (2.0 * a);
+    if (CUs >= peak_CUs && peak_CUs > 0) bw_limited = a * peak_CUs * peak_CUs + b * peak_CUs + c;
+  }
+  return std::min(std::max(bw_limited, 0.0), 1.0);
 }
 
 double estimate_l2_hit(const problem_t& problem,
@@ -565,7 +594,6 @@ double compute_memory_latency(const problem_t& problem,
                               const config_t& config,
                               size_t num_active_cus,
                               size_t splitting_factor) {
-  
   bool debug = runtime_options::get().debug_enabled;
 
   // Extract parameters from structured types
@@ -636,7 +664,8 @@ double compute_memory_latency(const problem_t& problem,
   double L_mem_mem_l2 = (limited_mem_l2_bw > 0) ? (total_Ld / (limited_mem_l2_bw)) : 0.0;
 
   // 7) mem_mall‐limited from occupancy (Can't Issue enough load/stores)
-  double bw_limited = compute_mem_bw_from_occupancy(hardware, num_active_cus);
+  double bw_limited =
+      compute_mem_bw_from_occupancy(problem, hardware, config, num_active_cus, false);
 
   // 8) loads that reach each level
   double Ld_mem_mall =
@@ -686,8 +715,7 @@ double compute_memory_latency(const problem_t& problem,
                            L_mem_mem_mall * heuristic.weight_mem_mall,
                            L_mem_mem_dram * heuristic.weight_mem_dram});
 
-  if(debug)
-  {
+  if (debug) {
     OLOG_DEBUG("Ld_CU_bytes: " << Ld_CU_bytes);
     OLOG_DEBUG("total_Ld: " << total_Ld);
     OLOG_DEBUG("H_mem_l2: " << H_mem_l2);
@@ -716,7 +744,6 @@ double compute_tile_latency(const problem_t& problem,
                             const config_t& config,
                             size_t num_active_cus,
                             size_t splitting_factor) {
-  
   bool debug = runtime_options::get().debug_enabled;
 
   // Extract parameters from structured types
@@ -767,7 +794,8 @@ double compute_tile_latency(const problem_t& problem,
   L_prologue *= occupancy_factor;
 
   // 3-2) Epilogue: writes from all active CUs with limited bandwidth
-  double mem_bw_occ            = compute_mem_bw_from_occupancy(hardware, num_active_cus);
+  double mem_bw_occ =
+      compute_mem_bw_from_occupancy(problem, hardware, config, num_active_cus, true);
   double mem_bw_occ_limited    = hardware.mem3_perf_ratio * mem_bw_occ;
   size_t MT_M_rounded_128bytes = round_elements_to_128B(MT_M, datatype_to_bits(problem.a_dtype));
 
@@ -782,8 +810,7 @@ double compute_tile_latency(const problem_t& problem,
   // Block 2: One compute iteration in the epilogue
   epilogue_comp.compute_iteration = L_compute * effective_tile_penalty;
 
-  if(debug)
-  {
+  if (debug) {
     OLOG_DEBUG("mem_bw_occ: " << mem_bw_occ);
     OLOG_DEBUG("mem_bw_occ_limited: " << mem_bw_occ_limited);
     OLOG_DEBUG("utilization: " << utilization);
@@ -818,21 +845,20 @@ double compute_tile_latency(const problem_t& problem,
     double L_reduce                      = partial_readwrite_bytes / (mem_bw_occ_limited);
     epilogue_comp.k_split_reduction      = L_reduce + partial_adds;
     epilogue_comp.k_split_overhead_const = heuristic.k_split_reduction_overhead;
-    if(debug)
-    {
-        OLOG_DEBUG("partial_read_bytes: " << partial_read_bytes);
-        OLOG_DEBUG("partial_write_bytes: " << partial_write_bytes);
-        OLOG_DEBUG("partial_readwrite_bytes: " << partial_readwrite_bytes);
-        OLOG_DEBUG("partial_adds: " << partial_adds);
-        OLOG_DEBUG("L_reduce: " << L_reduce);
+    if (debug) {
+      OLOG_DEBUG("partial_read_bytes: " << partial_read_bytes);
+      OLOG_DEBUG("partial_write_bytes: " << partial_write_bytes);
+      OLOG_DEBUG("partial_readwrite_bytes: " << partial_readwrite_bytes);
+      OLOG_DEBUG("partial_adds: " << partial_adds);
+      OLOG_DEBUG("L_reduce: " << L_reduce);
     }
   }
 
   // Block 4: K-padding penalty (if applicable)
   double problem_k_quant = 0.0;
   if (K % MT_K != 0) {
-    problem_k_quant = static_cast<double>(K % MT_K) / static_cast<double>(K);
-    epilogue_comp.k_padding      = problem_k_quant * heuristic.k_padding_penalty;
+    problem_k_quant         = static_cast<double>(K % MT_K) / static_cast<double>(K);
+    epilogue_comp.k_padding = problem_k_quant * heuristic.k_padding_penalty;
   }
 
   double L_epilogue = compose_epilogue(epilogue_comp, heuristic, occupancy_factor);
@@ -869,9 +895,8 @@ double compute_tile_latency(const problem_t& problem,
 
   // Apply final tile total weight
   L_tile_total *= heuristic.weight_tile_total;
-  
-  if(debug)
-  {
+
+  if (debug) {
     OLOG_DEBUG("L_mem: " << L_mem);
     OLOG_DEBUG("L_compute: " << L_compute);
     OLOG_DEBUG("L_cvt: " << L_cvt);
@@ -959,8 +984,7 @@ double compute_total_latency(const problem_t& problem,
       return std::numeric_limits<double>::max();
     }
   }
-  if(debug)
-  {
+  if (debug) {
     OLOG_DEBUG("======== Origami Debug Info ========");
     OLOG_DEBUG("Problem size: " << int(M) << "x" << int(N) << "x" << int(K));
     OLOG_DEBUG("batch: " << int(batch));
@@ -985,8 +1009,7 @@ double compute_total_latency(const problem_t& problem,
 
   // Compute latency for all timesteps and return it as the latency for the MT/problem
   double total_latency = L_timestep * num_timesteps;
-  if (debug)
-  {
+  if (debug) {
     OLOG_DEBUG("num_timesteps: " << num_timesteps);
     OLOG_DEBUG("total_latency: " << total_latency);
     OLOG_DEBUG("=================================");
