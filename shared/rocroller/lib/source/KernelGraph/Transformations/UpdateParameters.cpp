@@ -370,21 +370,25 @@ namespace rocRoller
                 std::vector<std::pair<std::optional<int>, std::vector<int>>> userPaths;
 
                 // Try load path
-                auto loadSubDims = m_graph.coordinates.getInputNodeIndices(tag, isEdge<ConstructMacroTile>)
-                              .to<std::vector>();
+                auto loadSubDims
+                    = m_graph.coordinates.getInputNodeIndices(tag, isEdge<ConstructMacroTile>)
+                          .to<std::vector>();
                 if(!loadSubDims.empty())
                 {
-                    auto loadUserTag = only(m_graph.coordinates.getInputNodeIndices(loadSubDims[0], isEdge<Split>));
+                    auto loadUserTag = only(
+                        m_graph.coordinates.getInputNodeIndices(loadSubDims[0], isEdge<Split>));
                     userPaths.push_back({loadUserTag, loadSubDims});
                     Log::debug("SetUserSizeVisitor: Found load path for MacroTile {}", tag);
                 }
 
                 // Try store path
-                auto storeSubDims = m_graph.coordinates.getOutputNodeIndices(tag, isEdge<DestructMacroTile>)
-                              .to<std::vector>();
+                auto storeSubDims
+                    = m_graph.coordinates.getOutputNodeIndices(tag, isEdge<DestructMacroTile>)
+                          .to<std::vector>();
                 if(!storeSubDims.empty())
                 {
-                    auto storeUserTag = only(m_graph.coordinates.getOutputNodeIndices(storeSubDims[0], isEdge<Join>));
+                    auto storeUserTag = only(
+                        m_graph.coordinates.getOutputNodeIndices(storeSubDims[0], isEdge<Join>));
                     userPaths.push_back({storeUserTag, storeSubDims});
                     Log::debug("SetUserSizeVisitor: Found store path for MacroTile {}", tag);
                 }
@@ -392,7 +396,8 @@ namespace rocRoller
                 if(userPaths.empty())
                 {
                     Log::debug("SetUserSizeVisitor: No User found via ConstructMacroTile/Split or "
-                               "DestructMacroTile/Join for MacroTile {}", tag);
+                               "DestructMacroTile/Join for MacroTile {}",
+                               tag);
                     return dim;
                 }
 
@@ -419,7 +424,8 @@ namespace rocRoller
                     // Skip if this user already has a size set
                     if(maybeUser->size)
                     {
-                        Log::debug("SetUserSizeVisitor: User {} already has size, skipping", userTag);
+                        Log::debug("SetUserSizeVisitor: User {} already has size, skipping",
+                                   userTag);
                         continue;
                     }
 
@@ -439,11 +445,12 @@ namespace rocRoller
 
                     // Current implementation assumes 2D Users (e.g., GEMM M×N, K×N, M×K)
                     // or 4D Users with two fixed size dimensions and two dynamic subdimensions (GEMM scales).
-                    AssertFatal(dynamicSubDims.size() == 2,
-                                "SetUserSizeVisitor: Expected 2 dynamic subdimensions for MacroTile "
-                                "{}, got {}",
-                                tag,
-                                dynamicSubDims.size());
+                    AssertFatal(
+                        dynamicSubDims.size() == 2,
+                        "SetUserSizeVisitor: Expected 2 dynamic subdimensions for MacroTile "
+                        "{}, got {}",
+                        tag,
+                        dynamicSubDims.size());
 
                     // Determine which dimension has the largest stride based on memory layout
                     // Column-major (rightmost fastest): leftmost dim has largest stride
@@ -462,12 +469,13 @@ namespace rocRoller
                     user.size = subDim->stride * subDim->size;
                     m_graph.coordinates.setElement(userTag, user);
 
-                    Log::debug("SetUserSizeVisitor: Set User {}.size to {} based on SubDimension {} "
-                               "for MacroTile {}",
-                               userTag,
-                               toString(user.size),
-                               dynamicSubDims[maxStrideDimIndex],
-                               tag);
+                    Log::debug(
+                        "SetUserSizeVisitor: Set User {}.size to {} based on SubDimension {} "
+                        "for MacroTile {}",
+                        userTag,
+                        toString(user.size),
+                        dynamicSubDims[maxStrideDimIndex],
+                        tag);
                 }
 
                 return dim;
