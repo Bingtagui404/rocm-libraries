@@ -62,18 +62,13 @@ struct amdgcn_mma<fp32_t,
     using CVecType = ext_vector_t<fp32_t, 4>;
 
     // Layout constants
-    static constexpr index_t kAMBlock = 1;
-    static constexpr index_t kBNBlock = 2;
-
-    static constexpr index_t kAMLane     = 3;
-    static constexpr index_t kBNLane     = 4;
-    static constexpr index_t kABKLane    = 5;
-    static constexpr index_t kABKPerLane = 6;
-
-    static constexpr index_t kCMLane     = 7;
-    static constexpr index_t kCNLane     = 8;
-    static constexpr index_t kCM0PerLane = 9;
-    static constexpr index_t kCM1PerLane = 10;
+    static constexpr index_t kABKPerLane  = 2;
+    static constexpr index_t kAKNumAccess = 3;
+    static constexpr index_t kARepeat     = 4;
+    static constexpr index_t kBKNumAccess = 5;
+    static constexpr index_t kBRepeat     = 6;
+    static constexpr index_t kCMPerLane   = 7;
+    static constexpr index_t kCMNumAccess = 8;
 
     CK_TILE_DEVICE static CVecType
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
@@ -152,18 +147,13 @@ TEST(TestAmdgcnMma, ArchSupported)
     EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 4>>::value));
 
     // Check layout constants
-    EXPECT_EQ(MmaOp::kAMBlock, 1);
-    EXPECT_EQ(MmaOp::kBNBlock, 2);
-
-    EXPECT_EQ(MmaOp::kAMLane, 3);
-    EXPECT_EQ(MmaOp::kBNLane, 4);
-    EXPECT_EQ(MmaOp::kABKLane, 5);
-    EXPECT_EQ(MmaOp::kABKPerLane, 6);
-
-    EXPECT_EQ(MmaOp::kCMLane, 7);
-    EXPECT_EQ(MmaOp::kCNLane, 8);
-    EXPECT_EQ(MmaOp::kCM0PerLane, 9);
-    EXPECT_EQ(MmaOp::kCM1PerLane, 10);
+    EXPECT_EQ(MmaOp::kABKPerLane, 2);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 3);
+    EXPECT_EQ(MmaOp::kARepeat, 4);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 5);
+    EXPECT_EQ(MmaOp::kBRepeat, 6);
+    EXPECT_EQ(MmaOp::kCMPerLane, 7);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 8);
 }
 
 // Test case for unsupported architecture
@@ -183,18 +173,13 @@ TEST(TestAmdgcnMma, ArchUnsupported)
     EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
 
     // Layout constants should match default values (typically 0)
-    EXPECT_EQ(MmaOp::kAMBlock, 0);
-    EXPECT_EQ(MmaOp::kBNBlock, 0);
-
-    EXPECT_EQ(MmaOp::kAMLane, 0);
-    EXPECT_EQ(MmaOp::kBNLane, 0);
-    EXPECT_EQ(MmaOp::kABKLane, 0);
-    EXPECT_EQ(MmaOp::kABKPerLane, 0);
-
-    EXPECT_EQ(MmaOp::kCMLane, 0);
-    EXPECT_EQ(MmaOp::kCNLane, 0);
-    EXPECT_EQ(MmaOp::kCM0PerLane, 0);
-    EXPECT_EQ(MmaOp::kCM1PerLane, 0);
+    EXPECT_EQ(MmaOp::kABKPerLane, 1);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kARepeat, 1);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kBRepeat, 1);
+    EXPECT_EQ(MmaOp::kCMPerLane, 1);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
 }
 
 // Kernel to test amdgcn_mma::exec on device
@@ -360,16 +345,13 @@ TEST(TestAmdgcnMma, MmaOpTraitsSupportedMembers)
     EXPECT_TRUE((std::is_same<typename Traits::AVecType, ext_vector_t<fp32_t, 4>>::value));
     EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 4>>::value));
     EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_EQ(Traits::kAMBlock, 1);
-    EXPECT_EQ(Traits::kBNBlock, 2);
-    EXPECT_EQ(Traits::kAMLane, 3);
-    EXPECT_EQ(Traits::kBNLane, 4);
-    EXPECT_EQ(Traits::kABKLane, 5);
-    EXPECT_EQ(Traits::kABKPerLane, 6);
-    EXPECT_EQ(Traits::kCMLane, 7);
-    EXPECT_EQ(Traits::kCNLane, 8);
-    EXPECT_EQ(Traits::kCM0PerLane, 9);
-    EXPECT_EQ(Traits::kCM1PerLane, 10);
+    EXPECT_EQ(MmaOp::kABKPerLane, 2);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 3);
+    EXPECT_EQ(MmaOp::kARepeat, 4);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 5);
+    EXPECT_EQ(MmaOp::kBRepeat, 6);
+    EXPECT_EQ(MmaOp::kCMPerLane, 7);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 8);
     EXPECT_FALSE(Traits::IsMfma);
     EXPECT_FALSE(Traits::IsWmma);
     EXPECT_TRUE(Traits::IsSupported);
@@ -387,16 +369,13 @@ TEST(TestAmdgcnMma, MmaOpTraitsUnsupportedMembers)
     EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 1>>::value));
     EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 1>>::value));
     EXPECT_EQ(Traits::OpFamily, MmaOpFamily::UNDEFINED);
-    EXPECT_EQ(Traits::kAMBlock, 0);
-    EXPECT_EQ(Traits::kBNBlock, 0);
-    EXPECT_EQ(Traits::kAMLane, 0);
-    EXPECT_EQ(Traits::kBNLane, 0);
-    EXPECT_EQ(Traits::kABKLane, 0);
-    EXPECT_EQ(Traits::kABKPerLane, 0);
-    EXPECT_EQ(Traits::kCMLane, 0);
-    EXPECT_EQ(Traits::kCNLane, 0);
-    EXPECT_EQ(Traits::kCM0PerLane, 0);
-    EXPECT_EQ(Traits::kCM1PerLane, 0);
+    EXPECT_EQ(MmaOp::kABKPerLane, 1);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kARepeat, 1);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kBRepeat, 1);
+    EXPECT_EQ(MmaOp::kCMPerLane, 1);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
     EXPECT_FALSE(Traits::IsMfma);
     EXPECT_FALSE(Traits::IsWmma);
     EXPECT_FALSE(Traits::IsSupported);

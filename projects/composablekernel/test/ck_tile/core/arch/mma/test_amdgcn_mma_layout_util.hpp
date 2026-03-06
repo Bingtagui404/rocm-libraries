@@ -192,29 +192,41 @@ struct RegisterMapTraits<ck_tile::core::arch::mma::amdgcn_mma<
     using kCYs2RHsMajor   = sequence<1>;
     using kCYs2RHsMinor   = sequence<1>;
 
-    using AWarpDstrEncoding = tile_distribution_encoding<
-        sequence<1>,
-        tuple<sequence<MmaOp::kAMLane>, sequence<MmaOp::kABKLane, MmaOp::kABKPerLane>>,
-        tuple<kABPs2RHssMajor>,
-        tuple<kABPs2RHssMinor>,
-        kABYs2RHsMajor,
-        kABYs2RHsMinor>;
+    // TODO:  remove these and fix constants in amdgcn_mma
+    static constexpr index_t kAMBlock    = 1;
+    static constexpr index_t kBNBlock    = 1;
+    static constexpr index_t kAMLane     = 16;
+    static constexpr index_t kBNLane     = 16;
+    static constexpr index_t kABKLane    = 4;
+    static constexpr index_t kABKPerLane = 4;
+    static constexpr index_t kCMLane     = 4;
+    static constexpr index_t kCNLane     = 16;
+    static constexpr index_t kCM0PerLane = 1;
+    static constexpr index_t kCM1PerLane = 4;
 
-    using BWarpDstrEncoding = tile_distribution_encoding<
-        sequence<1>,
-        tuple<sequence<MmaOp::kBNLane>, sequence<MmaOp::kABKLane, MmaOp::kABKPerLane>>,
-        tuple<kABPs2RHssMajor>,
-        tuple<kABPs2RHssMinor>,
-        kABYs2RHsMajor,
-        kABYs2RHsMinor>;
+    using AWarpDstrEncoding =
+        tile_distribution_encoding<sequence<1>,
+                                   tuple<sequence<kAMLane>, sequence<kABKLane, kABKPerLane>>,
+                                   tuple<kABPs2RHssMajor>,
+                                   tuple<kABPs2RHssMinor>,
+                                   kABYs2RHsMajor,
+                                   kABYs2RHsMinor>;
 
-    using CWarpDstrEncoding = tile_distribution_encoding<
-        sequence<1>,
-        tuple<sequence<MmaOp::kCMLane, MmaOp::kCM1PerLane>, sequence<MmaOp::kCNLane>>,
-        tuple<kCPs2RHssMajor>,
-        tuple<kCPs2RHssMinor>,
-        kCYs2RHsMajor,
-        kCYs2RHsMinor>;
+    using BWarpDstrEncoding =
+        tile_distribution_encoding<sequence<1>,
+                                   tuple<sequence<kBNLane>, sequence<kABKLane, kABKPerLane>>,
+                                   tuple<kABPs2RHssMajor>,
+                                   tuple<kABPs2RHssMinor>,
+                                   kABYs2RHsMajor,
+                                   kABYs2RHsMinor>;
+
+    using CWarpDstrEncoding =
+        tile_distribution_encoding<sequence<1>,
+                                   tuple<sequence<kCMLane, kCM1PerLane>, sequence<kCNLane>>,
+                                   tuple<kCPs2RHssMajor>,
+                                   tuple<kCPs2RHssMinor>,
+                                   kCYs2RHsMajor,
+                                   kCYs2RHsMinor>;
 };
 
 /**
