@@ -1194,26 +1194,48 @@ int main(int argc, const char* argv[])
                                             TimingEvents startEvents(enq, eventCount);
                                             TimingEvents stopEvents(enq, eventCount);
 
-                                            listeners.preEnqueues(stream);
-
-                                            for(int j = 0; j < enq; j++)
                                             {
-                                                size_t kIdx = ((i * enq) + j) % kernels.size();
-                                                HIP_CHECK_EXC(adapter.launchKernels(
-                                                    kernels[kIdx], stream, nullptr, nullptr));
+                                                ScopedTimer t("benchmark_runs.pre_enqueues");
+                                                listeners.preEnqueues(stream);
+                                            }
 
-                                                if(icacheFlush)
+                                            {
+                                                ScopedTimer t("benchmark_runs.launch_kernels");
+                                                for(int j = 0; j < enq; j++)
                                                 {
-                                                    hipLaunchKernelGGL(
-                                                        flush_icache, flushGridSize, 64, 0, stream);
+                                                    size_t kIdx
+                                                        = ((i * enq) + j) % kernels.size();
+                                                    HIP_CHECK_EXC(adapter.launchKernels(
+                                                        kernels[kIdx], stream, nullptr, nullptr));
+
+                                                    if(icacheFlush)
+                                                    {
+                                                        hipLaunchKernelGGL(flush_icache,
+                                                                          flushGridSize,
+                                                                          64,
+                                                                          0,
+                                                                          stream);
+                                                    }
                                                 }
                                             }
 
-                                            listeners.postEnqueues(startEvents, stopEvents, stream);
-                                            listeners.validateEnqueues(inputs, startEvents, stopEvents);
+                                            {
+                                                ScopedTimer t("benchmark_runs.post_enqueues");
+                                                listeners.postEnqueues(
+                                                    startEvents, stopEvents, stream);
+                                            }
+                                            {
+                                                ScopedTimer t(
+                                                    "benchmark_runs.validate_enqueues");
+                                                listeners.validateEnqueues(
+                                                    inputs, startEvents, stopEvents);
+                                            }
                                         }
 
-                                    listeners.postSyncs();
+                                    {
+                                        ScopedTimer t("benchmark_runs.post_syncs");
+                                        listeners.postSyncs();
+                                    }
                                 }
 
                                 if(useUserArgs)

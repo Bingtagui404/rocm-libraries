@@ -27,6 +27,7 @@
 #include "HardwareMonitorListener.hpp"
 #include "HardwareMonitor.hpp"
 #include "ResultReporter.hpp"
+#include "TimingInstrumentation.hpp"
 #include <Tensile/hip/HipUtils.hpp>
 #include <hip/hip_runtime.h>
 #include <unistd.h>
@@ -86,6 +87,7 @@ namespace TensileLite
                                                        TimingEvents const&            startEvents,
                                                        TimingEvents const&            stopEvents)
         {
+            ScopedTimer t("benchmark_runs.validate_enqueues.hwmonitor");
             if(!m_active)
                 return;
 

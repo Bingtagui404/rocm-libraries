@@ -25,6 +25,7 @@
  *******************************************************************************/
 
 #include <ProgressListener.hpp>
+#include "TimingInstrumentation.hpp"
 #include <rocisa/include/enum.hpp>
 
 #include <cstddef>
@@ -182,6 +183,7 @@ namespace TensileLite
                                                 TimingEvents const&            startEvents,
                                                 TimingEvents const&            stopEvents)
         {
+            ScopedTimer t("benchmark_runs.validate_enqueues.progress");
             struct timeval tmnow;
             struct tm*     tm;
             gettimeofday(&tmnow, NULL); // microsecond resolution

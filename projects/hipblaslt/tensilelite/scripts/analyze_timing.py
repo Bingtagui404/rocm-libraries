@@ -102,7 +102,18 @@ TIMING_HIERARCHY = {
             "pre_solution": {},
             "kernel_solving": {},
             "warmup_runs": {},
-            "benchmark_runs": {},
+            "benchmark_runs": {
+                "benchmark_runs.pre_syncs": {},
+                "benchmark_runs.pre_enqueues": {},
+                "benchmark_runs.launch_kernels": {},
+                "benchmark_runs.post_enqueues": {},
+                "benchmark_runs.validate_enqueues": {
+                    "benchmark_runs.validate_enqueues.timer": {},
+                    "benchmark_runs.validate_enqueues.progress": {},
+                    "benchmark_runs.validate_enqueues.hwmonitor": {},
+                },
+                "benchmark_runs.post_syncs": {},
+            },
             "gpu_kernel_execution": {},
             "post_solution": {
                 "post_solution_perf_calc": {},

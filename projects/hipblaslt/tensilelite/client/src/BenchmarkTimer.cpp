@@ -364,6 +364,7 @@ namespace TensileLite
                                               TimingEvents const&            startEvents,
                                               TimingEvents const&            stopEvents)
         {
+            ScopedTimer t("benchmark_runs.validate_enqueues.timer");
             double_millis totalTime(0.0);
 
             if(m_useGPUTimer)
