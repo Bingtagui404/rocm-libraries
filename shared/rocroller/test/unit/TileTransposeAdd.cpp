@@ -107,8 +107,6 @@ namespace TileTransposeAddTest
 
         auto params = std::make_shared<CommandParameters>();
         params->setManualKernelDimension(2);
-        params->transposeMemoryAccess.set(LayoutType::ROW_MAJOR, true);
-        params->transposeMemoryAccess.set(LayoutType::COLUMN_MAJOR, false);
 
         auto macTileA = KernelGraph::CoordinateGraph::MacroTile(
             {m, n},

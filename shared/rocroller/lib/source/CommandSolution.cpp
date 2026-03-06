@@ -83,6 +83,8 @@ namespace rocRoller
     CommandParameters::CommandParameters()
         : m_waveTilesPerWavefront({1, 1})
     {
+        transposeMemoryAccess.set(LayoutType::ROW_MAJOR, true);
+        transposeMemoryAccess.set(LayoutType::COLUMN_MAJOR, false);
     }
 
     void CommandParameters::setDimensionInfo(Operations::OperationTag                tag,
