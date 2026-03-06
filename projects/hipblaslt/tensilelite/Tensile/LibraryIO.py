@@ -195,6 +195,60 @@ def fast_yaml_dump(solutionStates, f):
             else:
                 f.write(f'{prefix}{k}: {_fast_yaml_scalar(v)}\n')
 
+def _fast_yaml_write_mapping(f, mapping, indent):
+    """Write a dict as a YAML block mapping at the given indent level."""
+    prefix = ' ' * indent
+    for k, v in mapping.items():
+        if isinstance(v, dict):
+            if v:
+                f.write(f'{prefix}{k}:\n')
+                _fast_yaml_write_mapping(f, v, indent + 2)
+            else:
+                f.write(f'{prefix}{k}: {{}}\n')
+        elif isinstance(v, list) and v and isinstance(v[0], dict):
+            f.write(f'{prefix}{k}:\n')
+            _fast_yaml_write_block_seq(f, v, indent + 2)
+        else:
+            f.write(f'{prefix}{k}: {_fast_yaml_scalar(v)}\n')
+
+def _fast_yaml_write_block_seq(f, seq, indent):
+    """Write a list of dicts/scalars as a YAML block sequence."""
+    prefix = ' ' * indent
+    for item in seq:
+        if isinstance(item, dict):
+            first = True
+            for k, v in item.items():
+                item_prefix = prefix + ('- ' if first else '  ')
+                first = False
+                if isinstance(v, dict):
+                    if v:
+                        f.write(f'{item_prefix}{k}:\n')
+                        _fast_yaml_write_mapping(f, v, indent + 4)
+                    else:
+                        f.write(f'{item_prefix}{k}: {{}}\n')
+                elif isinstance(v, list) and v and isinstance(v[0], dict):
+                    f.write(f'{item_prefix}{k}:\n')
+                    _fast_yaml_write_block_seq(f, v, indent + 4)
+                else:
+                    f.write(f'{item_prefix}{k}: {_fast_yaml_scalar(v)}\n')
+        else:
+            f.write(f'{prefix}- {_fast_yaml_scalar(item)}\n')
+
+def _fast_yaml_write_document(f, data):
+    """Write a complete YAML document using fast serialization."""
+    f.write('---\n')
+    if isinstance(data, dict):
+        _fast_yaml_write_mapping(f, data, 0)
+    elif isinstance(data, list):
+        if data and isinstance(data[0], dict):
+            _fast_yaml_write_block_seq(f, data, 0)
+        else:
+            for item in data:
+                f.write(f'- {_fast_yaml_scalar(item)}\n')
+    else:
+        f.write(f'{_fast_yaml_scalar(data)}\n')
+    f.write('...\n')
+
 def write(filename_noExt, data, format="yaml"):
     """Writes data to file with specified format; extension is appended based on format."""
     if format == "yaml":
@@ -209,6 +263,11 @@ def write(filename_noExt, data, format="yaml"):
 
 def writeYAML(filename, data, **kwargs):
     """Writes data to file in YAML format."""
+    if not kwargs:
+        with open(filename, "w") as f:
+            _fast_yaml_write_document(f, data)
+        return
+
     # set default kwags for yaml dump
     if "explicit_start" not in kwargs:
         kwargs["explicit_start"] = True
