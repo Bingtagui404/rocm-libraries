@@ -31,23 +31,24 @@ template <typename MmaOp>
 concept MmaOpI = requires(MmaOp op) {
     // Requires an op context
     typename MmaOp::OpType;
+    typename MmaOp::OpFamily;
 
     // Captures types for inputs / outputs to mma function
+    typename MmaOp::ADataType;
+    typename MmaOp::BDataType;
+    typename MmaOp::CDataType;
     typename MmaOp::AVecType;
     typename MmaOp::BVecType;
     typename MmaOp::CVecType;
 
     // Captures CK-specific layout properties
-    { MmaOp::kAMBlock } -> std::convertible_to<unsigned int>;
-    { MmaOp::kBNBlock } -> std::convertible_to<unsigned int>;
-    { MmaOp::kAMLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kBNLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kABKLane } -> std::convertible_to<unsigned int>;
     { MmaOp::kABKPerLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kCMLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kCNLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kCM0PerLane } -> std::convertible_to<unsigned int>;
-    { MmaOp::kCM1PerLane } -> std::convertible_to<unsigned int>;
+    { MmaOp::kAKNumAccess } -> std::convertible_to<unsigned int>;
+    { MmaOp::kARepeat } -> std::convertible_to<unsigned int>;
+    { MmaOp::kBKNumAccess } -> std::convertible_to<unsigned int>;
+    { MmaOp::kBRepeat } -> std::convertible_to<unsigned int>;
+    { MmaOp::kCMPerLane } -> std::convertible_to<unsigned int>;
+    { MmaOp::kCMNumAccess } -> std::convertible_to<unsigned int>;
 
     // Static exec function
     {
@@ -92,24 +93,24 @@ struct amdgcn_mma
     using OpType                          = Unsupported;
     static constexpr MmaOpFamily OpFamily = MmaOpFamily::UNDEFINED;
 
-    // Interface types for A, B, C vectors types
+    // Fragment sizes - default to 1
+    static constexpr index_t kM = 1;
+    static constexpr index_t kN = 1;
+    static constexpr index_t kK = 1;
+
+    // Layout constants - default to 1
+    static constexpr index_t kABKPerLane  = 1;
+    static constexpr index_t kAKNumAccess = 1;
+    static constexpr index_t kARepeat     = 1;
+    static constexpr index_t kBKNumAccess = 1;
+    static constexpr index_t kBRepeat     = 1;
+    static constexpr index_t kCMPerLane   = 1;
+    static constexpr index_t kCMNumAccess = 1;
+
+    // Register types for A, B, C vectors
     using AVecType = ext_vector_t<ADataType, 1>;
     using BVecType = ext_vector_t<BDataType, 1>;
     using CVecType = ext_vector_t<CDataType, 1>;
-
-    // Layout constants - default to 0
-    static constexpr index_t kAMBlock = 0;
-    static constexpr index_t kBNBlock = 0;
-
-    static constexpr index_t kAMLane     = 0;
-    static constexpr index_t kBNLane     = 0;
-    static constexpr index_t kABKLane    = 0;
-    static constexpr index_t kABKPerLane = 0;
-
-    static constexpr index_t kCMLane     = 0;
-    static constexpr index_t kCNLane     = 0;
-    static constexpr index_t kCM0PerLane = 0;
-    static constexpr index_t kCM1PerLane = 0;
 
     // This is a default pass-through implementation that doesn't do anything practical.
     CK_TILE_DEVICE static CVecType const&

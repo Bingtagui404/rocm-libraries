@@ -56,6 +56,8 @@ struct MmaOpParams;
 #if CK_TILE_CONCEPTS && CK_TILE_CONCEPTS_HEADER
 #include <concepts>
 
+// TODO: update concept with all params.
+// TODO: Replace the term "Block" for intrinsic matrix sizes, already too overloaded.
 /**
  *  @concept MmaOpParamsI
  *  @brief  Expresses the required members for each MmaOp
@@ -77,6 +79,8 @@ concept MmaOpParamsI = requires(MmaOpParams op) {
 
 #endif // CK_TILE_CONCEPTS && CK_TILE_CONCEPTS_HEADER
 
+// TODO: Figure out a way to deal with all the repetition in amdgcn structs and Params / Traits
+// structs
 /**
  * @struct MmaOpParams
  * @brief Reflects the template parameters of a given MmaOp
@@ -133,24 +137,27 @@ template <typename MmaOp>
 struct MmaOpTraits : public MmaOpParams<MmaOp>
 {
     // Capture internal MmaOp static members
-    using OpType   = typename MmaOp::OpType;
+    using OpType                          = typename MmaOp::OpType;
+    static constexpr MmaOpFamily OpFamily = MmaOp::OpFamily;
+
+    // Capture fragment sizes
+    static constexpr index_t kM = MmaOp::kM;
+    static constexpr index_t kN = MmaOp::kN;
+    static constexpr index_t kK = MmaOp::kK;
+
+    // Capture layout parameters
+    static constexpr index_t kABKPerLane  = MmaOp::kABKPerLane;
+    static constexpr index_t kAKNumAccess = MmaOp::kAKNumAccess;
+    static constexpr index_t kARepeat     = MmaOp::kARepeat;
+    static constexpr index_t kBKNumAccess = MmaOp::kBKNumAccess;
+    static constexpr index_t kBRepeat     = MmaOp::kBRepeat;
+    static constexpr index_t kCMPerLane   = MmaOp::kCMPerLane;
+    static constexpr index_t kCMNumAccess = MmaOp::kCMNumAccess;
+
+    // Capture register types
     using AVecType = typename MmaOp::AVecType;
     using BVecType = typename MmaOp::BVecType;
     using CVecType = typename MmaOp::CVecType;
-
-    static constexpr MmaOpFamily OpFamily = MmaOp::OpFamily;
-
-    // Capture layout parameters
-    static constexpr index_t kAMBlock    = MmaOp::kAMBlock;
-    static constexpr index_t kBNBlock    = MmaOp::kBNBlock;
-    static constexpr index_t kAMLane     = MmaOp::kAMLane;
-    static constexpr index_t kBNLane     = MmaOp::kBNLane;
-    static constexpr index_t kABKLane    = MmaOp::kABKLane;
-    static constexpr index_t kABKPerLane = MmaOp::kABKPerLane;
-    static constexpr index_t kCMLane     = MmaOp::kCMLane;
-    static constexpr index_t kCNLane     = MmaOp::kCNLane;
-    static constexpr index_t kCM0PerLane = MmaOp::kCM0PerLane;
-    static constexpr index_t kCM1PerLane = MmaOp::kCM1PerLane;
 
     // Additional traits to identify the type of MmaOp at compile time
     constexpr static bool IsMfma   = is_mma_op_mfma_v<MmaOp>;

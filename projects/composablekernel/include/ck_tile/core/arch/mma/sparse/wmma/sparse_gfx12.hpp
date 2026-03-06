@@ -29,37 +29,48 @@ struct amdgcn_mma<fp16_t,
     using OpType                          = WmmaOp;
     static constexpr MmaOpFamily OpFamily = MmaOpFamily::SPARSE;
 
-    static constexpr index_t ABVecN = 16;
+    // Data types
+    using ADataType = fp16_t;
+    using BDataType = fp16_t;
+    using CDataType = fp32_t;
 
-    using AVecType = ext_vector_t<fp16_t, ABVecN>;
-    using BVecType = ext_vector_t<fp16_t, ABVecN>;
-    using CVecType = ext_vector_t<fp32_t, 8>;
+    // Fragment sizes
+    static constexpr index_t kM = 16;
+    static constexpr index_t kN = 16;
+    static constexpr index_t kK = 32;
 
-    static constexpr index_t kAMBlock = 1;
-    static constexpr index_t kBNBlock = 1;
+    // Layout constants
+    static constexpr index_t kABKPerLane  = 16;
+    static constexpr index_t kAKNumAccess = 1;
+    static constexpr index_t kARepeat     = 1;
+    static constexpr index_t kBKNumAccess = 1;
+    static constexpr index_t kBRepeat     = 1;
+    static constexpr index_t kCMPerLane   = 8;
+    static constexpr index_t kCMNumAccess = 1;
 
-    static constexpr index_t kAMLane     = 16;
-    static constexpr index_t kBNLane     = 16;
-    static constexpr index_t kABKLane    = 4;
-    static constexpr index_t kABKPerLane = 8;
+    // Register types (derived)
+    static constexpr index_t waveSize = static_cast<index_t>(CompilerTarget::WAVE_SIZE_ID);
+    static_assert((kM * kK * kARepeat) % waveSize == 0);
+    static_assert((kN * kK * kBRepeat) % waveSize == 0);
+    static_assert((kM * kN) % waveSize == 0);
 
-    static constexpr index_t kCMLane     = 4;
-    static constexpr index_t kCNLane     = 16;
-    static constexpr index_t kCM0PerLane = 1;
-    static constexpr index_t kCM1PerLane = 4;
-
-    static constexpr index_t kCompressionRatio = 2;
+    using AVecType = ext_vector_t<ADataType, kM * kK * kARepeat / waveSize>;
+    using BVecType = ext_vector_t<BDataType, kN * kK * kBRepeat / waveSize>;
+    using CVecType = ext_vector_t<CDataType, kM * kN / waveSize>;
 
     CK_TILE_DEVICE static auto
     exec(AVecType& aVec, BVecType const& bVec, CVecType const& cVec) -> CVecType
     {
-        static constexpr index_t CompressedSize = ABVecN / kCompressionRatio;
-        using AVecCompressed                    = ext_vector_t<fp16_t, CompressedSize>;
+        static constexpr index_t AVecN             = vector_traits<AVecType>::vector_size;
+        static constexpr index_t kCompressionRatio = 2;
+        static constexpr index_t CompressedSize    = AVecN / kCompressionRatio;
+        using AVecCompressed                       = ext_vector_t<fp16_t, CompressedSize>;
+
         static_assert(CompressedSize == 8);
         // TODO: Compressing A on-the-fly should be OK for now, but we need to validate
         // and evaluate changing this to a transform at a higher level.
         // aVec not being const can cause problems when running multiple intrinsics.
-        const int32_t idx = ::ck_tile::compress_a_impl<fp16_t, CompressedSize>(aVec);
+        const int32_t idx = ck_tile::compress_a_impl<fp16_t, CompressedSize>(aVec);
 
         const AVecCompressed a_vec_pruned = {
             aVec[0], aVec[1], aVec[2], aVec[3], aVec[4], aVec[5], aVec[6], aVec[7]};
