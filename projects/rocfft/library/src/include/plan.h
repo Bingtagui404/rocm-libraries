@@ -148,6 +148,15 @@ struct rocfft_field_t
     {
         return bricks == other.bricks;
     }
+
+    static rocfft_field_t
+        make_intermediary_field(const rocfft_field_t&   last_field,
+                                const rocfft_field_t&   next_field,
+                                const std::set<size_t>& required_full_length_axes);
+
+private:
+    std::map<size_t, std::vector<rocfft_brick_t>>
+        get_bricks_by_slabs(size_t slab_splitting_axis) const;
 };
 
 struct rocfft_plan_description_t
@@ -632,7 +641,13 @@ private:
     std::vector<size_t> enqueue(const sub_fft_t& sub_fft, const std::vector<size_t>& antecedents);
 
     template <io_data_label io>
-    field_representation_t get_user_field_representation(size_t field_idx = 0) const;
+    field_representation_t get_user_field_representation() const;
+
+    field_representation_t
+        make_intermediary_field_representation(std::vector<TempBufferLease>& leased_buffers,
+                                               const field_representation_t& last,
+                                               const field_representation_t& next,
+                                               const std::set<size_t>& required_full_length_axes);
 };
 
 bool PlanPowX(ExecPlan& execPlan);

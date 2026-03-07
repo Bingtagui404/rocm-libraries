@@ -3046,16 +3046,14 @@ rocfft_plan_t::sub_fft_t
 }
 
 template <io_data_label io>
-rocfft_plan_t::field_representation_t
-    rocfft_plan_t::get_user_field_representation(size_t field_idx) const
+rocfft_plan_t::field_representation_t rocfft_plan_t::get_user_field_representation() const
 {
     static_assert(io == io_data_label::INPUT || io == io_data_label::OUTPUT);
     const auto& io_fields = io == io_data_label::INPUT ? desc.inFields : desc.outFields;
-    if(field_idx >= io_fields.size())
-        throw std::invalid_argument(ROCFFT_CURRENT_FUNCTION
-                                    + " was given an out-of-range field index");
+    if(io_fields.empty())
+        throw std::invalid_argument(ROCFFT_CURRENT_FUNCTION + " has no " + to_str(io) + " fields");
     field_representation_t ret;
-    ret.field = io_fields[field_idx];
+    ret.field = io_fields[0];
     if constexpr(io == io_data_label::INPUT)
     {
         ret.buffers    = GatherUserBuffers(BufferPtr::user_input, ret.field.bricks);
@@ -3086,152 +3084,204 @@ rocfft_plan_t::field_representation_t
     return ret;
 }
 
+rocfft_plan_t::field_representation_t rocfft_plan_t::make_intermediary_field_representation(
+    std::vector<TempBufferLease>& leased_buffers,
+    const field_representation_t& last,
+    const field_representation_t& next,
+    const std::set<size_t>&       required_full_length_axes)
+{
+    if(last.array_type != next.array_type)
+        throw std::invalid_argument(ROCFFT_CURRENT_FUNCTION
+                                    + " cannot create an intermediary field representation between "
+                                      "two representations using different array type");
+
+    field_representation_t ret;
+    ret.field = rocfft_field_t::make_intermediary_field(
+        last.field, next.field, required_full_length_axes);
+    ret.array_type = last.array_type;
+    ret.group_name = "intermediary_field";
+
+    ret.buffers.reserve(ret.field.bricks.size());
+    for(const auto& brick : ret.field.bricks)
+    {
+        // note: it ALWAYS is a complex type for these ones
+        leased_buffers.emplace_back(tempBuffers,
+                                    desc.get_local_comm_rank(),
+                                    brick.location,
+                                    brick.layout.buffer_element_count()
+                                        * complex_type_size(precision));
+        ret.buffers.emplace_back(BufferPtr::temp(leased_buffers.back().data()));
+    }
+    return ret;
+}
+
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
-    // only for multi-device plan configuration
-    if(desc.has_undistributed_io_on_current_location())
-        return false;
-    if(desc.inFields.empty() || desc.outFields.empty())
-        return false;
-    // fields guaranteed to be of size 1 given description's validation checks
+    try
+    {
+        // only for multi-device plan configuration
+        if(desc.has_undistributed_io_on_current_location())
+            return false;
+        if(desc.inFields.empty() || desc.outFields.empty())
+            return false;
+        // fields guaranteed to be of size 1 given description's validation checks
 
-    const auto& ifield = desc.inFields.front();
-    const auto& ofield = desc.outFields.front();
+        const auto& ifield = desc.inFields.front();
+        const auto& ofield = desc.outFields.front();
 
-    // Figure out which length axes to compute on input/output
-    const auto full_axes_on_input  = ifield.get_full_length_axes_in_all_bricks();
-    const auto full_axes_on_output = ofield.get_full_length_axes_in_all_bricks();
-    if(full_axes_on_input.size() == desc.rank() && full_axes_on_output.size() == desc.rank())
-    {
-        // Embarrassingly parallel case very likely (more checks on batches required, brickwise...)
-        // Anyways, all bricks have full data available on input and/or output dimension-splitting
-        // with field transpositions is not required (nor the right thing to do)
-        // TODO: embarrassingly parallel cases without gather/scatter
-        return false;
-    }
-    // The 0th length dimension *must* be full on input (resp. output) for forward
-    // (resp. inverse) real transforms
-    if((transformType == rocfft_transform_type_real_forward && !full_axes_on_input.contains(0))
-       || (transformType == rocfft_transform_type_real_inverse && !full_axes_on_output.contains(0)))
-    {
-        return false;
-    }
-    // Define the length axes to be computed on input and the axes to be computes on output
-    // and find out which axes need an intermediary field (e.g., pencil decompositions on I/O)
-    std::set<size_t> partial_axes, axes_computed_on_input, axes_computed_on_output;
-    for(size_t dim = 0; dim < desc.rank(); dim++)
-    {
-        const auto axis_is_full_on_input  = full_axes_on_input.contains(dim);
-        const auto axis_is_full_on_output = full_axes_on_output.contains(dim);
-        if(!axis_is_full_on_input && !axis_is_full_on_output)
+        // Figure out which length axes to compute on input/output
+        const auto full_axes_on_input  = ifield.get_full_length_axes_in_all_bricks();
+        const auto full_axes_on_output = ofield.get_full_length_axes_in_all_bricks();
+        if(full_axes_on_input.size() == desc.rank() && full_axes_on_output.size() == desc.rank())
         {
-            partial_axes.insert(dim);
-            continue;
+            // Embarrassingly parallel case very likely (more checks on batches required, brickwise...)
+            // Anyways, all bricks have full data available on input and/or output dimension-splitting
+            // with field transpositions is not required (nor the right thing to do)
+            // TODO: embarrassingly parallel cases without gather/scatter
+            return false;
         }
-        // Unless mandatory to be computed on output (0th length dimension of real inverse
-        // cases), prefer computing length dimension on input if possible so long as some
-        // work is guaranteed on output.
-        if(axis_is_full_on_input
-           && !(is_real_domain(transformType, io_data_label::OUTPUT) && dim == 0)
-           && ((is_real_domain(transformType, io_data_label::INPUT) && dim == 0)
-               || !axis_is_full_on_output || !axes_computed_on_output.empty()))
+        // The 0th length dimension *must* be full on input (resp. output) for forward
+        // (resp. inverse) real transforms
+        if((transformType == rocfft_transform_type_real_forward && !full_axes_on_input.contains(0))
+           || (transformType == rocfft_transform_type_real_inverse
+               && !full_axes_on_output.contains(0)))
         {
-            axes_computed_on_input.insert(dim);
+            return false;
         }
-        else
+        // Define the length axes to be computed on input and the axes to be computes on output
+        // and find out which axes need an intermediary field (e.g., pencil decompositions on I/O)
+        std::set<size_t> partial_axes, axes_computed_on_input, axes_computed_on_output;
+        for(size_t dim = 0; dim < desc.rank(); dim++)
         {
-            // axis_is_full_on_output == true given above checks
-            axes_computed_on_output.insert(dim);
-        }
-    }
-
-    // We need at least one dimension to compute on input and another on output
-    if(axes_computed_on_input.empty() || axes_computed_on_output.empty())
-        return false;
-    if(!partial_axes.empty())
-    {
-        // Pencil decomposition broken in the new form, shouldn't be too hard
-        // to recover it
-        return false;
-    }
-
-    const auto user_input  = get_user_field_representation<io_data_label::INPUT>();
-    const auto user_output = get_user_field_representation<io_data_label::OUTPUT>();
-
-    // The desired multi-device transform is tackled via a sequence of successive
-    // lower-dimensional transforms from input/temporary fields to temporary/output
-    // fields. The operation is completed when no length dimension is left to transform
-    // in the field.
-    // - For complex transforms, the type of the successive lower-dimensional transforms
-    //   is identical to the requested (plan's) type of transform.
-    // - For real transforms, the lower-dimensional transform handling the innermost
-    //   (0th) length dimension must be identical to the requested (plan's) type of
-    //   transform, i.e., real, and handled first (resp. last) for forward (resp.
-    //   inverse) transforms. All other lower-dimensional transforms are forward
-    //   (resp. inverse) *complex* transforms.
-
-    // 2 lower-dimensional FFTs in the sequence unless there are some partial
-    // length axes on input *and* output (e.g., pencil decompositions).
-    std::vector<sub_fft_t> sequence_of_sub_ffts(partial_axes.empty() ? 2 : 3);
-
-    // Operations may need to lease temporary buffers
-    std::vector<TempBufferLease> leased_buffers;
-    // In-place operations in output buffers are always acceptable: prefer that if
-    // possible to minimize memory footprint
-    sequence_of_sub_ffts.back() = create_sub_fft(user_output,
-                                                 axes_computed_on_output,
-                                                 sub_fft_label::to_user_output_field,
-                                                 leased_buffers,
-                                                 true /* = prefer_in_place_if_possible*/);
-    // Prefer in-place operations in input buffers if the plan is itself configured
-    // in-place (i.e., user allows to overwrite input), and if the input buffers of
-    // the subsequent sub-dimensional FFT are not the input buffers, themselves.
-    const bool prefer_inplace_on_input_field
-        = placement == rocfft_placement_inplace
-          && (!partial_axes.empty()
-              || std::all_of(
-                  sequence_of_sub_ffts.back().input.buffers.begin(),
-                  sequence_of_sub_ffts.back().input.buffers.end(),
-                  [](const auto& tmp) { return tmp.ptr_type() != BufferPtr::PTR_USER_IN; }));
-    sequence_of_sub_ffts.front() = create_sub_fft(user_input,
-                                                  axes_computed_on_input,
-                                                  sub_fft_label::from_user_input_field,
-                                                  leased_buffers,
-                                                  prefer_inplace_on_input_field);
-    if(!partial_axes.empty())
-    {
-        //        const auto intermediary_field = rocfft_field_t::make_intermediary_field(
-        //            sequence_of_sub_ffts.front().output.field, sequence_of_sub_ffts.back().input.field);
-        //sequence_of_sub_ffts[1] = create_sub_fft(intermediary_field,
-        //                                         partial_axes,
-        //                                         sub_fft_label::from_intermediary_field,
-        //                                         leased_buffers,
-        //                                         true /* = prefer_in_place_if_possible*/);
-    }
-
-    const field_representation_t* current_snapshot = &user_input;
-    std::vector<size_t>           latest_plan_items;
-    for(const auto& sub_fft : sequence_of_sub_ffts)
-    {
-        if(sub_fft.input != *current_snapshot)
-        {
-            // field transposition required before enqueuing
-            // the next lower-dimensional FFTs
-            latest_plan_items
-                = GlobalTranspose(*current_snapshot, sub_fft.input, latest_plan_items);
+            const auto axis_is_full_on_input  = full_axes_on_input.contains(dim);
+            const auto axis_is_full_on_output = full_axes_on_output.contains(dim);
+            if(!axis_is_full_on_input && !axis_is_full_on_output)
+            {
+                partial_axes.insert(dim);
+                continue;
+            }
+            // Unless mandatory to be computed on output (0th length dimension of real inverse
+            // cases), prefer computing length dimension on input if possible so long as some
+            // work is guaranteed on output.
+            if(axis_is_full_on_input
+               && !(is_real_domain(transformType, io_data_label::OUTPUT) && dim == 0)
+               && ((is_real_domain(transformType, io_data_label::INPUT) && dim == 0)
+                   || !axis_is_full_on_output || !axes_computed_on_output.empty()))
+            {
+                axes_computed_on_input.insert(dim);
+            }
+            else
+            {
+                // axis_is_full_on_output == true given above checks
+                axes_computed_on_output.insert(dim);
+            }
         }
 
-        // lower-dimensional FFT
-        latest_plan_items = enqueue(sub_fft, latest_plan_items);
+        // We need at least one dimension to compute on input and another on output
+        if(axes_computed_on_input.empty() || axes_computed_on_output.empty())
+            return false;
+        //        if(!partial_axes.empty())
+        //        {
+        //            // Pencil decomposition broken in the new form, shouldn't be too hard
+        //            // to recover it
+        //            return false;
+        //        }
 
-        // Any field representation considered as output by a given lower-dimensional
-        // transform becomes "current" for the subsequent step(s).
-        current_snapshot = &sub_fft.output;
+        const auto user_input  = get_user_field_representation<io_data_label::INPUT>();
+        const auto user_output = get_user_field_representation<io_data_label::OUTPUT>();
+
+        // The desired multi-device transform is tackled via a sequence of successive
+        // lower-dimensional transforms from input/temporary fields to temporary/output
+        // fields. The operation is completed when no length dimension is left to transform
+        // in the field.
+        // - For complex transforms, the type of the successive lower-dimensional transforms
+        //   is identical to the requested (plan's) type of transform.
+        // - For real transforms, the lower-dimensional transform handling the innermost
+        //   (0th) length dimension must be identical to the requested (plan's) type of
+        //   transform, i.e., real, and handled first (resp. last) for forward (resp.
+        //   inverse) transforms. All other lower-dimensional transforms are forward
+        //   (resp. inverse) *complex* transforms.
+
+        // 2 lower-dimensional FFTs in the sequence unless there are some partial
+        // length axes on input *and* output (e.g., pencil decompositions).
+        std::vector<sub_fft_t> sequence_of_sub_ffts(partial_axes.empty() ? 2 : 3);
+
+        // Operations may need to lease temporary buffers
+        std::vector<TempBufferLease> leased_buffers;
+        // In-place operations in output buffers are always acceptable: prefer that if
+        // possible to minimize memory footprint
+        sequence_of_sub_ffts.back() = create_sub_fft(user_output,
+                                                     axes_computed_on_output,
+                                                     sub_fft_label::to_user_output_field,
+                                                     leased_buffers,
+                                                     true /* = prefer_in_place_if_possible*/);
+        // Prefer in-place operations in input buffers if the plan is itself configured
+        // in-place (i.e., user allows to overwrite input), and if the input buffers of
+        // the subsequent sub-dimensional FFT are not the input buffers, themselves.
+        const bool prefer_inplace_on_input_field
+            = placement == rocfft_placement_inplace
+              && (!partial_axes.empty()
+                  || std::all_of(
+                      sequence_of_sub_ffts.back().input.buffers.begin(),
+                      sequence_of_sub_ffts.back().input.buffers.end(),
+                      [](const auto& tmp) { return tmp.ptr_type() != BufferPtr::PTR_USER_IN; }));
+        sequence_of_sub_ffts.front() = create_sub_fft(user_input,
+                                                      axes_computed_on_input,
+                                                      sub_fft_label::from_user_input_field,
+                                                      leased_buffers,
+                                                      prefer_inplace_on_input_field);
+        if(!partial_axes.empty())
+        {
+            const auto intermediary_field
+                = make_intermediary_field_representation(leased_buffers,
+                                                         sequence_of_sub_ffts.front().output,
+                                                         sequence_of_sub_ffts.back().input,
+                                                         partial_axes);
+
+            sequence_of_sub_ffts[1] = create_sub_fft(intermediary_field,
+                                                     partial_axes,
+                                                     sub_fft_label::from_intermediary_field,
+                                                     leased_buffers,
+                                                     true /* = prefer_in_place_if_possible*/);
+        }
+
+        const field_representation_t* current_snapshot = &user_input;
+        std::vector<size_t>           latest_plan_items;
+        for(const auto& sub_fft : sequence_of_sub_ffts)
+        {
+            if(sub_fft.input != *current_snapshot)
+            {
+                // field transposition required before enqueuing
+                // the next lower-dimensional FFTs
+                latest_plan_items
+                    = GlobalTranspose(*current_snapshot, sub_fft.input, latest_plan_items);
+            }
+
+            // lower-dimensional FFT
+            latest_plan_items = enqueue(sub_fft, latest_plan_items);
+
+            // Any field representation considered as output by a given lower-dimensional
+            // transform becomes "current" for the subsequent step(s).
+            current_snapshot = &sub_fft.output;
+        }
+
+        return true;
     }
+    catch(const std::exception& e)
+    {
+        if(LOG_TRACE_ENABLED())
+        {
+            (*LogSingleton::GetInstance().GetTraceOS())
+                << "Optimized multi-device plan creation failed with exception\n"
+                << e.what() << std::endl;
+        }
+    }
+    // clear what may have been created
+    multiPlan.clear();
+    multiPlanAntecedents.clear();
+    tempBuffers.clear();
 
-    std::cout << "HELL YEAH" << std::endl;
-
-    return true;
+    return false;
 }
 
 // All-gather all of the brick parameters for a given field.
@@ -3677,6 +3727,158 @@ std::optional<rocfft_field_t>
             }
         }
     }
+    return ret;
+}
+
+std::map<size_t, std::vector<rocfft_brick_t>>
+    rocfft_field_t::get_bricks_by_slabs(size_t slab_splitting_axis) const
+{
+    std::map<size_t, std::vector<rocfft_brick_t>> ret;
+    for(const auto& brick : bricks)
+    {
+        const auto it = ret.find(brick.layout[slab_splitting_axis].lower);
+        if(it == ret.end())
+            ret.emplace(
+                decltype(ret)::value_type(brick.layout[slab_splitting_axis].lower, {brick}));
+        else
+        {
+            if(brick.layout[slab_splitting_axis].upper
+               != it->second.front().layout[slab_splitting_axis].upper)
+            {
+                throw std::logic_error("Field incompatible with slab-grouping detected by "
+                                       + ROCFFT_CURRENT_FUNCTION);
+            }
+            it->second.emplace_back(brick);
+        }
+    }
+    return ret;
+}
+
+namespace
+{
+    template <typename T>
+    std::set<T> intersection_of(const std::set<T>& a, const std::set<T>& b)
+    {
+        std::set<T> ret;
+        const auto& set_to_parse = a.size() < b.size() ? a : b;
+        const auto& other_set    = a.size() < b.size() ? b : a;
+        for(const auto& v : set_to_parse)
+        {
+            if(other_set.contains(v))
+                ret.insert(v);
+        }
+        return ret;
+    }
+}
+
+rocfft_field_t
+    rocfft_field_t::make_intermediary_field(const rocfft_field_t&   last_field,
+                                            const rocfft_field_t&   next_field,
+                                            const std::set<size_t>& required_full_length_axes)
+{
+    const auto full_range = last_field.get_full_data_range();
+    if(!full_range.has_same_logical_range_as(next_field.get_full_data_range()))
+    {
+        throw std::invalid_argument(
+            ROCFFT_CURRENT_FUNCTION
+            + " requires the last and next fields to have the same full range of data");
+    }
+    std::optional<size_t> slab_splitting_axis_in_last, slab_splitting_axis_in_next;
+    for(size_t dim = 0; dim < full_range.get_full_rank(); dim++)
+    {
+        if(dim < full_range.get_len_rank())
+        {
+            if(required_full_length_axes.contains(dim))
+                continue;
+            if(!slab_splitting_axis_in_last
+               && !last_field.has_full_range_in_all_bricks_for_axis(dim))
+                slab_splitting_axis_in_last = dim;
+            if(!slab_splitting_axis_in_next
+               && !next_field.has_full_range_in_all_bricks_for_axis(dim))
+                slab_splitting_axis_in_next = dim;
+        }
+        else
+        {
+            // this routine currently assumes full batch coverage in all of the last and
+            // next fields' bricks
+            if(!last_field.has_full_range_in_all_bricks_for_axis(dim)
+               || !next_field.has_full_range_in_all_bricks_for_axis(dim))
+            {
+                throw std::invalid_argument(
+                    ROCFFT_CURRENT_FUNCTION
+                    + " requires that all bricks cover the full batch size(s), currently");
+            }
+        }
+    }
+    if(!slab_splitting_axis_in_last || !slab_splitting_axis_in_next
+       || slab_splitting_axis_in_last == slab_splitting_axis_in_next)
+    {
+        throw std::invalid_argument(ROCFFT_CURRENT_FUNCTION + " cannot do this case yet");
+    }
+    const auto last_slabs = last_field.get_bricks_by_slabs(*slab_splitting_axis_in_last);
+    const auto next_slabs = next_field.get_bricks_by_slabs(*slab_splitting_axis_in_next);
+
+    auto get_locations_used_in
+        = [](const std::vector<rocfft_brick_t>& bricks) -> std::set<rocfft_location_t> {
+        std::set<rocfft_location_t> ret;
+        for(auto& brick : bricks)
+            ret.insert(brick.location);
+        return ret;
+    };
+
+    // Define the intermediary field's bricks by intersection of the slabs in last and next fields
+    rocfft_field_t ret;
+    auto           brick_lower   = full_range.lower();
+    auto           brick_upper   = full_range.upper();
+    auto           brick_strides = full_range.strides_and_distances();
+    for(const auto& it_last : last_slabs)
+    {
+        const auto& last_slab           = it_last.second;
+        const auto  last_slab_locations = get_locations_used_in(last_slab);
+        brick_lower[*slab_splitting_axis_in_last]
+            = last_slab[0].layout[*slab_splitting_axis_in_last].lower;
+        brick_upper[*slab_splitting_axis_in_last]
+            = last_slab[0].layout[*slab_splitting_axis_in_last].upper;
+        for(const auto& it_next : next_slabs)
+        {
+            const auto& next_slab           = it_next.second;
+            const auto& next_slab_locations = get_locations_used_in(next_slab);
+            brick_lower[*slab_splitting_axis_in_next]
+                = next_slab[0].layout[*slab_splitting_axis_in_next].lower;
+            brick_upper[*slab_splitting_axis_in_next]
+                = next_slab[0].layout[*slab_splitting_axis_in_next].upper;
+            for(size_t dim = 0; dim < full_range.get_full_rank(); dim++)
+            {
+                if(dim == 0)
+                    brick_strides[dim] = 1;
+                else
+                    brick_strides[dim]
+                        = brick_strides[dim - 1] * (brick_upper[dim - 1] - brick_lower[dim - 1]);
+            }
+
+            const auto preferred_locations
+                = intersection_of(last_slab_locations, next_slab_locations);
+            const auto brick_loc = preferred_locations.empty()
+                                       ? (last_slab_locations.size() > next_slab_locations.size()
+                                              ? *last_slab_locations.begin()
+                                              : *next_slab_locations.begin())
+                                       : *preferred_locations.begin();
+
+            ret.bricks.emplace_back(brick_lower, brick_upper, brick_strides, brick_loc);
+        }
+    }
+    ret.finalize();
+    if(!full_range.has_same_logical_range_as(ret.get_full_data_range())
+       || !ret.has_valid_tessellation()
+       || std::any_of(
+           required_full_length_axes.begin(), required_full_length_axes.end(), [&](const auto dim) {
+               return !ret.has_full_range_in_all_bricks_for_axis(dim);
+           }))
+    {
+        throw std::logic_error(ROCFFT_CURRENT_FUNCTION
+                               + " produced an inconsistent intermediary field");
+    }
+
     return ret;
 }
 
