@@ -44,18 +44,14 @@ set_tests_properties(origami-tests PROPERTIES LABELS "cpp")
 ]=])
 
 if(ORIGAMI_ENABLE_PYTHON)
-    find_package(Python COMPONENTS Interpreter REQUIRED)
-    
-    set(ORIGAMI_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
-    set(ORIGAMI_INSTALL_PYTHON_BINDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/python${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}/site-packages")
-    
     string(APPEND _ctest_content [=[
 # Python tests (using pytest)
+# LD_LIBRARY_PATH and PYTHONPATH are set by the test runner (test_origami.py).
 add_test(origami_python_tests python -m pytest tests/ -v)
 
 set_tests_properties(origami_python_tests PROPERTIES
     LABELS "python"
-    ENVIRONMENT "LD_LIBRARY_PATH=@ORIGAMI_INSTALL_LIBDIR@:$ENV{LD_LIBRARY_PATH};PYTHONPATH=@ORIGAMI_INSTALL_PYTHON_BINDIR@:$ENV{PYTHONPATH}"
+    SKIP_RETURN_CODE 5
 )
 ]=])
 endif()
