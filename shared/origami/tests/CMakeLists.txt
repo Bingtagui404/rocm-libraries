@@ -51,7 +51,6 @@ add_test(origami_python_tests python -m pytest tests/ -v)
 
 set_tests_properties(origami_python_tests PROPERTIES
     LABELS "python"
-    SKIP_RETURN_CODE 5
 )
 ]=])
 endif()
