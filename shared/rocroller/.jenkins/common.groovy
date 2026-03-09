@@ -394,8 +394,7 @@ def runPerformanceCommand (platform, project)
             echo "=== [PR build] Attempting database insertion with credentials ==="
             try {
                 withCredentials([
-                    string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS')
+                    usernamePassword(credentialsId: 'mathtlibs-rocrollerCI-userpass', usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')
                 ]) {
                     echo "=== [PR build] Credentials loaded, running dbInsertCommand ==="
                     platform.runCommand(this, dbInsertCommand)
@@ -591,8 +590,7 @@ def runPerformanceCommand (platform, project)
             echo "=== [develop build] Attempting database insertion with credentials ==="
             try {
                 withCredentials([
-                    string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS')
+                    usernamePassword(credentialsId: 'mathtlibs-rocrollerCI-userpass', usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')
                 ]) {
                     echo "=== [develop build] Credentials loaded, running dbInsertCommand ==="
                     platform.runCommand(this, dbInsertCommand)
