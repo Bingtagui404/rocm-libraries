@@ -366,15 +366,15 @@ def runPerformanceCommand (platform, project)
                     # When not comparing, CSV should be in the main performance directory
                     CSV_FILE="./performance_build_${platform.gpu}/performance_${platform.gpu}/${rrperfSuite}.csv"
                 fi
-                
+
                 if [ -n "\$CSV_FILE" ] && [ -f "\$CSV_FILE" ]; then
                     DB_LABEL="rocroller_perf_ci_pr${env.CHANGE_ID}"
-                    
+
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
                     python gemmaiperf/db_insert.py \\
-                        --db_host \$DB_HOST \\
-                        --db_port \$DB_PORT \\
+                        --db_host executive-dashboard.amd.com \\
+                        --db_port 3307 \\
                         --db_name gemm_perf \\
                         --db_user \$DB_USER \\
                         --db_pass \$DB_PASS \\
@@ -395,9 +395,7 @@ def runPerformanceCommand (platform, project)
             try {
                 withCredentials([
                     string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
-                    string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
-                    string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS')
                 ]) {
                     echo "=== [PR build] Credentials loaded, running dbInsertCommand ==="
                     platform.runCommand(this, dbInsertCommand)
@@ -563,18 +561,18 @@ def runPerformanceCommand (platform, project)
             def dbInsertCommand = """#!/usr/bin/env bash
                 set -ex
                 cd ${project.paths.project_build_prefix}/
-                
+
                 # Find CSV file
                 CSV_FILE="./performance_${platform.gpu}/${rrperfSuite}.csv"
-                
+
                 if [ -f "\$CSV_FILE" ]; then
                     DB_LABEL="rocroller_perf_ci_develop"
-                    
+
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
                     python gemmaiperf/db_insert.py \\
-                        --db_host \$DB_HOST \\
-                        --db_port \$DB_PORT \\
+                        --db_host executive-dashboard.amd.com \\
+                        --db_port 3307 \\
                         --db_name gemm_perf \\
                         --db_user \$DB_USER \\
                         --db_pass \$DB_PASS \\
@@ -594,9 +592,7 @@ def runPerformanceCommand (platform, project)
             try {
                 withCredentials([
                     string(credentialsId: 'rocroller-db-user', variable: 'DB_USER'),
-                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS'),
-                    string(credentialsId: 'rocroller-db-host', variable: 'DB_HOST'),
-                    string(credentialsId: 'rocroller-db-port', variable: 'DB_PORT')
+                    string(credentialsId: 'rocroller-db-pass', variable: 'DB_PASS')
                 ]) {
                     echo "=== [develop build] Credentials loaded, running dbInsertCommand ==="
                     platform.runCommand(this, dbInsertCommand)
