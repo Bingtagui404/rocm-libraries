@@ -14,6 +14,64 @@
 
 namespace ck_tile::core::arch::mma {
 
+// TODO: Describe layout params.
+/**
+ *  @class  amdgcn_mma_base
+ *  @brief  Helper base class for amdgcn_mma structs to avoid a lot of code duplication. Also puts
+ *          all generic parameter derivations and static asserts in one place. Houses all of the
+ *          amdgcn struct types and variables, except for the exec() function.
+ */
+template <typename ADataType_,
+          typename BDataType_,
+          typename CDataType_,
+          uint32_t BlockM,
+          uint32_t BlockN,
+          uint32_t BlockK,
+          uint32_t WaveSize_,
+          index_t kABKPerLane_,
+          index_t kAKNumAccess_,
+          index_t kARepeat_,
+          index_t kBKNumAccess_,
+          index_t kBRepeat_,
+          index_t kCMPerLane_,
+          index_t kCMNumAccess_,
+          typename OpType_,
+          MmaOpFamily OpFamily_>
+struct amdgcn_mma_base
+{
+    using OpType                          = OpType_;
+    static constexpr MmaOpFamily OpFamily = OpFamily_;
+
+    // Data types
+    using ADataType = ADataType_;
+    using BDataType = BDataType_;
+    using CDataType = CDataType_;
+
+    // Fragment sizes
+    static constexpr index_t kM = BlockM;
+    static constexpr index_t kN = BlockN;
+    static constexpr index_t kK = BlockK;
+
+    // Layout constants
+    static constexpr index_t kABKPerLane  = kABKPerLane_;
+    static constexpr index_t kAKNumAccess = kAKNumAccess_;
+    static constexpr index_t kARepeat     = kARepeat_;
+    static constexpr index_t kBKNumAccess = kBKNumAccess_;
+    static constexpr index_t kBRepeat     = kBRepeat_;
+    static constexpr index_t kCMPerLane   = kCMPerLane_;
+    static constexpr index_t kCMNumAccess = kCMNumAccess_;
+
+    // Register types (derived)
+    static constexpr index_t WaveSize = WaveSize_;
+    static_assert((kM * kK * kARepeat) % WaveSize == 0);
+    static_assert((kN * kK * kBRepeat) % WaveSize == 0);
+    static_assert((kM * kN) % WaveSize == 0);
+
+    using AVecType = ext_vector_t<ADataType, kM * kK * kARepeat / WaveSize>;
+    using BVecType = ext_vector_t<BDataType, kN * kK * kBRepeat / WaveSize>;
+    using CVecType = ext_vector_t<CDataType, kM * kN / WaveSize>;
+};
+
 /**
  * @struct Unsupported
  * @brief  Meta-tag to indicate unsupported amdgcn_mma instance.
@@ -77,6 +135,7 @@ concept MmaOpI = requires(MmaOp op) {
  *  @tparam CompilerTarget The current compiler target
  *  @tparam Enabler SFINAE enabler
  */
+// clang-format off
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
@@ -87,31 +146,8 @@ template <typename ADataType,
           typename CompilerTarget,
           MmaOpFamily OpFamily_,
           typename Enabler = void>
-struct amdgcn_mma
+struct amdgcn_mma : amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 1u, 1u, 1u, 1u, 1, 1, 1, 1, 1, 1, 1, Unsupported, MmaOpFamily::UNDEFINED>
 {
-    // The base instance is unsupported because there is no __builtin to wrap.
-    using OpType                          = Unsupported;
-    static constexpr MmaOpFamily OpFamily = MmaOpFamily::UNDEFINED;
-
-    // Fragment sizes - default to 1
-    static constexpr index_t kM = 1;
-    static constexpr index_t kN = 1;
-    static constexpr index_t kK = 1;
-
-    // Layout constants - default to 1
-    static constexpr index_t kABKPerLane  = 1;
-    static constexpr index_t kAKNumAccess = 1;
-    static constexpr index_t kARepeat     = 1;
-    static constexpr index_t kBKNumAccess = 1;
-    static constexpr index_t kBRepeat     = 1;
-    static constexpr index_t kCMPerLane   = 1;
-    static constexpr index_t kCMNumAccess = 1;
-
-    // Register types for A, B, C vectors
-    using AVecType = ext_vector_t<ADataType, 1>;
-    using BVecType = ext_vector_t<BDataType, 1>;
-    using CVecType = ext_vector_t<CDataType, 1>;
-
     // This is a default pass-through implementation that doesn't do anything practical.
     CK_TILE_DEVICE static CVecType const&
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
@@ -120,6 +156,7 @@ struct amdgcn_mma
         return regsC; // No-op, just return C
     }
 };
+// clang-format on
 
 } // namespace ck_tile::core::arch::mma
 #pragma clang diagnostic pop

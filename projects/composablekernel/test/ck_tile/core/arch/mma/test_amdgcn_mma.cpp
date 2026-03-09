@@ -40,6 +40,7 @@ using enable_if_target_id_dummy_t = std::enable_if_t<is_dummy_target(CompilerTar
 // This way, we don't have to worry about underlying architectural details,
 // and can focus on testing the mechanism of selecting supported vs unsupported architectures.
 // TODO: c++20 template <amdgcn_target_arch_id CompilerTarget>
+// clang-format off
 template <typename CompilerTarget>
 struct amdgcn_mma<fp32_t,
                   fp32_t,
@@ -51,31 +52,15 @@ struct amdgcn_mma<fp32_t,
                   CompilerTarget,
                   MmaOpFamily::DENSE,
                   enable_if_target_id_dummy_t<CompilerTarget>>
+: amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 8u, 8u, 8u, 64u, 1, 1, 1, 1, 1, 1, 1, DummyOpType, MmaOpFamily::DENSE>
 {
-    // Mfma operation type
-    using OpType                          = DummyOpType;
-    static constexpr MmaOpFamily OpFamily = MmaOpFamily::DENSE;
-
-    // Register types
-    using AVecType = ext_vector_t<fp32_t, 4>;
-    using BVecType = ext_vector_t<fp32_t, 4>;
-    using CVecType = ext_vector_t<fp32_t, 4>;
-
-    // Layout constants
-    static constexpr index_t kABKPerLane  = 2;
-    static constexpr index_t kAKNumAccess = 3;
-    static constexpr index_t kARepeat     = 4;
-    static constexpr index_t kBKNumAccess = 5;
-    static constexpr index_t kBRepeat     = 6;
-    static constexpr index_t kCMPerLane   = 7;
-    static constexpr index_t kCMNumAccess = 8;
-
     CK_TILE_DEVICE static CVecType
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
     {
         return regsA + regsB + regsC; // Simple operation for testing
     }
 };
+// clang-format on
 
 // Have an alias so we can test supported arch vs unsupported arch
 // TODO: c++20 template <amdgcn_target_arch_id CompilerTarget>
@@ -142,18 +127,18 @@ TEST(TestAmdgcnMma, ArchSupported)
     EXPECT_TRUE((is_mma_op_of_family_v<MmaOpFamily::DENSE, MmaOp>));
 
     // Check AVecType, BVecType, CVecType
-    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 4>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
 
     // Check layout constants
-    EXPECT_EQ(MmaOp::kABKPerLane, 2);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 3);
-    EXPECT_EQ(MmaOp::kARepeat, 4);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 5);
-    EXPECT_EQ(MmaOp::kBRepeat, 6);
-    EXPECT_EQ(MmaOp::kCMPerLane, 7);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 8);
+    EXPECT_EQ(MmaOp::kABKPerLane, 1);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kARepeat, 1);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kBRepeat, 1);
+    EXPECT_EQ(MmaOp::kCMPerLane, 1);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
 }
 
 // Test case for unsupported architecture
@@ -342,16 +327,16 @@ TEST(TestAmdgcnMma, MmaOpTraitsSupportedMembers)
 
     // Check MmaOpTraits member variables
     EXPECT_TRUE((std::is_same<typename Traits::OpType, DummyOpType>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::AVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 4>>::value));
-    EXPECT_EQ(MmaOp::kABKPerLane, 2);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 3);
-    EXPECT_EQ(MmaOp::kARepeat, 4);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 5);
-    EXPECT_EQ(MmaOp::kBRepeat, 6);
-    EXPECT_EQ(MmaOp::kCMPerLane, 7);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 8);
+    EXPECT_TRUE((std::is_same<typename Traits::AVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_EQ(MmaOp::kABKPerLane, 1);
+    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kARepeat, 1);
+    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
+    EXPECT_EQ(MmaOp::kBRepeat, 1);
+    EXPECT_EQ(MmaOp::kCMPerLane, 1);
+    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
     EXPECT_FALSE(Traits::IsMfma);
     EXPECT_FALSE(Traits::IsWmma);
     EXPECT_TRUE(Traits::IsSupported);
