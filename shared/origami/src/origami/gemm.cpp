@@ -356,23 +356,24 @@ double compute_mem_bw_from_occupancy(const problem_t& problem,
 
   if (num_active_cus > hardware.N_CU) return 1.0;
 
-  size_t load_vec_bytes_a = config.global_read_vw_a * data_type_to_bytes(problem.a_dtype);
-  size_t load_vec_bytes_b = config.global_read_vw_b * data_type_to_bytes(problem.b_dtype);
-  size_t load_vec_bytes   = std::min(load_vec_bytes_a, load_vec_bytes_b);
-  mem_vector_width_t idx;
-
-  if (load_vec_bytes <= 2) {
-    load_vec_bytes = 2;
-    idx            = mem_vector_width_t::Short;
-  } else if (load_vec_bytes <= 4) {
-    load_vec_bytes = 4;
-    idx            = mem_vector_width_t::Float;
-  } else if (load_vec_bytes <= 8) {
-    load_vec_bytes = 8;
-    idx            = mem_vector_width_t::Float2;
+  size_t load_vec_bytes;
+  if (is_write) {
+    load_vec_bytes = config.store_vw * data_type_to_bytes(problem.d_dtype);
   } else {
-    load_vec_bytes = 16;
-    idx            = mem_vector_width_t::Float4;
+    size_t load_vec_bytes_a = config.global_read_vw_a * data_type_to_bytes(problem.a_dtype);
+    size_t load_vec_bytes_b = config.global_read_vw_b * data_type_to_bytes(problem.b_dtype);
+    load_vec_bytes          = std::min(load_vec_bytes_a, load_vec_bytes_b);
+  }
+
+  mem_vector_width_t idx;
+  if (load_vec_bytes <= 2) {
+    idx = mem_vector_width_t::Short;
+  } else if (load_vec_bytes <= 4) {
+    idx = mem_vector_width_t::Float;
+  } else if (load_vec_bytes <= 8) {
+    idx = mem_vector_width_t::Float2;
+  } else {
+    idx = mem_vector_width_t::Float4;
   }
 
   auto& coef     = is_write ? hardware.mem_bw_per_wg_coefficients_write[static_cast<size_t>(idx)]
@@ -916,7 +917,8 @@ double compute_timestep_latency(const problem_t& problem,
                                 const config_t& config,
                                 size_t num_active_cus,
                                 size_t splitting_factor) {
-  // Assume latency of a timestep is latency of a single K-complete output tile computed on one CU.
+  // Assume latency of a timestep is latency of a single K-complete output tile computed on one
+  // CU.
   double L_timestep =
       compute_tile_latency(problem, hardware, config, num_active_cus, splitting_factor);
 
