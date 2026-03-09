@@ -1,0 +1,183 @@
+========================================================================================================================
+TIMING ANALYSIS SUMMARY
+========================================================================================================================
+
+TIMING BY PHASE
+------------------------------------------------------------------------------------------------------------------------
+  Category                                                  Count     Total (ms)      Mean (ms) % of Parent     % of Wall
+------------------------------------------------------------------------------------------------------------------------
+  python_benchmark_problems                                     1       6,487.98       6,487.98                    100.0%
+    --------------------------------------------------------------------------------------------------------------------
+    python_client_execution                                     1       5,470.04       5,470.04       84.3%         84.3%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      Kernel Execution                                                  3,195.58                      58.4%         49.3%
+        . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+        benchmark_runs                                      3,366       2,630.15           0.78       82.3%         40.5%
+          benchmark_runs.validate_enqueues                  3,366       2,419.88           0.72       92.0%         37.3%
+            benchmark_runs.validate_enqueues.hwmonitor      3,366       1,795.13           0.53       74.2%         27.7%
+            benchmark_runs.validate_enqueues.timer          3,366         501.56           0.15       20.7%          7.7%
+            (untracked)                                                    77.90                       3.2%          1.2%
+            benchmark_runs.validate_enqueues.progress       3,366          45.29           0.01        1.9%          0.7%
+          (untracked)                                                     101.59                       3.9%          1.6%
+          benchmark_runs.post_enqueues                      3,366          62.46           0.02        2.4%          1.0%
+          benchmark_runs.pre_enqueues                       3,366          23.61           0.01        0.9%          0.4%
+          benchmark_runs.launch_kernels                     3,366          20.61           0.01        0.8%          0.3%
+          benchmark_runs.post_syncs                         3,366           2.00           0.00        0.1%          0.0%
+        post_solution                                       3,978         279.44           0.07        8.7%          4.3%
+          (untracked)                                                     233.34                      83.5%          3.6%
+          post_solution_reporting                           3,978          36.25           0.01       13.0%          0.6%
+          post_solution_perf_calc                           3,978           4.78           0.00        1.7%          0.1%
+          post_solution_validation                          3,978           4.01           0.00        1.4%          0.1%
+          post_solution_result_file                         3,978           0.48           0.00        0.2%          0.0%
+          post_solution_sol_advance                         3,978           0.30           0.00        0.1%          0.0%
+          post_solution_perf_reset                          3,978           0.28           0.00        0.1%          0.0%
+        pre_solution                                        3,978          98.59           0.02        3.1%          1.5%
+        gpu_kernel_execution                                3,366          87.00           0.03        2.7%          1.3%
+        warmup_runs                                         6,732          56.04           0.01        1.8%          0.9%
+        kernel_solving                                      3,366          37.03           0.01        1.2%          0.6%
+        post_problem                                           13           4.86           0.37        0.2%          0.1%
+        solution_selection                                  3,978           2.47           0.00        0.1%          0.0%
+        finalize_report                                         1           0.00           0.00        0.0%          0.0%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      Data Preparation                                                  1,030.98                      18.8%         15.9%
+        . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+        gpu_input_reset                                     3,353         839.48           0.25       81.4%         12.9%
+        pre_problem                                            13          78.53           6.04        7.6%          1.2%
+        cpu_data_init                                          13          64.90           4.99        6.3%          1.0%
+        gpu_input_preparation                                  13          47.50           3.65        4.6%          0.7%
+        rotating_buffer_preparation                            13           0.57           0.04        0.1%          0.0%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      C++ Client Setup                                                    618.47                      11.3%          9.5%
+        . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+        hip_initialization                                      1         414.68         414.68       67.0%          6.4%
+        listener_setup                                          1         107.30         107.30       17.3%          1.7%
+        library_loading                                         1          66.24          66.24       10.7%          1.0%
+        code_object_loading                                     1          28.01          28.01        4.5%          0.4%
+        lazy_loading_init                                       1           1.48           1.48        0.2%          0.0%
+        data_init_setup                                         1           0.57           0.57        0.1%          0.0%
+        reporter_setup                                          1           0.18           0.18        0.0%          0.0%
+        solution_iterator_setup                                 1           0.00           0.00        0.0%          0.0%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      Reference Computation                                               359.24                       6.6%          5.5%
+        . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+        validate_warmups                                    3,366         346.36           0.10       96.4%          5.3%
+          validate_gpu_readback                             3,366         170.98           0.05       49.4%          2.6%
+          validate_element_comparison                       3,366         108.78           0.03       31.4%          1.7%
+          (untracked)                                                      61.17                      17.7%          0.9%
+          validate_gpu_sync                                 3,366           5.43           0.00        1.6%          0.1%
+        cpu_reference_gemm                                     13          12.88           0.99        3.6%          0.2%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      (untracked C++ overhead)                                            265.77                       4.9%          4.1%
+    --------------------------------------------------------------------------------------------------------------------
+    python_write_solutions                                      1       1,005.38       1,005.38       15.5%         15.5%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      python_wsol_prepare                                       1         958.78         958.78       95.4%         14.8%
+        . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+        python_wsol_prepare_cache                               1         958.63         958.63      100.0%         14.8%
+        (untracked)                                                         0.15                       0.0%          0.0%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      python_wsol_dump                                          1          35.89          35.89        3.6%          0.6%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      (untracked)                                                          10.66                       1.1%          0.2%
+      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+      python_wsol_header                                        1           0.04           0.04        0.0%          0.0%
+    --------------------------------------------------------------------------------------------------------------------
+    (untracked)                                                             7.82                       0.1%          0.1%
+    --------------------------------------------------------------------------------------------------------------------
+    python_cache_check                                          1           4.75           4.75        0.1%          0.1%
+
+------------------------------------------------------------------------------------------------------------------------
+  ESTIMATED WALL CLOCK TIME: 6.49s
+
+HIERARCHY VALIDATION: OK (all child phases fit within their parents)
+
+TIME BREAKDOWN (visual, % of wall clock)
+------------------------------------------------------------------------------------------------------------------------
+  python_benchmark_problems                               100.0% ##################################################
+    python_client_execution                                84.3% ##########################################
+      Kernel Execution                                     49.3% ########################
+        benchmark_runs                                     40.5% ####################
+          benchmark_runs.validate_enqueues                 37.3% ##################
+            benchmark_runs.validate_enqueues.hwmonitor     27.7% #############
+            benchmark_runs.validate_enqueues.timer          7.7% ###
+            (untracked)                                     1.2% 
+            benchmark_runs.validate_enqueues.progress       0.7% 
+          (untracked)                                       1.6% 
+          benchmark_runs.post_enqueues                      1.0% 
+          benchmark_runs.pre_enqueues                       0.4% 
+          benchmark_runs.launch_kernels                     0.3% 
+          benchmark_runs.post_syncs                         0.0% 
+        post_solution                                       4.3% ##
+          (untracked)                                       3.6% #
+          post_solution_reporting                           0.6% 
+          post_solution_perf_calc                           0.1% 
+          post_solution_validation                          0.1% 
+          post_solution_result_file                         0.0% 
+          post_solution_sol_advance                         0.0% 
+          post_solution_perf_reset                          0.0% 
+        pre_solution                                        1.5% 
+        gpu_kernel_execution                                1.3% 
+        warmup_runs                                         0.9% 
+        kernel_solving                                      0.6% 
+        post_problem                                        0.1% 
+        solution_selection                                  0.0% 
+        finalize_report                                     0.0% 
+      Data Preparation                                     15.9% #######
+        gpu_input_reset                                    12.9% ######
+        pre_problem                                         1.2% 
+        cpu_data_init                                       1.0% 
+        gpu_input_preparation                               0.7% 
+        rotating_buffer_preparation                         0.0% 
+      C++ Client Setup                                      9.5% ####
+        hip_initialization                                  6.4% ###
+        listener_setup                                      1.7% 
+        library_loading                                     1.0% 
+        code_object_loading                                 0.4% 
+        lazy_loading_init                                   0.0% 
+        data_init_setup                                     0.0% 
+        reporter_setup                                      0.0% 
+        solution_iterator_setup                             0.0% 
+      Reference Computation                                 5.5% ##
+        validate_warmups                                    5.3% ##
+          validate_gpu_readback                             2.6% #
+          validate_element_comparison                       1.7% 
+          (untracked)                                       0.9% 
+          validate_gpu_sync                                 0.1% 
+        cpu_reference_gemm                                  0.2% 
+      (untracked C++ overhead)                              4.1% ##
+    python_write_solutions                                 15.5% #######
+      python_wsol_prepare                                  14.8% #######
+        python_wsol_prepare_cache                          14.8% #######
+        (untracked)                                         0.0% 
+      python_wsol_dump                                      0.6% 
+      (untracked)                                           0.2% 
+      python_wsol_header                                    0.0% 
+    (untracked)                                             0.1% 
+    python_cache_check                                      0.1% 
+
+KEY INSIGHTS (% of wall clock)
+------------------------------------------------------------------------------------------------------------------------
+  Python phases (code gen, compilation):  0.00s (0.0%)
+  Python I/O overhead (cache, YAML):      1.01s (15.6%)
+  C++ client setup (library loading):     0.62s (9.5%)
+  Data preparation (CPU init, GPU prep):  1.03s (15.9%)
+  Reference computation (CPU GEMM):       0.36s (5.5%)
+  Kernel execution (warmup, benchmark):   3.20s (49.3%)
+
+  CPU reference / GPU execution ratio: 0.1x
+
+TOP 10 SLOWEST PROBLEMS (by CPU reference time)
+------------------------------------------------------------------------------------------------------------------------
+    M   N   K Batch TypeA TypeD CPU Ref (ms) GPU (ms)
+  ----------------------------------------------------------------------------------------------------------------------
+  255 255  15     1  Half  Half         4.45     0.03
+  255 255 256     1  Half  Half         1.20     0.03
+  255 255 127     1  Half  Half         1.17     0.03
+  255 255 255     1  Half  Half         1.11     0.03
+  255 255 111     1  Half  Half         1.03     0.03
+  255 255 191     1  Half  Half         0.66     0.03
+  255 255  95     1  Half  Half         0.59     0.03
+  255 255  63     1  Half  Half         0.57     0.03
+  255 255  79     1  Half  Half         0.52     0.03
+  255 255  47     1  Half  Half         0.47     0.03
+

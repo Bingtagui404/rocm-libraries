@@ -158,6 +158,7 @@ namespace TensileLite
             uint64_t m_maxFreqValues; // The frequency is in Mhz
             bool     has_maxFreqValues         = false;
             bool     m_hasInvalidGpuFreqStatus = false;
+            bool     m_gpuMetricsFailed        = false;
 
             // Reserved for further performance check.
             std::vector<uint64_t>              m_SYSCLK_sum;

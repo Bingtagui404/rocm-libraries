@@ -336,7 +336,8 @@ namespace TensileLite
 
         void HardwareMonitor::clearValues()
         {
-            m_dataPoints = 0;
+            m_dataPoints       = 0;
+            m_gpuMetricsFailed = false;
 
             std::fill(m_tempValues.begin(), m_tempValues.end(), 0);
             std::fill(m_clockValues.begin(), m_clockValues.end(), 0);
@@ -352,15 +353,121 @@ namespace TensileLite
 
         void HardwareMonitor::collectOnce()
         {
-            const double cMhzToHz = 1000000;
+            const uint64_t cMhzToHz = 1000000;
 
-            for(int i = 0; i < m_tempMetrics.size(); i++)
+#if AMDSMI_LIB_VERSION_MAJOR >= 25
+            // --- Consolidated path: one amdsmi_get_gpu_metrics_info call ---
+            if(!m_gpuMetricsFailed)
             {
-                // if an error occurred previously, don't overwrite it.
-                if(m_tempValues[i] == std::numeric_limits<int64_t>::max())
+                amdsmi_gpu_metrics_t gpuMetrics;
+                auto status = amdsmi_get_gpu_metrics_info(
+                    m_processorHandles[m_smiDeviceIndex], &gpuMetrics);
+
+                if(status != AMDSMI_STATUS_SUCCESS)
                 {
-                    continue;
+                    // Mark all metrics as permanently failed
+                    m_gpuMetricsFailed = true;
+                    for(auto& v : m_tempValues)
+                        v = std::numeric_limits<int64_t>::max();
+                    for(auto& v : m_clockValues)
+                        v = std::numeric_limits<uint64_t>::max();
+                    for(auto& v : m_fanValues)
+                        v = std::numeric_limits<int64_t>::max();
                 }
+                else
+                {
+                    // --- Temperature ---
+                    // gpu_metrics_t.temperature_edge is in °C (uint16).
+                    // Existing accumulator expects millidegrees. Multiply by 1000.
+                    for(size_t i = 0; i < m_tempMetrics.size(); i++)
+                    {
+                        if(m_tempValues[i] == std::numeric_limits<int64_t>::max())
+                            continue;
+
+                        auto [sensorType, metric] = m_tempMetrics[i];
+                        if(sensorType == AMDSMI_TEMPERATURE_TYPE_EDGE
+                           && metric == AMDSMI_TEMP_CURRENT)
+                        {
+                            m_tempValues[i]
+                                += static_cast<int64_t>(gpuMetrics.temperature_edge) * 1000;
+                        }
+                        else
+                        {
+                            // Unsupported sensor/metric combo — fall back to individual call
+                            int64_t newValue{};
+                            auto    s = amdsmi_get_temp_metric(
+                                m_processorHandles[m_smiDeviceIndex],
+                                sensorType,
+                                metric,
+                                &newValue);
+                            if(s != AMDSMI_STATUS_SUCCESS)
+                                m_tempValues[i] = std::numeric_limits<int64_t>::max();
+                            else
+                                m_tempValues[i] += newValue;
+                        }
+                    }
+
+                    // --- Clocks ---
+                    for(size_t i = 0; i < m_clockMetrics.size(); i++)
+                    {
+                        if(m_clockValues[i] == std::numeric_limits<uint64_t>::max())
+                            continue;
+
+                        if(m_clockMetrics[i] == AMDSMI_CLK_TYPE_SYS)
+                        {
+                            // Per-XCD GFX clocks
+                            uint64_t sysclkSum = 0;
+                            for(uint32_t xcd = 0; xcd < m_XCDCount; xcd++)
+                            {
+                                m_SYSCLK_sum[xcd]
+                                    += gpuMetrics.current_gfxclks[xcd] * cMhzToHz;
+                                m_SYSCLK_array[xcd].push_back(
+                                    gpuMetrics.current_gfxclks[xcd] * cMhzToHz);
+                                sysclkSum += gpuMetrics.current_gfxclks[xcd] * cMhzToHz;
+                            }
+                            m_clockValues[i] += sysclkSum;
+                        }
+                        else if(m_clockMetrics[i] == AMDSMI_CLK_TYPE_SOC)
+                        {
+                            // gpu_metrics_t.current_socclks[0] is in MHz. Convert to Hz.
+                            m_clockValues[i]
+                                += static_cast<uint64_t>(gpuMetrics.current_socclks[0]) * cMhzToHz;
+                        }
+                        else if(m_clockMetrics[i] == AMDSMI_CLK_TYPE_MEM)
+                        {
+                            // gpu_metrics_t.current_uclk is in MHz. Convert to Hz.
+                            m_clockValues[i]
+                                += static_cast<uint64_t>(gpuMetrics.current_uclk) * cMhzToHz;
+                        }
+                        else
+                        {
+                            // Unknown clock type — fall back to individual call
+                            amdsmi_frequencies_t freq;
+                            auto s = amdsmi_get_clk_freq(
+                                m_processorHandles[m_smiDeviceIndex], m_clockMetrics[i], &freq);
+                            if(s != AMDSMI_STATUS_SUCCESS)
+                                m_clockValues[i] = std::numeric_limits<uint64_t>::max();
+                            else
+                                m_clockValues[i] += freq.frequency[freq.current];
+                        }
+                    }
+
+                    // --- Fan speed ---
+                    // gpu_metrics_t.current_fan_speed is in RPM (uint16). Direct match.
+                    for(size_t i = 0; i < m_fanMetrics.size(); i++)
+                    {
+                        if(m_fanValues[i] == std::numeric_limits<int64_t>::max())
+                            continue;
+                        m_fanValues[i] += static_cast<int64_t>(gpuMetrics.current_fan_speed);
+                    }
+                }
+            }
+#else
+            // --- Pre-v25 path: individual calls (unchanged) ---
+            for(size_t i = 0; i < m_tempMetrics.size(); i++)
+            {
+                if(m_tempValues[i] == std::numeric_limits<int64_t>::max())
+                    continue;
 
                 amdsmi_temperature_type_t   sensorType;
                 amdsmi_temperature_metric_t metric;
@@ -370,95 +477,39 @@ namespace TensileLite
                 auto    status = amdsmi_get_temp_metric(
                     m_processorHandles[m_smiDeviceIndex], sensorType, metric, &newValue);
                 if(status != AMDSMI_STATUS_SUCCESS)
-                {
                     m_tempValues[i] = std::numeric_limits<int64_t>::max();
-                }
                 else
-                {
                     m_tempValues[i] += newValue;
-                }
             }
 
-            for(int i = 0; i < m_clockMetrics.size(); i++)
+            for(size_t i = 0; i < m_clockMetrics.size(); i++)
             {
-                // if an error occurred previously, don't overwrite it.
                 if(m_clockValues[i] == std::numeric_limits<uint64_t>::max())
-                {
                     continue;
-                }
 
                 amdsmi_frequencies_t freq;
-
-                if(m_clockMetrics[i] == AMDSMI_CLK_TYPE_SYS)
-                {
-#if AMDSMI_LIB_VERSION_MAJOR >= 25
-                    amdsmi_gpu_metrics_t gpuMetrics;
-                    // multi_XCD
-                    auto status = amdsmi_get_gpu_metrics_info(m_processorHandles[m_smiDeviceIndex],
-                                                              &gpuMetrics);
-                    if(status == AMDSMI_STATUS_SUCCESS)
-                    {
-                        uint64_t sysclkSum = 0;
-                        for(uint32_t xcd = 0; xcd < m_XCDCount; xcd++)
-                        {
-                            m_SYSCLK_sum[xcd] += gpuMetrics.current_gfxclks[xcd] * cMhzToHz;
-                            m_SYSCLK_array[xcd].push_back(gpuMetrics.current_gfxclks[xcd]
-                                                          * cMhzToHz);
-                            sysclkSum += gpuMetrics.current_gfxclks[xcd] * cMhzToHz;
-                        }
-                        m_clockValues[i] += sysclkSum;
-                    }
-#else
-                    // XCD0
-                    auto status = amdsmi_get_clk_freq(
-                        m_processorHandles[m_smiDeviceIndex], m_clockMetrics[i], &freq);
-                    if(status != AMDSMI_STATUS_SUCCESS)
-                    {
-                        m_clockValues[i] = std::numeric_limits<uint64_t>::max();
-                    }
-                    else
-                    {
-                        m_clockValues[i] += freq.frequency[freq.current];
-                    }
-#endif
-                }
+                auto status = amdsmi_get_clk_freq(
+                    m_processorHandles[m_smiDeviceIndex], m_clockMetrics[i], &freq);
+                if(status != AMDSMI_STATUS_SUCCESS)
+                    m_clockValues[i] = std::numeric_limits<uint64_t>::max();
                 else
-                {
-                    auto status = amdsmi_get_clk_freq(
-                        m_processorHandles[m_smiDeviceIndex], m_clockMetrics[i], &freq);
-
-                    if(status != AMDSMI_STATUS_SUCCESS)
-                    {
-                        m_clockValues[i] = std::numeric_limits<uint64_t>::max();
-                    }
-                    else
-                    {
-                        m_clockValues[i] += freq.frequency[freq.current];
-                    }
-                }
+                    m_clockValues[i] += freq.frequency[freq.current];
             }
 
-            for(int i = 0; i < m_fanMetrics.size(); i++)
+            for(size_t i = 0; i < m_fanMetrics.size(); i++)
             {
-                // if an error occurred previously, don't overwrite it.
                 if(m_fanValues[i] == std::numeric_limits<int64_t>::max())
-                {
                     continue;
-                }
 
                 int64_t newValue = 0;
                 auto    status   = amdsmi_get_gpu_fan_rpms(
                     m_processorHandles[m_smiDeviceIndex], m_fanMetrics[i], &newValue);
-
                 if(status != AMDSMI_STATUS_SUCCESS)
-                {
                     m_fanValues[i] = std::numeric_limits<int64_t>::max();
-                }
                 else
-                {
                     m_fanValues[i] += newValue;
-                }
             }
+#endif
 
             // Retrieves the maximum hardware supported frequency.
             amdsmi_frequencies_t freqs;
