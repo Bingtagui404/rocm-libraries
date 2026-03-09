@@ -80,18 +80,18 @@ using DummyAmdgcnMma = amdgcn_mma<fp32_t,
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam FragM Size of the M dimension of the fragment to decompose
- * @tparam FragN Size of the N dimension of the fragment to decompose
- * @tparam FragK Size of the K dimension of the fragment to decompose
+ * @tparam ChunkM Size of the M dimension of the chunk to decompose
+ * @tparam ChunkN Size of the N dimension of the chunk to decompose
+ * @tparam ChunkK Size of the K dimension of the chunk to decompose
  * @tparam CompilerTarget The compiler target
  * @tparam OpFamily The MMA operation family
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t FragM,
-          uint32_t FragN,
-          uint32_t FragK,
+          uint32_t ChunkM,
+          uint32_t ChunkN,
+          uint32_t ChunkK,
           typename CompilerTarget,
           MmaOpFamily OpFamily>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
@@ -99,9 +99,9 @@ template <typename ADataType,
 struct MmaDefaultSelector<ADataType,
                           BDataType,
                           CDataType,
-                          FragM,
-                          FragN,
-                          FragK,
+                          ChunkM,
+                          ChunkN,
+                          ChunkK,
                           CompilerTarget,
                           OpFamily,
                           enable_if_all<enable_if_target_id_dummy_t<CompilerTarget>,
@@ -297,9 +297,9 @@ TEST(TestAmdgcnMma, MmaOpParamsTraitsSupportedMembers)
     EXPECT_TRUE((std::is_same<typename Traits::ADataType, fp32_t>::value));
     EXPECT_TRUE((std::is_same<typename Traits::BDataType, fp32_t>::value));
     EXPECT_TRUE((std::is_same<typename Traits::CDataType, fp32_t>::value));
-    EXPECT_EQ(Traits::BlockM, 16u);
-    EXPECT_EQ(Traits::BlockN, 16u);
-    EXPECT_EQ(Traits::BlockK, 16u);
+    EXPECT_EQ(Traits::FragM, 16u);
+    EXPECT_EQ(Traits::FragN, 16u);
+    EXPECT_EQ(Traits::FragK, 16u);
     EXPECT_TRUE((std::is_same<typename Traits::CtrlFlags, DummyCtrlFlags>::value));
 }
 
@@ -313,9 +313,9 @@ TEST(TestAmdgcnMma, MmaOpParamsUnsupportedMembers)
     EXPECT_TRUE((std::is_same<typename Traits::ADataType, fp32_t>::value));
     EXPECT_TRUE((std::is_same<typename Traits::BDataType, fp32_t>::value));
     EXPECT_TRUE((std::is_same<typename Traits::CDataType, fp32_t>::value));
-    EXPECT_EQ(Traits::BlockM, 16u);
-    EXPECT_EQ(Traits::BlockN, 16u);
-    EXPECT_EQ(Traits::BlockK, 16u);
+    EXPECT_EQ(Traits::FragM, 16u);
+    EXPECT_EQ(Traits::FragN, 16u);
+    EXPECT_EQ(Traits::FragK, 16u);
     EXPECT_TRUE((std::is_same<typename Traits::CtrlFlags, DummyCtrlFlags>::value));
 }
 
@@ -404,11 +404,11 @@ TEST(TestAmdgcnMma, MmaDefaultSelectorUnsupported)
     EXPECT_FALSE(MmaOpTraits<SelectedMma>::IsSupported);
 }
 
-// Test MmaDefaultSelector for supported DummyAmdgcnMma on fragment sizes other than 16x16x16
-// This tests that the selector can still pick the correct MMA op even if the fragment sizes differ
-TEST(TestAmdgcnMma, MmaDefaultSelectorSupportedFragment)
+// Test MmaDefaultSelector for supported DummyAmdgcnMma on chunk sizes other than 16x16x16
+// This tests that the selector can still pick the correct MMA op even if the chunk sizes differ
+TEST(TestAmdgcnMma, MmaDefaultSelectorSupportedChunk)
 {
-    // Select indirectly with a fragment size of 256x128x64
+    // Select indirectly with a chunk size of 256x128x64
     using SelectedMma = MmaDefaultSelector<fp32_t,
                                            fp32_t,
                                            fp32_t,
@@ -426,7 +426,7 @@ TEST(TestAmdgcnMma, MmaDefaultSelectorSupportedFragment)
 }
 
 // Test MmaDefaultSelector for a different block size and supported arch
-TEST(TestAmdgcnMma, MmaDefaultSelectorUnsupportedFragment)
+TEST(TestAmdgcnMma, MmaDefaultSelectorUnsupportedChunk)
 {
     // This should fall back to unsupported since DummyAmdgcnMma only supports 16x16x16
     using SelectedMma = MmaDefaultSelector<fp32_t,
@@ -460,22 +460,22 @@ TEST(TestAmdgcnMma, MmaDefaultSelectorFp16Unsupported)
 // Test on real hardware for MmaOp selection.
 // This is not a GEMM kernel, but a simple test to ensure that the selected MmaOp works correctly on
 // real hardware. Assumption: inputs are all 1's The multiply-accumulate functionality can be tested
-// here by looping over the k dimension and accumulating the results. They should be equal to FragK
+// here by looping over the k dimension and accumulating the results. They should be equal to ChunkK
 // regardless of hardware.
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t FragM,
-          uint32_t FragN,
-          uint32_t FragK>
+          uint32_t ChunkM,
+          uint32_t ChunkN,
+          uint32_t ChunkK>
 __global__ void test_accum_over_k(void* a, void* b, void* c, void* out)
 {
     using Selector = MmaDefaultSelector<ADataType,
                                         BDataType,
                                         CDataType,
-                                        FragM,
-                                        FragN,
-                                        FragK,
+                                        ChunkM,
+                                        ChunkN,
+                                        ChunkK,
                                         decltype(get_compiler_target()),
                                         MmaOpFamily::DENSE>;
 
@@ -484,12 +484,12 @@ __global__ void test_accum_over_k(void* a, void* b, void* c, void* out)
 
     using CVecType = typename MmaOp::CVecType;
 
-    static constexpr uint32_t kIters = FragK / MmaTraits::BlockK;
+    static constexpr uint32_t kIters = ChunkK / MmaTraits::FragK;
 
     // Initialize the accumulator
     CVecType result = *reinterpret_cast<typename MmaOp::CVecType*>(c);
 
-    // Accumulate input AxB over FragK/BlockK iterations
+    // Accumulate input AxB over ChunkK/FragK iterations
     for(uint32_t i = 0; i < kIters; ++i)
     {
         result = MmaOp::exec(*reinterpret_cast<typename MmaOp::AVecType*>(a),
@@ -525,16 +525,16 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_16x16x32_Real)
     using BType = fp16_t;
     using CType = fp32_t;
 
-    // Fragment size, also the expected block size from the selector.
-    // Note: Actual blockK might be slightly different due to hardware implementation, but the
+    // Chunk size, also the expected block size from the selector.
+    // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.
-    static constexpr uint32_t FragM  = 16;
-    static constexpr uint32_t FragN  = 16;
-    static constexpr uint32_t FragK  = 32;
-    static constexpr uint32_t BlockM = FragM;
-    static constexpr uint32_t BlockN = FragN;
-    static constexpr uint32_t BlockK = FragK;
+    static constexpr uint32_t ChunkM = 16;
+    static constexpr uint32_t ChunkN = 16;
+    static constexpr uint32_t ChunkK = 32;
+    static constexpr uint32_t FragM  = ChunkM;
+    static constexpr uint32_t FragN  = ChunkN;
+    static constexpr uint32_t FragK  = ChunkK;
 
     // Gfx11 has input data duplication and no accumulator padding (MultiplierC = 1)
     // TODO: c++20 use is_target_family_gfx11(currentArchId)
@@ -545,9 +545,9 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_16x16x32_Real)
     uint32_t MultiplierC = 1;
 
     // The number of elements per thread
-    uint32_t AElements = BlockM * BlockK / deviceWarpSize * MultiplierA;
-    uint32_t BElements = BlockN * BlockK / deviceWarpSize * MultiplierB;
-    uint32_t CElements = BlockM * BlockN / deviceWarpSize * MultiplierC;
+    uint32_t AElements = FragM * FragK / deviceWarpSize * MultiplierA;
+    uint32_t BElements = FragN * FragK / deviceWarpSize * MultiplierB;
+    uint32_t CElements = FragM * FragN / deviceWarpSize * MultiplierC;
 
     uint32_t ASize = AElements * sizeof(AType);
     uint32_t BSize = BElements * sizeof(BType);
@@ -575,16 +575,16 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_16x16x32_Real)
     HIP_CHECK_ERROR(hipMemcpy(d_c, h_c.data(), CSize, hipMemcpyHostToDevice));
 
     const auto wave_size = getDeviceWaveSize();
-    test_accum_over_k<AType, BType, CType, FragM, FragN, FragK>
+    test_accum_over_k<AType, BType, CType, ChunkM, ChunkN, ChunkK>
         <<<1, wave_size>>>(d_a, d_b, d_c, d_out);
     HIP_CHECK_ERROR(hipDeviceSynchronize());
 
     HIP_CHECK_ERROR(hipMemcpy(h_out.data(), d_out, CSize, hipMemcpyDeviceToHost));
 
-    // Output should be FragK for all elements, because the inputs are all 1's
+    // Output should be ChunkK for all elements, because the inputs are all 1's
     for(size_t i = 0; i < CElements; ++i)
     {
-        CType expected = static_cast<CType>(FragK);
+        CType expected = static_cast<CType>(ChunkK);
 
         EXPECT_NEAR(h_out[i], expected, 1e-3);
     }
@@ -597,7 +597,7 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_16x16x32_Real)
 
 // Do a live test. At minimum, there should be a solution on real hardware for F16_F16_F32_16x16x32
 // The selector should be able to pick the correct MmaOp as a multiple of 16x16x32, even if the
-// fragment sizes are larger than 16x16x32. This tests that the selector can handle larger fragment
+// chunk sizes are larger than 16x16x32. This tests that the selector can handle larger chunk
 // sizes and still select the correct MmaOp.
 TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_112x112x128_Real)
 {
@@ -623,19 +623,19 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_112x112x128_Real)
     using BType = fp16_t;
     using CType = fp32_t;
 
-    // Fragment size to test for decomposition.
+    // Chunk size to test for decomposition.
     // We expect the selector to pick a 16x16 block
-    static constexpr uint32_t FragM = 112;
-    static constexpr uint32_t FragN = 112;
-    static constexpr uint32_t FragK = 128;
+    static constexpr uint32_t ChunkM = 112;
+    static constexpr uint32_t ChunkN = 112;
+    static constexpr uint32_t ChunkK = 128;
 
     // The expected block size from the selector (multiple of 16).
-    // Note: Actual blockK might be slightly different due to hardware implementation, but the
+    // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.
-    static constexpr uint32_t BlockM = 16;
-    static constexpr uint32_t BlockN = 16;
-    static constexpr uint32_t BlockK = 32;
+    static constexpr uint32_t FragM = 16;
+    static constexpr uint32_t FragN = 16;
+    static constexpr uint32_t FragK = 32;
 
     // Gfx11 has input data duplication and no accumulator padding (MultiplierC = 1)
     // TODO: c++20 use is_target_family_gfx11(currentArchId)
@@ -646,9 +646,9 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_112x112x128_Real)
     uint32_t MultiplierC = 1;
 
     // The number of elements per thread
-    uint32_t AElements = BlockM * BlockK / deviceWarpSize * MultiplierA;
-    uint32_t BElements = BlockN * BlockK / deviceWarpSize * MultiplierB;
-    uint32_t CElements = BlockM * BlockN / deviceWarpSize * MultiplierC;
+    uint32_t AElements = FragM * FragK / deviceWarpSize * MultiplierA;
+    uint32_t BElements = FragN * FragK / deviceWarpSize * MultiplierB;
+    uint32_t CElements = FragM * FragN / deviceWarpSize * MultiplierC;
 
     uint32_t ASize = AElements * sizeof(AType);
     uint32_t BSize = BElements * sizeof(BType);
@@ -676,16 +676,16 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_112x112x128_Real)
     HIP_CHECK_ERROR(hipMemcpy(d_c, h_c.data(), CSize, hipMemcpyHostToDevice));
 
     const auto wave_size = getDeviceWaveSize();
-    test_accum_over_k<AType, BType, CType, FragM, FragN, FragK>
+    test_accum_over_k<AType, BType, CType, ChunkM, ChunkN, ChunkK>
         <<<1, wave_size>>>(d_a, d_b, d_c, d_out);
     HIP_CHECK_ERROR(hipDeviceSynchronize());
 
     HIP_CHECK_ERROR(hipMemcpy(h_out.data(), d_out, CSize, hipMemcpyDeviceToHost));
 
-    // Output should be FragK for all elements, because the inputs are all 1's
+    // Output should be ChunkK for all elements, because the inputs are all 1's
     for(size_t i = 0; i < CElements; ++i)
     {
-        CType expected = static_cast<CType>(FragK);
+        CType expected = static_cast<CType>(ChunkK);
 
         EXPECT_NEAR(h_out[i], expected, 1e-3);
     }

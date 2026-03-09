@@ -18,20 +18,20 @@ namespace ck_tile::core::arch::mma {
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam BlockM Size of the M dimension
- * @tparam BlockN Size of the N dimension
- * @tparam BlockKTest Size of the K dimension
+ * @tparam FragM Size of the M dimension
+ * @tparam FragN Size of the N dimension
+ * @tparam FragKTest Size of the K dimension
  * @tparam CompilerTarget The compiler target
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t BlockM,
-          uint32_t BlockN,
-          uint32_t BlockKTest,
+          uint32_t FragM,
+          uint32_t FragN,
+          uint32_t FragKTest,
           typename CompilerTarget>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
-// TODO: c++20 requires(is_rdna_arch_id(CompilerTarget) && is_power_of_two_integer(BlockKTest))
+// TODO: c++20 requires(is_rdna_arch_id(CompilerTarget) && is_power_of_two_integer(FragKTest))
 struct WmmaDefaultSelector
 {
     private:
@@ -42,9 +42,9 @@ struct WmmaDefaultSelector
     using CandidateOp = amdgcn_mma<ADataType,
                                    BDataType,
                                    CDataType,
-                                   BlockM,
-                                   BlockN,
-                                   BlockKTest,
+                                   FragM,
+                                   FragN,
+                                   FragKTest,
                                    CtrlFlags,
                                    CompilerTarget,
                                    MmaOpFamily::DENSE>;
@@ -53,16 +53,16 @@ struct WmmaDefaultSelector
 
     public:
     // If the candidate is supported (e.g., a backend implementation exists), then select it.
-    // Otherwise, test another smaller BlockK. If no existing implementations, we will get BlockK=0u
+    // Otherwise, test another smaller FragK. If no existing implementations, we will get FragK=0u
     // and fall back to the unsupported pass-through implementation.
     using SelectedOp = std::conditional_t<CandidateTraits::IsSupported,
                                           CandidateOp,
                                           typename WmmaDefaultSelector<ADataType,
                                                                        BDataType,
                                                                        CDataType,
-                                                                       BlockM,
-                                                                       BlockN,
-                                                                       BlockKTest / 2u,
+                                                                       FragM,
+                                                                       FragN,
+                                                                       FragKTest / 2u,
                                                                        CompilerTarget>::SelectedOp>;
 };
 
@@ -75,18 +75,18 @@ struct WmmaDefaultSelector
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam BlockM Size of the M dimension
- * @tparam BlockN Size of the N dimension
+ * @tparam FragM Size of the M dimension
+ * @tparam FragN Size of the N dimension
  * @tparam CompilerTarget The compiler target
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t BlockM,
-          uint32_t BlockN,
+          uint32_t FragM,
+          uint32_t FragN,
           typename CompilerTarget>
 // TODO: c++20 amdgcn_target_arch_id GfxTargetId>
-struct WmmaDefaultSelector<ADataType, BDataType, CDataType, BlockM, BlockN, 1u, CompilerTarget>
+struct WmmaDefaultSelector<ADataType, BDataType, CDataType, FragM, FragN, 1u, CompilerTarget>
 {
     // By default, let's assume no special flags for WMMA
     using CtrlFlags = DefaultWmmaCtrlFlags<ADataType, BDataType, CDataType>;
@@ -95,8 +95,8 @@ struct WmmaDefaultSelector<ADataType, BDataType, CDataType, BlockM, BlockN, 1u, 
     using SelectedOp = amdgcn_mma<ADataType,
                                   BDataType,
                                   CDataType,
-                                  BlockM,
-                                  BlockN,
+                                  FragM,
+                                  FragN,
                                   1u,
                                   CtrlFlags,
                                   CompilerTarget,
@@ -161,9 +161,9 @@ struct MmaDefaultSelector<ADataType,
     // Check if each candidate is supported for the given fragment sizes
     // For this case, we require the fragment sizes to be multiples of the WMMA shape
     static constexpr bool IsSupported16x16 = CandidateTraits16x16::IsSupported &&
-                                             (FragM % CandidateTraits16x16::BlockM == 0u) &&
-                                             (FragN % CandidateTraits16x16::BlockN == 0u) &&
-                                             (FragK % CandidateTraits16x16::BlockK == 0u);
+                                            (FragM % CandidateTraits16x16::FragM == 0u) &&
+                                            (FragN % CandidateTraits16x16::FragN == 0u) && 
+                                            (FragK % CandidateTraits16x16::FragK == 0u);
 
     public:
     // Select the largest supported WMMA operation for the given fragment shape
