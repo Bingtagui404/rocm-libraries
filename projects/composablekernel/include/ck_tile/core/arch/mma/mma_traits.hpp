@@ -57,7 +57,6 @@ struct MmaOpParams;
 #include <concepts>
 
 // TODO: update concept with all params.
-// TODO: Replace the term "Block" for intrinsic matrix sizes, already too overloaded.
 /**
  *  @concept MmaOpParamsI
  *  @brief  Expresses the required members for each MmaOp
@@ -70,9 +69,9 @@ concept MmaOpParamsI = requires(MmaOpParams op) {
     typename MmaOpParams::CDataType;
     typename MmaOpParams::CtrlFlags;
 
-    { MmaOpParams::BlockM } -> std::convertible_to<unsigned int>;
-    { MmaOpParams::BlockN } -> std::convertible_to<unsigned int>;
-    { MmaOpParams::BlockK } -> std::convertible_to<unsigned int>;
+    { MmaOpParams::FragM } -> std::convertible_to<unsigned int>;
+    { MmaOpParams::FragN } -> std::convertible_to<unsigned int>;
+    { MmaOpParams::FragK } -> std::convertible_to<unsigned int>;
     { MmaOpParams::GfxTargetId } -> std::convertible_to<amdgcn_target_arch_id>;
     { MmaOpParams::Family } -> std::convertible_to<MmaOpFamily>;
 };
@@ -87,18 +86,18 @@ concept MmaOpParamsI = requires(MmaOpParams op) {
  * @tparam ADataType_ Data type of matrix A
  * @tparam BDataType_ Data type of matrix B
  * @tparam CDataType_ Data type of the accumulator
- * @tparam BlockM_ Size of the M dimension
- * @tparam BlockN_ Size of the N dimension
- * @tparam BlockK_ Size of the K dimension
+ * @tparam FragM_ Size of the M dimension
+ * @tparam FragN_ Size of the N dimension
+ * @tparam FragK_ Size of the K dimension
  * @tparam CtrlFlags_ Control flags for the MMA operation
  * @tparam CompilerTarget_ The compiler target
  */
 template <typename ADataType_,
           typename BDataType_,
           typename CDataType_,
-          uint32_t BlockM_,
-          uint32_t BlockN_,
-          uint32_t BlockK_,
+          uint32_t FragM_,
+          uint32_t FragN_,
+          uint32_t FragK_,
           typename CtrlFlags_,
           typename CompilerTarget_,
           MmaOpFamily OpFamily_>
@@ -106,9 +105,9 @@ template <typename ADataType_,
 struct MmaOpParams<amdgcn_mma<ADataType_,
                               BDataType_,
                               CDataType_,
-                              BlockM_,
-                              BlockN_,
-                              BlockK_,
+                              FragM_,
+                              FragN_,
+                              FragK_,
                               CtrlFlags_,
                               CompilerTarget_,
                               OpFamily_>>
@@ -117,9 +116,9 @@ struct MmaOpParams<amdgcn_mma<ADataType_,
     using ADataType                   = ADataType_;
     using BDataType                   = BDataType_;
     using CDataType                   = CDataType_;
-    static constexpr uint32_t BlockM  = BlockM_;
-    static constexpr uint32_t BlockN  = BlockN_;
-    static constexpr uint32_t BlockK  = BlockK_;
+    static constexpr uint32_t FragM   = FragM_;
+    static constexpr uint32_t FragN   = FragN_;
+    static constexpr uint32_t FragK   = FragK_;
     using CtrlFlags                   = CtrlFlags_;
     using CompilerTarget              = CompilerTarget_;
     static constexpr auto MmaOpFamily = OpFamily_;

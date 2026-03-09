@@ -24,9 +24,9 @@ namespace ck_tile::core::arch::mma {
 template <typename ADataType_,
           typename BDataType_,
           typename CDataType_,
-          uint32_t BlockM,
-          uint32_t BlockN,
-          uint32_t BlockK,
+          uint32_t FragM,
+          uint32_t FragN,
+          uint32_t FragK,
           uint32_t WaveSize_,
           index_t kABKPerLane_,
           index_t kAKNumAccess_,
@@ -48,9 +48,9 @@ struct amdgcn_mma_base
     using CDataType = CDataType_;
 
     // Fragment sizes
-    static constexpr index_t kM = BlockM;
-    static constexpr index_t kN = BlockN;
-    static constexpr index_t kK = BlockK;
+    static constexpr index_t kM = FragM;
+    static constexpr index_t kN = FragN;
+    static constexpr index_t kK = FragK;
 
     // Layout constants
     static constexpr index_t kABKPerLane  = kABKPerLane_;
@@ -128,9 +128,9 @@ concept MmaOpI = requires(MmaOp op) {
  *  @tparam ADataType Datatype of input A
  *  @tparam BDataType Datatype of input B
  *  @tparam CDataType Datatype of accumulator
- *  @tparam BlockM M-dimension of mma block
- *  @tparam BlockN N-dimension of mma block
- *  @tparam BlockK K-dimension of mma block
+ *  @tparam FragM M-dimension of mma block
+ *  @tparam FragN N-dimension of mma block
+ *  @tparam FragK K-dimension of mma block
  *  @tparam CtrlFlags Control flags for mma operation
  *  @tparam CompilerTarget The current compiler target
  *  @tparam Enabler SFINAE enabler
@@ -139,9 +139,9 @@ concept MmaOpI = requires(MmaOp op) {
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t BlockM,
-          uint32_t BlockN,
-          uint32_t BlockK,
+          uint32_t FragM,
+          uint32_t FragN,
+          uint32_t FragK,
           typename CtrlFlags,
           typename CompilerTarget,
           MmaOpFamily OpFamily_,

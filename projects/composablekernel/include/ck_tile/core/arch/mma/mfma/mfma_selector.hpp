@@ -24,22 +24,22 @@ namespace ck_tile::core::arch::mma {
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam BlockM Block M dimension size
- * @tparam BlockN Block N dimension size
- * @tparam BlockKTest Current Block K dimension size to test
+ * @tparam FragM Block M dimension size
+ * @tparam FragN Block N dimension size
+ * @tparam FragKTest Current Block K dimension size to test
  * @tparam CompilerTarget The compiler target
- * @note Here we assume that BlockKTest is always a power-of-two integer.
- *       The search strategy starts from a maximum BlockKTest size down to 1u by halving
+ * @note Here we assume that FragKTest is always a power-of-two integer.
+ *       The search strategy starts from a maximum FragKTest size down to 1u by halving
  *       each time.
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t BlockM,
-          uint32_t BlockN,
-          uint32_t BlockKTest,
+          uint32_t FragM,
+          uint32_t FragN,
+          uint32_t FragKTest,
           typename CompilerTarget> // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
-// TODO: c++20 requires(is_gfx9_arch_id(CompilerTarget) && is_power_of_two_integer(BlockKTest))
+// TODO: c++20 requires(is_gfx9_arch_id(CompilerTarget) && is_power_of_two_integer(FragKTest))
 struct MfmaDefaultSelector
 {
     private:
@@ -48,9 +48,9 @@ struct MfmaDefaultSelector
         amdgcn_mma<ADataType,
                    BDataType,
                    CDataType,
-                   BlockM,
-                   BlockN,
-                   BlockKTest,
+                   FragM,
+                   FragN,
+                   FragKTest,
                    DefaultMfmaCtrlFlags, // By default, let's assume no special flags for MFMA
                    CompilerTarget,
                    MmaOpFamily::DENSE>;
@@ -58,16 +58,16 @@ struct MfmaDefaultSelector
 
     public:
     // If the candidate is supported (e.g., a backend implementation exists), then select it.
-    // Otherwise, test another smaller BlockK. If no existing implementations, we will get BlockK=0u
+    // Otherwise, test another smaller FragK. If no existing implementations, we will get FragK=0u
     // and fall back to the unsupported pass-through implementation.
     using SelectedOp = std::conditional_t<CandidateTraits::IsSupported,
                                           CandidateOp,
                                           typename MfmaDefaultSelector<ADataType,
                                                                        BDataType,
                                                                        CDataType,
-                                                                       BlockM,
-                                                                       BlockN,
-                                                                       BlockKTest / 2u,
+                                                                       FragM,
+                                                                       FragN,
+                                                                       FragKTest / 2u,
                                                                        CompilerTarget>::SelectedOp>;
 };
 
@@ -78,25 +78,25 @@ struct MfmaDefaultSelector
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam BlockM Block M dimension size
- * @tparam BlockN Block N dimension size
+ * @tparam FragM Block M dimension size
+ * @tparam FragN Block N dimension size
  * @tparam CompilerTarget The compiler target
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t BlockM,
-          uint32_t BlockN,
+          uint32_t FragM,
+          uint32_t FragN,
           typename CompilerTarget> // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
-struct MfmaDefaultSelector<ADataType, BDataType, CDataType, BlockM, BlockN, 1u, CompilerTarget>
+struct MfmaDefaultSelector<ADataType, BDataType, CDataType, FragM, FragN, 1u, CompilerTarget>
 {
     // Default unsupported pass-through if no instruction is found
     using SelectedOp =
         amdgcn_mma<ADataType,
                    BDataType,
                    CDataType,
-                   BlockM,
-                   BlockN,
+                   FragM,
+                   FragN,
                    1u,
                    DefaultMfmaCtrlFlags, // By default, let's assume no special flags for MFMA
                    CompilerTarget,
@@ -170,17 +170,18 @@ struct MmaDefaultSelector<ADataType,
 
     // Check if each candidate is supported for the given fragment sizes
     // For this case, we require the fragment sizes to be multiples of the MFMA shape
-    static constexpr bool IsSupported4x4 =
-        CandidateTraits4x4::IsSupported && (FragM % CandidateTraits4x4::BlockM == 0u) &&
-        (FragN % CandidateTraits4x4::BlockN == 0u) && (FragK % CandidateTraits4x4::BlockK == 0u);
-    static constexpr bool IsSupported16x16 = CandidateTraits16x16::IsSupported &&
-                                             (FragM % CandidateTraits16x16::BlockM == 0u) &&
-                                             (FragN % CandidateTraits16x16::BlockN == 0u) &&
-                                             (FragK % CandidateTraits16x16::BlockK == 0u);
-    static constexpr bool IsSupported32x32 = CandidateTraits32x32::IsSupported &&
-                                             (FragM % CandidateTraits32x32::BlockM == 0u) &&
-                                             (FragN % CandidateTraits32x32::BlockN == 0u) &&
-                                             (FragK % CandidateTraits32x32::BlockK == 0u);
+    static constexpr bool IsSupported4x4 =  CandidateTraits4x4::IsSupported &&
+                                            (FragM % CandidateTraits4x4::FragM == 0u) &&
+                                            (FragN % CandidateTraits4x4::FragN == 0u) && 
+                                            (FragK % CandidateTraits4x4::FragK == 0u);
+    static constexpr bool IsSupported16x16 = CandidateTraits16x16::IsSupported && 
+                                            (FragM % CandidateTraits16x16::FragM == 0u) &&
+                                            (FragN % CandidateTraits16x16::FragN == 0u) && 
+                                            (FragK % CandidateTraits16x16::FragK == 0u);
+    static constexpr bool IsSupported32x32 = CandidateTraits32x32::IsSupported && 
+                                            (FragM % CandidateTraits32x32::FragM == 0u) &&
+                                            (FragN % CandidateTraits32x32::FragN == 0u) && 
+                                            (FragK % CandidateTraits32x32::FragK == 0u);
 
     public:
     // Select the largest supported MFMA operation for the given fragment shape
