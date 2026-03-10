@@ -571,7 +571,8 @@ namespace rocRoller
                                 "SubDimension must have size and stride defined for User.size");
 
                     auto user = maybeUser.value();
-                    user.size = subDim->stride * subDim->size;;
+                    user.size = subDim->stride * subDim->size;
+                    ;
                     m_graph.coordinates.setElement(userTag, user);
 
                     Log::debug("SetUserSizeVisitor: Set User {}.size to {} for Linear {}",

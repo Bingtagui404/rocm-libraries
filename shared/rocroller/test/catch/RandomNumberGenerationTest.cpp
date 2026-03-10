@@ -381,8 +381,8 @@ namespace RandomNumberGenerationTest
             params->setManualKernelDimension(2);
             params->setManualWorkgroupSize({workgroup_size_x, workgroup_size_y, 1});
 
-            auto macTile
-                = KernelGraph::CoordinateGraph::MacroTile({m, n}, LayoutType::ROW_MAJOR, {t_m, t_n}, MemoryType::VGPR);
+            auto macTile = KernelGraph::CoordinateGraph::MacroTile(
+                {m, n}, LayoutType::ROW_MAJOR, {t_m, t_n}, MemoryType::VGPR);
             params->setDimensionInfo(tagLoadA, macTile);
             params->setDimensionInfo(outputTag, macTile);
 
