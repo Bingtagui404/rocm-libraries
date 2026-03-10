@@ -181,14 +181,24 @@ namespace rocRoller
             {
                 auto lhs = call(expr.lhs);
                 auto rhs = call(expr.rhs);
+
+                AssertFatal(lhs != LayoutType::Count && rhs != LayoutType::Count,
+                            "Invalid LayoutType::Count in expression");
+
                 if(lhs == rhs)
                     return lhs;
                 if(lhs == LayoutType::MATRIX_A && rhs == LayoutType::MATRIX_B)
                     return LayoutType::MATRIX_ACCUMULATOR;
                 if(lhs == LayoutType::MATRIX_ACCUMULATOR || rhs == LayoutType::MATRIX_ACCUMULATOR)
                     return LayoutType::MATRIX_ACCUMULATOR;
-                Throw<FatalError>(
-                    "Unhandled LayoutType combination: ", ShowValue(lhs), ShowValue(rhs));
+                if(lhs == LayoutType::None && rhs != LayoutType::None)
+                    return rhs;
+                if(lhs != LayoutType::None && rhs == LayoutType::None)
+                    return lhs;
+                Throw<FatalError>("Unhandled LayoutType combination: ",
+                                  ShowValue(lhs),
+                                  ShowValue(rhs),
+                                  ShowValue(expr));
             }
 
             template <CUnary UnaryExp>
