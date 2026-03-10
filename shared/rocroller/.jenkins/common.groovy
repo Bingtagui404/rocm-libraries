@@ -373,7 +373,7 @@ def runPerformanceCommand (platform, project)
 
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
-                    python gemmaiperf/db_insert.py \\
+                    python gemmaiperf/playground/rocblas-bench_scripts/db_insert.py \\
                         --db_host executive-dashboard.amd.com \\
                         --db_port 3307 \\
                         --db_name gemm_perf \\
@@ -570,7 +570,7 @@ def runPerformanceCommand (platform, project)
 
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
-                    python gemmaiperf/db_insert.py \\
+                    python gemmaiperf/playground/rocblas-bench_scripts/db_insert.py \\
                         --db_host executive-dashboard.amd.com \\
                         --db_port 3307 \\
                         --db_name gemm_perf \\
