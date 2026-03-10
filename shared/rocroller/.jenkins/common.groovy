@@ -354,8 +354,8 @@ def runPerformanceCommand (platform, project)
                 // When comparing with master, find the most recent CSV
                 csvFileLocation = """
                     for dir in ./performance_build_${platform.gpu}/performance_${platform.gpu}/*; do
-                        if [ -f "\\\$dir/${rrperfSuite}.csv" ]; then
-                            CSV_FILE="\\\$dir/${rrperfSuite}.csv"
+                        if [ -f "\$dir/${rrperfSuite}.csv" ]; then
+                            CSV_FILE="\$dir/${rrperfSuite}.csv"
                             break
                         fi
                     done
