@@ -352,17 +352,17 @@ def runPerformanceCommand (platform, project)
             String csvFileLocation
             if (masterCompare) {
                 // When comparing with master, find the most recent CSV
-                csvFileLocation = """
-                    for dir in ./performance_build_${platform.gpu}/performance_${platform.gpu}/*; do
-                        if [ -f "\$dir/${rrperfSuite}.csv" ]; then
-                            CSV_FILE="\$dir/${rrperfSuite}.csv"
+                csvFileLocation = '''
+                    for dir in ./performance_build_''' + platform.gpu + '''/performance_''' + platform.gpu + '''/*; do
+                        if [ -f "$dir/''' + rrperfSuite + '''.csv" ]; then
+                            CSV_FILE="$dir/''' + rrperfSuite + '''.csv"
                             break
                         fi
                     done
-                """
+                '''
             } else {
                 // When not comparing, CSV should be in the main performance directory
-                csvFileLocation = """CSV_FILE="./performance_build_${platform.gpu}/performance_${platform.gpu}/${rrperfSuite}.csv" """
+                csvFileLocation = '''CSV_FILE="./performance_build_''' + platform.gpu + '''/performance_''' + platform.gpu + '''/''' + rrperfSuite + '''.csv"'''
             }
 
             def dbInsertCommand = """#!/usr/bin/env bash
