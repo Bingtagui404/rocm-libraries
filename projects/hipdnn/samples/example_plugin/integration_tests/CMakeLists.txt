@@ -12,6 +12,7 @@
 list(APPEND CMAKE_PREFIX_PATH /opt/rocm /opt/rocm/hip)
 
 find_package(hipdnn_frontend CONFIG REQUIRED)
+find_package(hipdnn_test_sdk CONFIG REQUIRED)
 find_package(hip REQUIRED)
 
 include(FetchContent)
@@ -30,18 +31,13 @@ add_executable(
     TestPluginIntegration.cpp
 )
 
-target_include_directories(
-    example_plugin_integration_tests
-    PRIVATE
-        ${ROCM_PATH}/include/hipdnn/test_sdk
-)
-
 target_link_libraries(
     example_plugin_integration_tests
     PRIVATE
         GTest::gtest
         GTest::gtest_main
         hipdnn_frontend
+        hipdnn_test_sdk
         hip::host
 )
 
