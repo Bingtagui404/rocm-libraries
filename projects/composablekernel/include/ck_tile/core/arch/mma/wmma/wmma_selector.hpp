@@ -49,13 +49,11 @@ struct WmmaDefaultSelector
                                    CompilerTarget,
                                    MmaOpFamily::DENSE>;
 
-    using CandidateTraits = MmaOpTraits<CandidateOp>;
-
     public:
     // If the candidate is supported (e.g., a backend implementation exists), then select it.
     // Otherwise, test another smaller FragK. If no existing implementations, we will get FragK=0u
     // and fall back to the unsupported pass-through implementation.
-    using SelectedOp = std::conditional_t<CandidateTraits::IsSupported,
+    using SelectedOp = std::conditional_t<MmaOpTraits<CandidateOp>::IsSupported,
                                           CandidateOp,
                                           typename WmmaDefaultSelector<ADataType,
                                                                        BDataType,
@@ -155,15 +153,12 @@ struct MmaDefaultSelector<ADataType,
         typename WmmaDefaultSelector<ADataType, BDataType, CDataType, 1u, 1u, 1u, CompilerTarget>::
             SelectedOp;
 
-    // Traits for each candidate
-    using CandidateTraits16x16 = MmaOpTraits<CandidateOp16x16>;
-
     // Check if each candidate is supported for the given fragment sizes
     // For this case, we require the fragment sizes to be multiples of the WMMA shape
-    static constexpr bool IsSupported16x16 = CandidateTraits16x16::IsSupported &&
-                                            (FragM % CandidateTraits16x16::FragM == 0u) &&
-                                            (FragN % CandidateTraits16x16::FragN == 0u) && 
-                                            (FragK % CandidateTraits16x16::FragK == 0u);
+    static constexpr bool IsSupported16x16 = MmaOpTraits<CandidateOp16x16>::IsSupported &&
+                                            (FragM % CandidateOp16x16::kM == 0u) &&
+                                            (FragN % CandidateOp16x16::kN == 0u) && 
+                                            (FragK % CandidateOp16x16::kK == 0u);
 
     public:
     // Select the largest supported WMMA operation for the given fragment shape

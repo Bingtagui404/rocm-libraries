@@ -6,7 +6,6 @@
 
 #include "amdgcn_mma.hpp"
 #include "mma_selector.hpp"
-#include "mma_traits.hpp"
 #include "mma_transforms.hpp"
 
 #include "mfma/mfma.hpp"
@@ -76,14 +75,12 @@ template <typename ADataType,
           typename MmaTransformsDefaultSelector<MmaOp, CompilerTarget>::SelectedTransforms>
 struct WaveWiseMma
 {
-
-    using BlockWiseMmaOp       = MmaOp;
-    using BlockWiseMmaOpTraits = MmaOpTraits<BlockWiseMmaOp>;
+    using BlockWiseMmaOp = MmaOp;
 
     // Block dimensions
-    constexpr static uint32_t FragM = BlockWiseMmaOpTraits::FragM;
-    constexpr static uint32_t FragN = BlockWiseMmaOpTraits::FragN;
-    constexpr static uint32_t FragK = BlockWiseMmaOpTraits::FragK;
+    constexpr static uint32_t FragM = MmaOp::kM;
+    constexpr static uint32_t FragN = MmaOp::kN;
+    constexpr static uint32_t FragK = MmaOp::kK;
 
     // Block counts for decomposition
     constexpr static uint32_t BlocksM = ChunkM / FragM;
@@ -92,9 +89,9 @@ struct WaveWiseMma
     constexpr static uint32_t BlocksC = BlocksM * BlocksN;
 
     // Vector types for packed registers in each block
-    using AVecType = typename BlockWiseMmaOpTraits::AVecType;
-    using BVecType = typename BlockWiseMmaOpTraits::BVecType;
-    using CVecType = typename BlockWiseMmaOpTraits::CVecType;
+    using AVecType = typename MmaOp::AVecType;
+    using BVecType = typename MmaOp::BVecType;
+    using CVecType = typename MmaOp::CVecType;
 
     // Buffer types for chunks
     using ABufferType = AVecType[BlocksM][BlocksK];

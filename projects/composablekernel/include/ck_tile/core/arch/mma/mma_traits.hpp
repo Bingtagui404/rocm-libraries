@@ -44,45 +44,12 @@ struct is_mma_op_supported<MmaOp,
 template <typename MmaOp>
 static constexpr bool is_mma_op_supported_v = is_mma_op_supported<MmaOp>::value;
 
+template <typename T>
+struct MmaOpTraits;
+
 /**
- * @class MmaOpParams
- * @brief Reflects the template parameters of a given MmaOp
- * @tparam MmaOp The matrix multiply-accumulate operation type to check
- */
-// TODO: c++20 template <MmaOpI MmaOp>
-template <typename MmaOp>
-struct MmaOpParams;
-
-#if CK_TILE_CONCEPTS && CK_TILE_CONCEPTS_HEADER
-#include <concepts>
-
-// TODO: update concept with all params.
-/**
- *  @concept MmaOpParamsI
- *  @brief  Expresses the required members for each MmaOp
- */
-template <typename MmaOpParams>
-concept MmaOpParamsI = requires(MmaOpParams op) {
-    // Capture template parameters
-    typename MmaOpParams::ADataType;
-    typename MmaOpParams::BDataType;
-    typename MmaOpParams::CDataType;
-    typename MmaOpParams::CtrlFlags;
-
-    { MmaOpParams::FragM } -> std::convertible_to<unsigned int>;
-    { MmaOpParams::FragN } -> std::convertible_to<unsigned int>;
-    { MmaOpParams::FragK } -> std::convertible_to<unsigned int>;
-    { MmaOpParams::GfxTargetId } -> std::convertible_to<amdgcn_target_arch_id>;
-    { MmaOpParams::Family } -> std::convertible_to<MmaOpFamily>;
-};
-
-#endif // CK_TILE_CONCEPTS && CK_TILE_CONCEPTS_HEADER
-
-// TODO: Figure out a way to deal with all the repetition in amdgcn structs and Params / Traits
-// structs
-/**
- * @struct MmaOpParams
- * @brief Reflects the template parameters of a given MmaOp
+ * @struct MmaOpTraits
+ * @brief  Gives additional traits and unexposed template parameters of a given MmaOp
  * @tparam ADataType_ Data type of matrix A
  * @tparam BDataType_ Data type of matrix B
  * @tparam CDataType_ Data type of the accumulator
@@ -102,7 +69,7 @@ template <typename ADataType_,
           typename CompilerTarget_,
           MmaOpFamily OpFamily_>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget_>
-struct MmaOpParams<amdgcn_mma<ADataType_,
+struct MmaOpTraits<amdgcn_mma<ADataType_,
                               BDataType_,
                               CDataType_,
                               FragM_,
@@ -112,60 +79,29 @@ struct MmaOpParams<amdgcn_mma<ADataType_,
                               CompilerTarget_,
                               OpFamily_>>
 {
-    // Capture incoming template parameters
-    using ADataType                   = ADataType_;
-    using BDataType                   = BDataType_;
-    using CDataType                   = CDataType_;
-    static constexpr uint32_t FragM   = FragM_;
-    static constexpr uint32_t FragN   = FragN_;
-    static constexpr uint32_t FragK   = FragK_;
-    using CtrlFlags                   = CtrlFlags_;
-    using CompilerTarget              = CompilerTarget_;
-    static constexpr auto MmaOpFamily = OpFamily_;
+    using MmaOp = amdgcn_mma<ADataType_,
+                             BDataType_,
+                             CDataType_,
+                             FragM_,
+                             FragN_,
+                             FragK_,
+                             CtrlFlags_,
+                             CompilerTarget_,
+                             OpFamily_>;
+
+    // Capture incoming template parameters not already in amdgcn
+    using CtrlFlags      = CtrlFlags_;
+    using CompilerTarget = CompilerTarget_;
     // TODO c++20static constexpr amdgcn_target_arch_id GfxTargetId = CompilerTarget_;
-};
-
-/**
- * @class MmaOpTraits
- * @brief Reflects the template parameters and static members of a given MmaOp.
- * @tparam MmaOp The matrix multiply-accumulate operation
- */
-template <typename MmaOp>
-// TODO: c++20 template <MmaOpI MmaOp>
-// TODO: c++20 requires MmaOpParamsI<MmaOpParams<MmaOp>>
-struct MmaOpTraits : public MmaOpParams<MmaOp>
-{
-    // Capture internal MmaOp static members
-    using OpType                          = typename MmaOp::OpType;
-    static constexpr MmaOpFamily OpFamily = MmaOp::OpFamily;
-
-    // Capture fragment sizes
-    static constexpr index_t kM = MmaOp::kM;
-    static constexpr index_t kN = MmaOp::kN;
-    static constexpr index_t kK = MmaOp::kK;
-
-    // Capture layout parameters
-    static constexpr index_t kABKPerLane  = MmaOp::kABKPerLane;
-    static constexpr index_t kAKNumAccess = MmaOp::kAKNumAccess;
-    static constexpr index_t kARepeat     = MmaOp::kARepeat;
-    static constexpr index_t kBKNumAccess = MmaOp::kBKNumAccess;
-    static constexpr index_t kBRepeat     = MmaOp::kBRepeat;
-    static constexpr index_t kCMPerLane   = MmaOp::kCMPerLane;
-    static constexpr index_t kCMNumAccess = MmaOp::kCMNumAccess;
-
-    // Capture register types
-    using AVecType = typename MmaOp::AVecType;
-    using BVecType = typename MmaOp::BVecType;
-    using CVecType = typename MmaOp::CVecType;
 
     // Additional traits to identify the type of MmaOp at compile time
     constexpr static bool IsMfma   = is_mma_op_mfma_v<MmaOp>;
     constexpr static bool IsWmma   = is_mma_op_wmma_v<MmaOp>;
-    constexpr static bool IsDense  = OpFamily == MmaOpFamily::DENSE;
-    constexpr static bool IsSparse = OpFamily == MmaOpFamily::SPARSE;
-    constexpr static bool IsScale  = OpFamily == MmaOpFamily::SCALE;
+    constexpr static bool IsDense  = OpFamily_ == MmaOpFamily::DENSE;
+    constexpr static bool IsSparse = OpFamily_ == MmaOpFamily::SPARSE;
+    constexpr static bool IsScale  = OpFamily_ == MmaOpFamily::SCALE;
     constexpr static bool IsSupported =
-        is_mma_op_supported_v<MmaOp> && OpFamily != MmaOpFamily::UNDEFINED;
+        is_mma_op_supported_v<MmaOp> && OpFamily_ != MmaOpFamily::UNDEFINED;
 };
 
 } // namespace ck_tile::core::arch::mma
