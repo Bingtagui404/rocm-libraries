@@ -347,6 +347,24 @@ def runPerformanceCommand (platform, project)
 
             // Database insertion for PR builds
             echo "=== Starting database insertion for PR build ==="
+
+            // Determine CSV file location based on masterCompare
+            String csvFileLocation
+            if (masterCompare) {
+                // When comparing with master, find the most recent CSV
+                csvFileLocation = """
+                    for dir in ./performance_build_${platform.gpu}/performance_${platform.gpu}/*; do
+                        if [ -f "\\\$dir/${rrperfSuite}.csv" ]; then
+                            CSV_FILE="\\\$dir/${rrperfSuite}.csv"
+                            break
+                        fi
+                    done
+                """
+            } else {
+                // When not comparing, CSV should be in the main performance directory
+                csvFileLocation = """CSV_FILE="./performance_build_${platform.gpu}/performance_${platform.gpu}/${rrperfSuite}.csv" """
+            }
+
             def dbInsertCommand = """#!/usr/bin/env bash
                 set -ex
                 echo "=== dbInsertCommand script started ==="
@@ -354,18 +372,7 @@ def runPerformanceCommand (platform, project)
 
                 # Find CSV file location
                 CSV_FILE=""
-                if masterCompare; then
-                    # When comparing with master, CSV might be in different locations
-                    for dir in ./performance_build_${platform.gpu}/performance_${platform.gpu}/*; do
-                        if [ -f "\$dir/${rrperfSuite}.csv" ]; then
-                            CSV_FILE="\$dir/${rrperfSuite}.csv"
-                            break
-                        fi
-                    done
-                else
-                    # When not comparing, CSV should be in the main performance directory
-                    CSV_FILE="./performance_build_${platform.gpu}/performance_${platform.gpu}/${rrperfSuite}.csv"
-                fi
+                ${csvFileLocation}
 
                 if [ -n "\$CSV_FILE" ] && [ -f "\$CSV_FILE" ]; then
                     DB_LABEL="rocroller_perf_ci_pr${env.CHANGE_ID}"
