@@ -491,6 +491,98 @@ namespace rocRoller
                 return dim;
             }
 
+            Dimension visitDimension(int tag, Linear const& dim)
+            {
+                Log::debug("SetUserSizeVisitor: Processing Linear {}", tag);
+
+                // Find User by traversing the graph structure:
+                // For loads: Linear <- Flatten <- SubDims <- Split <- User
+                // For stores: Linear -> Split -> SubDims -> Join -> User
+
+                // Pair of User tag and the list of subdimension tags along the path
+                std::vector<std::pair<std::optional<int>, std::vector<int>>> userPaths;
+
+                // Try load path
+                auto loadSubDims = m_graph.coordinates.getInputNodeIndices(tag, isEdge<Flatten>)
+                                       .to<std::vector>();
+                if(!loadSubDims.empty())
+                {
+                    auto loadUserTag = only(
+                        m_graph.coordinates.getInputNodeIndices(loadSubDims[0], isEdge<Split>));
+                    userPaths.push_back({loadUserTag, loadSubDims});
+                    Log::debug("SetUserSizeVisitor: Found load path for Linear {}", tag);
+                }
+
+                // Try store path
+                auto storeSubDims = m_graph.coordinates.getOutputNodeIndices(tag, isEdge<Split>)
+                                        .to<std::vector>();
+                if(!storeSubDims.empty())
+                {
+                    auto storeUserTag = only(
+                        m_graph.coordinates.getOutputNodeIndices(storeSubDims[0], isEdge<Join>));
+                    userPaths.push_back({storeUserTag, storeSubDims});
+                    Log::debug("SetUserSizeVisitor: Found store path for Linear {}", tag);
+                }
+
+                if(userPaths.empty())
+                {
+                    Log::debug("SetUserSizeVisitor: No User found via Flatten/Split or Split/Join "
+                               "for Linear {}",
+                               tag);
+                    return dim;
+                }
+
+                // Process each user path
+                for(const auto& [maybeUserTag, subDims] : userPaths)
+                {
+                    // This could be relaxed if needed, but the user size
+                    // computation will need to be updated
+                    AssertFatal(subDims.size() == 1,
+                                "Expected one SubDimension in path for Linear {}",
+                                tag);
+
+                    if(!maybeUserTag.has_value())
+                    {
+                        Log::debug("SetUserSizeVisitor: No User tag in path for Linear {}", tag);
+                        continue;
+                    }
+
+                    auto userTag   = maybeUserTag.value();
+                    auto maybeUser = m_graph.coordinates.get<User>(userTag);
+                    if(!maybeUser)
+                    {
+                        Log::debug(
+                            "SetUserSizeVisitor: Tag {} is not a User for Linear {} - skipping",
+                            userTag,
+                            tag);
+                        continue;
+                    }
+
+                    // Skip if this user already has a size set
+                    if(maybeUser->size)
+                    {
+                        Log::debug("SetUserSizeVisitor: User {} already has size, skipping",
+                                   userTag);
+                        continue;
+                    }
+
+                    auto subDim = m_graph.coordinates.get<SubDimension>(subDims[0]);
+                    AssertFatal(subDim && subDim->size && subDim->stride,
+                                "SubDimension must have size and stride defined for User.size");
+
+                    auto user = maybeUser.value();
+                    user.size = subDim->stride * subDim->size;;
+                    m_graph.coordinates.setElement(userTag, user);
+
+                    Log::debug("SetUserSizeVisitor: Set User {}.size to {} for Linear {}",
+                               userTag,
+                               toString(user.size),
+                               tag);
+                }
+
+                return dim;
+            }
+
             template <typename T>
             Operation visitOperation(int tag, T const& op)
             {
