@@ -214,25 +214,6 @@ def runPerformanceCommand (platform, project)
     withSSH(platform){
         sshBlock ->
         def rrperfSuite = platform.jenkinsLabel.contains('gfx12') ? "all_gfx120X" : "all"
-        
-        // Clone gemmaiperf repository for database insertion
-        platform.runCommand(this, """#!/usr/bin/env bash
-            set -ex
-            cd ${project.paths.project_build_prefix}/
-
-            ${sshBlock}
-
-            [ -d gemmaiperf ] && rm -rf gemmaiperf
-            git clone git@github.com:ROCm/gemmaiperf.git
-
-            # Install gemmaiperf dependencies
-            if [ -f gemmaiperf/requirements.txt ]; then
-                pip install -r gemmaiperf/requirements.txt
-            else
-                # Fallback: install known dependencies
-                pip install pandas mysql-connector-python
-            fi
-        """)
 
         if (env.CHANGE_ID)
         {
@@ -370,6 +351,17 @@ def runPerformanceCommand (platform, project)
                 echo "=== dbInsertCommand script started ==="
                 cd ${project.paths.project_build_prefix}/
 
+                # Ensure gemmaiperf is available
+                if [ ! -d "gemmaiperf" ]; then
+                    echo "=== gemmaiperf not found, cloning ==="
+                    git clone git@github.com:ROCm/gemmaiperf.git
+                    if [ -f gemmaiperf/requirements.txt ]; then
+                        pip install -r gemmaiperf/requirements.txt
+                    else
+                        pip install pandas mysql-connector-python
+                    fi
+                fi
+
                 # Find CSV file location
                 CSV_FILE=""
                 ${csvFileLocation}
@@ -386,8 +378,8 @@ def runPerformanceCommand (platform, project)
                         --db_user \$DB_USER \\
                         --db_pass \$DB_PASS \\
                         --db_label \$DB_LABEL \\
-                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..." \\
-                        --comment "testing CI db insertion"
+                        --csv_file \$CSV_FILE \\
+                        --comment "testing CI db insertion" || echo "Warning: Database insertion failed, continuing..."
                     set -e
 
                     # Archive the CSV file
