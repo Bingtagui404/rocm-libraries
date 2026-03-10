@@ -11,6 +11,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # =============================================================================
+# Output directories
+# =============================================================================
+# Collect all executables into build/bin/
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# =============================================================================
 # Options
 # =============================================================================
 option(HIPDNN_EXAMPLE_PLUGIN_BUILD_UNIT_TESTS "Build unit tests" ON)
