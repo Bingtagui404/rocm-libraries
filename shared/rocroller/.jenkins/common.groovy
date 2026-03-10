@@ -351,6 +351,8 @@ def runPerformanceCommand (platform, project)
                 echo "=== dbInsertCommand script started ==="
                 cd ${project.paths.project_build_prefix}/
 
+                ${sshBlock}
+
                 # Ensure gemmaiperf is available
                 if [ ! -d "gemmaiperf" ]; then
                     echo "=== gemmaiperf not found, cloning ==="
