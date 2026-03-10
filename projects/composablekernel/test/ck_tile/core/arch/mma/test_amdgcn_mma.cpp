@@ -290,46 +290,43 @@ TEST(TestAmdgcnMma, ArchUnsupportedExecDeviceOutput)
 // Test MmaOpParams for supported DummyAmdgcnMma, including all member variables
 TEST(TestAmdgcnMma, MmaOpParamsTraitsSupportedMembers)
 {
-    using MmaOp  = DummyAmdgcnMma<DummyCompilerTarget>;
-    using Traits = MmaOpParams<MmaOp>;
+    using MmaOp = DummyAmdgcnMma<DummyCompilerTarget>;
 
     // Check MmaOpParams members
-    EXPECT_TRUE((std::is_same<typename Traits::ADataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::BDataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::CDataType, fp32_t>::value));
-    EXPECT_EQ(Traits::FragM, 16u);
-    EXPECT_EQ(Traits::FragN, 16u);
-    EXPECT_EQ(Traits::FragK, 16u);
-    EXPECT_TRUE((std::is_same<typename Traits::CtrlFlags, DummyCtrlFlags>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::ADataType, fp32_t>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::BDataType, fp32_t>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::CDataType, fp32_t>::value));
+    EXPECT_EQ(MmaOp::kM, 8u);
+    EXPECT_EQ(MmaOp::kN, 8u);
+    EXPECT_EQ(MmaOp::kK, 8u);
+    EXPECT_TRUE((std::is_same<typename MmaOpTraits<MmaOp>::CtrlFlags, DummyCtrlFlags>::value));
 }
 
 // Test MmaOpParams for unsupported DummyAmdgcnMma, including all member variables
 TEST(TestAmdgcnMma, MmaOpParamsUnsupportedMembers)
 {
-    using MmaOp  = DummyAmdgcnMma<amdgcn_target<>>;
-    using Traits = MmaOpParams<MmaOp>;
+    using MmaOp = DummyAmdgcnMma<amdgcn_target<>>;
 
     // Check MmaOpParams members
-    EXPECT_TRUE((std::is_same<typename Traits::ADataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::BDataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::CDataType, fp32_t>::value));
-    EXPECT_EQ(Traits::FragM, 16u);
-    EXPECT_EQ(Traits::FragN, 16u);
-    EXPECT_EQ(Traits::FragK, 16u);
-    EXPECT_TRUE((std::is_same<typename Traits::CtrlFlags, DummyCtrlFlags>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::ADataType, fp32_t>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::BDataType, fp32_t>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::CDataType, fp32_t>::value));
+    EXPECT_EQ(MmaOp::kM, 1u);
+    EXPECT_EQ(MmaOp::kN, 1u);
+    EXPECT_EQ(MmaOp::kK, 1u);
+    EXPECT_TRUE((std::is_same<typename MmaOpTraits<MmaOp>::CtrlFlags, DummyCtrlFlags>::value));
 }
 
 // Test MmaOpTraits for supported DummyAmdgcnMma, including all member variables
 TEST(TestAmdgcnMma, MmaOpTraitsSupportedMembers)
 {
-    using MmaOp  = DummyAmdgcnMma<DummyCompilerTarget>;
-    using Traits = MmaOpTraits<MmaOp>;
+    using MmaOp = DummyAmdgcnMma<DummyCompilerTarget>;
 
     // Check MmaOpTraits member variables
-    EXPECT_TRUE((std::is_same<typename Traits::OpType, DummyOpType>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::OpType, DummyOpType>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
     EXPECT_EQ(MmaOp::kABKPerLane, 1);
     EXPECT_EQ(MmaOp::kAKNumAccess, 1);
     EXPECT_EQ(MmaOp::kARepeat, 1);
@@ -337,23 +334,22 @@ TEST(TestAmdgcnMma, MmaOpTraitsSupportedMembers)
     EXPECT_EQ(MmaOp::kBRepeat, 1);
     EXPECT_EQ(MmaOp::kCMPerLane, 1);
     EXPECT_EQ(MmaOp::kCMNumAccess, 1);
-    EXPECT_FALSE(Traits::IsMfma);
-    EXPECT_FALSE(Traits::IsWmma);
-    EXPECT_TRUE(Traits::IsSupported);
+    EXPECT_FALSE(MmaOpTraits<MmaOp>::IsMfma);
+    EXPECT_FALSE(MmaOpTraits<MmaOp>::IsWmma);
+    EXPECT_TRUE(MmaOpTraits<MmaOp>::IsSupported);
 }
 
 // Test MmaOpTraits for unsupported DummyAmdgcnMma, including all member variables
 TEST(TestAmdgcnMma, MmaOpTraitsUnsupportedMembers)
 {
-    using MmaOp  = DummyAmdgcnMma<amdgcn_target<>>;
-    using Traits = MmaOpTraits<MmaOp>;
+    using MmaOp = DummyAmdgcnMma<amdgcn_target<>>;
 
     // Check MmaOpTraits member variables
-    EXPECT_TRUE((std::is_same<typename Traits::OpType, Unsupported>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename Traits::CVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_EQ(Traits::OpFamily, MmaOpFamily::UNDEFINED);
+    EXPECT_TRUE((std::is_same<typename MmaOp::OpType, Unsupported>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
+    EXPECT_EQ(MmaOp::OpFamily, MmaOpFamily::UNDEFINED);
     EXPECT_EQ(MmaOp::kABKPerLane, 1);
     EXPECT_EQ(MmaOp::kAKNumAccess, 1);
     EXPECT_EQ(MmaOp::kARepeat, 1);
@@ -361,9 +357,9 @@ TEST(TestAmdgcnMma, MmaOpTraitsUnsupportedMembers)
     EXPECT_EQ(MmaOp::kBRepeat, 1);
     EXPECT_EQ(MmaOp::kCMPerLane, 1);
     EXPECT_EQ(MmaOp::kCMNumAccess, 1);
-    EXPECT_FALSE(Traits::IsMfma);
-    EXPECT_FALSE(Traits::IsWmma);
-    EXPECT_FALSE(Traits::IsSupported);
+    EXPECT_FALSE(MmaOpTraits<MmaOp>::IsMfma);
+    EXPECT_FALSE(MmaOpTraits<MmaOp>::IsWmma);
+    EXPECT_FALSE(MmaOpTraits<MmaOp>::IsSupported);
 }
 
 // Test MmaDefaultSelector for supported DummyAmdgcnMma
@@ -479,12 +475,10 @@ __global__ void test_accum_over_k(void* a, void* b, void* c, void* out)
                                         decltype(get_compiler_target()),
                                         MmaOpFamily::DENSE>;
 
-    using MmaOp     = typename Selector::SelectedOp;
-    using MmaTraits = MmaOpTraits<MmaOp>;
-
+    using MmaOp    = typename Selector::SelectedOp;
     using CVecType = typename MmaOp::CVecType;
 
-    static constexpr uint32_t kIters = ChunkK / MmaTraits::FragK;
+    static constexpr uint32_t kIters = ChunkK / MmaOp::kK;
 
     // Initialize the accumulator
     CVecType result = *reinterpret_cast<typename MmaOp::CVecType*>(c);

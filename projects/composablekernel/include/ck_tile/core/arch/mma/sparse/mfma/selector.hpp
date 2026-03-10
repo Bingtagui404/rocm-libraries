@@ -45,12 +45,10 @@ struct SparseMfmaDefaultSelector
                                    CompilerTarget,
                                    MmaOpFamily::SPARSE>;
 
-    using CandidateTraits = MmaOpTraits<CandidateOp>;
-
     public:
     // If the candidate is supported (e.g., a backend implementation exists), then select it.
     // Otherwise, fall back to the unsupported pass-through implementation.
-    using SelectedOp = std::conditional_t<CandidateTraits::IsSupported,
+    using SelectedOp = std::conditional_t<MmaOpTraits<CandidateOp>::IsSupported,
                                           CandidateOp,
                                           amdgcn_mma<ADataType,
                                                      BDataType,
@@ -126,20 +124,16 @@ struct MmaDefaultSelector<ADataType,
                                                          1u,
                                                          CompilerTarget>::SelectedOp;
 
-    // Traits for each candidate
-    using CandidateTraits16x16 = MmaOpTraits<CandidateOp16x16>;
-    using CandidateTraits32x32 = MmaOpTraits<CandidateOp32x32>;
-
     // Check if each candidate is supported for the given fragment sizes
     // For this case, we require the fragment sizes to be multiples of the MFMA shape
-    static constexpr bool IsSupported16x16 = CandidateTraits16x16::IsSupported && 
-                                            (FragM % CandidateTraits16x16::FragM == 0u) &&
-                                            (FragN % CandidateTraits16x16::FragN == 0u) && 
-                                            (FragK % CandidateTraits16x16::FragK == 0u);
-    static constexpr bool IsSupported32x32 = CandidateTraits32x32::IsSupported && 
-                                            (FragM % CandidateTraits32x32::FragM == 0u) &&
-                                            (FragN % CandidateTraits32x32::FragN == 0u) && 
-                                            (FragK % CandidateTraits32x32::FragK == 0u);
+    static constexpr bool IsSupported16x16 = MmaOpTraits<CandidateOp16x16>::IsSupported && 
+                                            (FragM % CandidateOp16x16::kM == 0u) &&
+                                            (FragN % CandidateOp16x16::kN == 0u) && 
+                                            (FragK % CandidateOp16x16::kK == 0u);
+    static constexpr bool IsSupported32x32 = MmaOpTraits<CandidateOp32x32>::IsSupported && 
+                                            (FragM % CandidateOp32x32::kM == 0u) &&
+                                            (FragN % CandidateOp32x32::kN == 0u) && 
+                                            (FragK % CandidateOp32x32::kK == 0u);
 
     public:
     // Select the largest supported MFMA operation for the given fragment shape

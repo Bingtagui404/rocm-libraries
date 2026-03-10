@@ -158,13 +158,10 @@ __global__ void test_sparse_accum_over_k(void* a, void* b, void* c, void* out)
                                               ChunkK,
                                               CompilerTarget,
                                               MmaOpFamily::SPARSE>;
+    using MmaOp          = typename Selector::SelectedOp;
+    using CVecType       = typename MmaOp::CVecType;
 
-    using MmaOp     = typename Selector::SelectedOp;
-    using MmaTraits = MmaOpTraits<MmaOp>;
-
-    using CVecType = typename MmaOp::CVecType;
-
-    static constexpr uint32_t kIters = ChunkK / MmaTraits::FragK;
+    static constexpr uint32_t kIters = ChunkK / MmaOp::kK;
 
     // Initialize the accumulator
     CVecType result = *reinterpret_cast<typename MmaOp::CVecType*>(c);

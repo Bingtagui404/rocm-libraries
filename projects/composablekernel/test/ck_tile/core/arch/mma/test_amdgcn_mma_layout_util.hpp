@@ -6,7 +6,6 @@
 #include "ck_tile/core.hpp"
 #include "ck_tile/core/arch/arch.hpp"
 #include "ck_tile/core/arch/mma/amdgcn_mma.hpp"
-#include "ck_tile/core/arch/mma/mma_traits.hpp"
 #include "ck_tile/core/arch/mma/mma_selector.hpp"
 #include "ck_tile/core/numeric/half.hpp"
 #include "ck_tile/core/numeric/vector_type.hpp"
@@ -93,12 +92,9 @@ struct RegisterMapTraits<ck_tile::core::arch::mma::amdgcn_mma<
                                                        CompilerTarget,
                                                        OpFamily_>;
 
-    using MmaTraits = ck_tile::core::arch::mma::MmaOpTraits<MmaOp>;
-    static constexpr index_t WaveSize =
-        static_cast<index_t>(MmaTraits::CompilerTarget::WAVE_SIZE_ID);
-    static constexpr index_t AVecSize = vector_traits<typename MmaTraits::AVecType>::vector_size;
-    static constexpr index_t BVecSize = vector_traits<typename MmaTraits::BVecType>::vector_size;
-    static constexpr index_t CVecSize = vector_traits<typename MmaTraits::CVecType>::vector_size;
+    static constexpr index_t AVecSize = vector_traits<typename MmaOp::AVecType>::vector_size;
+    static constexpr index_t BVecSize = vector_traits<typename MmaOp::BVecType>::vector_size;
+    static constexpr index_t CVecSize = vector_traits<typename MmaOp::CVecType>::vector_size;
 
     using kABPs2RHssMajor = sequence<2, 1>;
     using kABPs2RHssMinor = sequence<1, 0>;
@@ -176,12 +172,9 @@ struct RegisterMapTraits<ck_tile::core::arch::mma::amdgcn_mma<
                                                        CompilerTarget,
                                                        OpFamily_>;
 
-    using MmaTraits = ck_tile::core::arch::mma::MmaOpTraits<MmaOp>;
-    static constexpr index_t WaveSize =
-        static_cast<index_t>(MmaTraits::CompilerTarget::WAVE_SIZE_ID);
-    static constexpr index_t AVecSize = vector_traits<typename MmaTraits::AVecType>::vector_size;
-    static constexpr index_t BVecSize = vector_traits<typename MmaTraits::BVecType>::vector_size;
-    static constexpr index_t CVecSize = vector_traits<typename MmaTraits::CVecType>::vector_size;
+    static constexpr index_t AVecSize = vector_traits<typename MmaOp::AVecType>::vector_size;
+    static constexpr index_t BVecSize = vector_traits<typename MmaOp::BVecType>::vector_size;
+    static constexpr index_t CVecSize = vector_traits<typename MmaOp::CVecType>::vector_size;
 
     using kABPs2RHssMajor = sequence<2, 1>;
     using kABPs2RHssMinor = sequence<0, 0>;
@@ -257,12 +250,9 @@ struct RegisterMapTraits<ck_tile::core::arch::mma::amdgcn_mma<
                                                        CompilerTarget,
                                                        OpFamily_>;
 
-    using MmaTraits = ck_tile::core::arch::mma::MmaOpTraits<MmaOp>;
-    static constexpr index_t WaveSize =
-        static_cast<index_t>(MmaTraits::CompilerTarget::WAVE_SIZE_ID);
-    static constexpr index_t AVecSize = vector_traits<typename MmaTraits::AVecType>::vector_size;
-    static constexpr index_t BVecSize = vector_traits<typename MmaTraits::BVecType>::vector_size;
-    static constexpr index_t CVecSize = vector_traits<typename MmaTraits::CVecType>::vector_size;
+    static constexpr index_t AVecSize = vector_traits<typename MmaOp::AVecType>::vector_size;
+    static constexpr index_t BVecSize = vector_traits<typename MmaOp::BVecType>::vector_size;
+    static constexpr index_t CVecSize = vector_traits<typename MmaOp::CVecType>::vector_size;
 
     using kABPs2RHssMajor = sequence<0, 1>;
     using kABPs2RHssMinor = sequence<0, 0>;
