@@ -835,30 +835,35 @@ namespace rocRoller
             auto workitemX
                 = graph.coordinates.addElement(Workitem(0, literal(workgroupSizes.at(0))));
 
-            if(rightmostFastest)
+            if(macTile.layoutType == LayoutType::MATRIX_A
+               || macTile.layoutType == LayoutType::MATRIX_B
+               || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
+               || macTile.layoutType == LayoutType::SCRATCH)
             {
-                elementNumberX
-                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(0))));
-                elementNumberY
-                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(1))));
-
-                graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberX});
-                graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberY});
-
-                if(macTile.layoutType == LayoutType::MATRIX_A
-                   || macTile.layoutType == LayoutType::MATRIX_B
-                   || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
-                   || macTile.layoutType == LayoutType::SCRATCH)
+                // GEMM layouts: use rightmostFastest to control threadtile orientation
+                if(rightmostFastest)
                 {
+                    elementNumberX = graph.coordinates.addElement(
+                        ElementNumber(0, literal(thrTile.sizes.at(0))));
+                    elementNumberY = graph.coordinates.addElement(
+                        ElementNumber(1, literal(thrTile.sizes.at(1))));
+
+                    graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberX});
+                    graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberY});
+
                     graph.coordinates.addElement(Flatten(), {nThrX, nThrY}, {workitemX});
                 }
                 else
                 {
-                    graph.coordinates.addElement(PassThrough(), {nThrX}, {workitemX});
+                    elementNumberX = graph.coordinates.addElement(
+                        ElementNumber(0, literal(thrTile.sizes.at(1))));
+                    elementNumberY = graph.coordinates.addElement(
+                        ElementNumber(1, literal(thrTile.sizes.at(0))));
 
-                    auto workitemY
-                        = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
-                    graph.coordinates.addElement(PassThrough(), {nThrY}, {workitemY});
+                    graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberY});
+                    graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberX});
+
+                    graph.coordinates.addElement(Flatten(), {nThrY, nThrX}, {workitemX});
                 }
             }
             else
@@ -871,21 +876,11 @@ namespace rocRoller
                 graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberY});
                 graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberX});
 
-                if(macTile.layoutType == LayoutType::MATRIX_A
-                   || macTile.layoutType == LayoutType::MATRIX_B
-                   || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
-                   || macTile.layoutType == LayoutType::SCRATCH)
-                {
-                    graph.coordinates.addElement(Flatten(), {nThrY, nThrX}, {workitemX});
-                }
-                else
-                {
-                    graph.coordinates.addElement(PassThrough(), {nThrX}, {workitemX});
+                graph.coordinates.addElement(PassThrough(), {nThrX}, {workitemX});
 
-                    auto workitemY
-                        = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
-                    graph.coordinates.addElement(PassThrough(), {nThrY}, {workitemY});
-                }
+                auto workitemY
+                    = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
+                graph.coordinates.addElement(PassThrough(), {nThrY}, {workitemY});
             }
 
             connections.push_back(DC<ElementNumber>(elementNumberX, 0));
@@ -1283,33 +1278,40 @@ namespace rocRoller
 
             int elementNumberX, elementNumberY;
 
-            if(rightmostFastest)
+            if(macTile.layoutType == LayoutType::MATRIX_A
+               || macTile.layoutType == LayoutType::MATRIX_B
+               || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
+               || macTile.layoutType == LayoutType::SCRATCH)
             {
-                elementNumberX
-                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(0))));
-                elementNumberY
-                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(1))));
-
-                connections.push_back(DC<ElementNumber>(elementNumberX, 0));
-                connections.push_back(DC<ElementNumber>(elementNumberY, 1));
-
-                graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrX});
-                graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrY});
-
-                if(macTile.layoutType == LayoutType::MATRIX_A
-                   || macTile.layoutType == LayoutType::MATRIX_B
-                   || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
-                   || macTile.layoutType == LayoutType::SCRATCH)
+                if(rightmostFastest)
                 {
+                    elementNumberX = graph.coordinates.addElement(
+                        ElementNumber(0, literal(thrTile.sizes.at(0))));
+                    elementNumberY = graph.coordinates.addElement(
+                        ElementNumber(1, literal(thrTile.sizes.at(1))));
+
+                    connections.push_back(DC<ElementNumber>(elementNumberX, 0));
+                    connections.push_back(DC<ElementNumber>(elementNumberY, 1));
+
+                    graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrX});
+                    graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrY});
+
                     graph.coordinates.addElement(Tile(), {workitemX}, {nThrX, nThrY});
                 }
                 else
                 {
-                    auto workitemY
-                        = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
+                    elementNumberX = graph.coordinates.addElement(
+                        ElementNumber(0, literal(thrTile.sizes.at(1))));
+                    elementNumberY = graph.coordinates.addElement(
+                        ElementNumber(1, literal(thrTile.sizes.at(0))));
 
-                    graph.coordinates.addElement(PassThrough(), {workitemX}, {nThrX});
-                    graph.coordinates.addElement(PassThrough(), {workitemY}, {nThrY});
+                    connections.push_back(DC<ElementNumber>(elementNumberX, 0));
+                    connections.push_back(DC<ElementNumber>(elementNumberY, 1));
+
+                    graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrX});
+                    graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrY});
+
+                    graph.coordinates.addElement(Tile(), {workitemX}, {nThrY, nThrX});
                 }
             }
             else
@@ -1319,27 +1321,17 @@ namespace rocRoller
                 elementNumberY
                     = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(0))));
 
-                graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrX});
-                graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrY});
-
                 connections.push_back(DC<ElementNumber>(elementNumberX, 0));
                 connections.push_back(DC<ElementNumber>(elementNumberY, 1));
 
-                if(macTile.layoutType == LayoutType::MATRIX_A
-                   || macTile.layoutType == LayoutType::MATRIX_B
-                   || macTile.layoutType == LayoutType::MATRIX_ACCUMULATOR
-                   || macTile.layoutType == LayoutType::SCRATCH)
-                {
-                    graph.coordinates.addElement(Tile(), {workitemX}, {nThrY, nThrX});
-                }
-                else
-                {
-                    auto workitemY
-                        = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
+                graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrX});
+                graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrY});
 
-                    graph.coordinates.addElement(PassThrough(), {workitemX}, {nThrX});
-                    graph.coordinates.addElement(PassThrough(), {workitemY}, {nThrY});
-                }
+                auto workitemY
+                    = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
+
+                graph.coordinates.addElement(PassThrough(), {workitemX}, {nThrX});
+                graph.coordinates.addElement(PassThrough(), {workitemY}, {nThrY});
             }
 
             if(jammedTiles.size() > 0 && jammedTiles[0] > 1)
