@@ -25,17 +25,18 @@ namespace ck_tile::core::arch::mma {
  * @brief Specialization of amdgcn_mma for MFMA on GFX9 targets
  *
  * This specialization implements the MFMA instruction for fp16_t A and B
- * matrices, and fp32_t accumulator matrix, with 16x16x16 block sizes.
+ * matrices, and fp32_t accumulator matrix, with 16x16x16 fragment sizes.
  *
  * @tparam CtrlFlags Control flags for the MFMA operation
  * @tparam CompilerTarget Current compiler target
  */
 // TODO: c++20 template <CtrlFlagsGfx9I CtrlFlags, amdgcn_target CompilerTarget>
 // TODO: c++20 requires
-// clang-format off
 template <typename CtrlFlags, typename CompilerTarget>
+// clang-format off
 struct amdgcn_mma<fp16_t, fp16_t, fp32_t, 16u, 16u, 16u, CtrlFlags, CompilerTarget, MmaOpFamily::DENSE, enable_if_target_family_gfx9_t<CompilerTarget>>
 : amdgcn_mma_base<fp16_t, fp16_t, fp32_t, 16u, 16u, 16u, 64u, 4, 1, 1, 1, 1, 4, 1, MfmaOp, MmaOpFamily::DENSE>
+// clang-format on
 {
     CK_TILE_DEVICE static auto
     exec(AVecType const& aVec, BVecType const& bVec, CVecType const& cVec) -> CVecType
@@ -54,7 +55,7 @@ struct amdgcn_mma<fp16_t, fp16_t, fp32_t, 16u, 16u, 16u, CtrlFlags, CompilerTarg
  * @brief Specialization of amdgcn_mma for MFMA on GFX950 targets
  *
  * This specialization implements the MFMA instruction for fp16_t A and B
- * matrices, and fp32_t accumulator matrix, with 16x16x32 block sizes.
+ * matrices, and fp32_t accumulator matrix, with 16x16x32 fragment sizes.
  *
  * @tparam CtrlFlags Control flags for the MFMA operation
  * @tparam CompilerTarget Current compiler target
@@ -62,8 +63,10 @@ struct amdgcn_mma<fp16_t, fp16_t, fp32_t, 16u, 16u, 16u, CtrlFlags, CompilerTarg
 // TODO: c++20 template <CtrlFlagsGfx9I CtrlFlags, amdgcn_target CompilerTarget>
 // TODO: c++20 requires
 template <typename CtrlFlags, typename CompilerTarget>
+// clang-format off
 struct amdgcn_mma<fp16_t, fp16_t, fp32_t, 16u, 16u, 32u, CtrlFlags, CompilerTarget, MmaOpFamily::DENSE, enable_if_target_id_t<CompilerTarget, amdgcn_target_id::GFX950>>
 : amdgcn_mma_base<fp16_t, fp16_t, fp32_t, 16u, 16u, 32u, 64u, 8, 1, 1, 1, 1, 4, 1, MfmaOp, MmaOpFamily::DENSE>
+// clang-format on
 {
     CK_TILE_DEVICE static auto
     exec(AVecType const& aVec, BVecType const& bVec, CVecType const& cVec) -> CVecType
@@ -76,6 +79,5 @@ struct amdgcn_mma<fp16_t, fp16_t, fp32_t, 16u, 16u, 32u, CtrlFlags, CompilerTarg
                                                        static_cast<int>(CtrlFlags::Blgp))};
     }
 };
-// clang-format on
 
 } // namespace ck_tile::core::arch::mma

@@ -17,7 +17,7 @@ namespace ck_tile::core::arch::mma {
 // TODO: Describe layout params.
 /**
  *  @class  amdgcn_mma_base
- *  @brief  Helper base class for amdgcn_mma structs to avoid a lot of code duplication. Also puts
+ *  @brief  Base class for amdgcn_mma structs to avoid a lot of code duplication. Also puts
  *          all generic parameter derivations and static asserts in one place. Houses all of the
  *          amdgcn struct types and variables, except for the exec() function.
  */
@@ -128,14 +128,13 @@ concept MmaOpI = requires(MmaOp op) {
  *  @tparam ADataType Datatype of input A
  *  @tparam BDataType Datatype of input B
  *  @tparam CDataType Datatype of accumulator
- *  @tparam FragM M-dimension of mma block
- *  @tparam FragN N-dimension of mma block
- *  @tparam FragK K-dimension of mma block
+ *  @tparam FragM M-dimension of mma intrinsic
+ *  @tparam FragN N-dimension of mma intrinsic
+ *  @tparam FragK K-dimension of mma intrinsic
  *  @tparam CtrlFlags Control flags for mma operation
  *  @tparam CompilerTarget The current compiler target
  *  @tparam Enabler SFINAE enabler
  */
-// clang-format off
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
@@ -146,17 +145,19 @@ template <typename ADataType,
           typename CompilerTarget,
           MmaOpFamily OpFamily_,
           typename Enabler = void>
+// clang-format off
 struct amdgcn_mma : amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 1u, 1u, 1u, 1u, 1, 1, 1, 1, 1, 1, 1, Unsupported, MmaOpFamily::UNDEFINED>
+// clang-format on
 {
     // This is a default pass-through implementation that doesn't do anything practical.
     CK_TILE_DEVICE static CVecType const&
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
     {
+        printf("[WARNING] Running amdgcn_mma dummy exec function!\n");
         ignore(regsA, regsB);
         return regsC; // No-op, just return C
     }
 };
-// clang-format on
 
 } // namespace ck_tile::core::arch::mma
 #pragma clang diagnostic pop
