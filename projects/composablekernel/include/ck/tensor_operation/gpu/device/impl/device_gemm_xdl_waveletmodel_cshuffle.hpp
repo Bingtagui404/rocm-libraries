@@ -135,7 +135,8 @@ struct DeviceGemm_Xdl_WaveletModel_CShuffle : public DeviceGemm<ALayout,
                                                                 BElementwiseOperation,
                                                                 CDEElementwiseOperation>
 {
-    static constexpr auto BlockSize = math::max(TileLoadThreadGroupSize, TileMathThreadGroupSize);
+    static constexpr auto BlockSize =
+        TileMathThreadGroupSize; // math::max(TileLoadThreadGroupSize, TileMathThreadGroupSize);
     GET_NXDL_PER_WAVE_IMPL
     static constexpr auto NXdlPerWave64 = GetNXdlPerWave<true>();
     static constexpr auto NXdlPerWave32 = GetNXdlPerWave<false>();

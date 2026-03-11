@@ -405,6 +405,11 @@ struct DeviceOperationInstanceFactory<ck::tensor_operation::device::DeviceGroupe
                     add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_f16_pad0_pipev5_instances(
                         op_ptrs);
 
+                    add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_f16_wavelet_default_instances(
+                        op_ptrs);
+                    add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_f16_wavelet_pad0_instances(
+                        op_ptrs);
+
                     add_device_grouped_conv2d_bwd_weight_two_stage_xdl_nhwgc_gkyxc_nhwgk_f16_pipev1_instances(
                         op_ptrs);
                     add_device_grouped_conv2d_bwd_weight_two_stage_xdl_nhwgc_gkyxc_nhwgk_f16_pipev1_part2_instances(
@@ -466,6 +471,11 @@ struct DeviceOperationInstanceFactory<ck::tensor_operation::device::DeviceGroupe
                     add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_bf16_pad0_pipev2_instances(
                         op_ptrs);
                     add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_bf16_pad0_pipev5_instances(
+                        op_ptrs);
+
+                    add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_bf16_wavelet_default_instances(
+                        op_ptrs);
+                    add_device_grouped_conv2d_bwd_weight_xdl_nhwgc_gkyxc_nhwgk_bf16_wavelet_pad0_instances(
                         op_ptrs);
 
                     add_device_grouped_conv2d_bwd_weight_two_stage_xdl_nhwgc_gkyxc_nhwgk_bf16_pipev1_instances(
@@ -675,6 +685,11 @@ struct DeviceOperationInstanceFactory<ck::tensor_operation::device::DeviceGroupe
                     add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_f16_pad0_pipev5_instances(
                         op_ptrs);
 
+                    add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_f16_wavelet_default_instances(
+                        op_ptrs);
+                    add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_f16_wavelet_pad0_instances(
+                        op_ptrs);
+
                     add_device_grouped_conv3d_bwd_weight_two_stage_xdl_ndhwgc_gkzyxc_ndhwgk_f16_pipev1_instances(
                         op_ptrs);
                     add_device_grouped_conv3d_bwd_weight_two_stage_xdl_ndhwgc_gkzyxc_ndhwgk_f16_pipev1_part2_instances(
@@ -733,6 +748,11 @@ struct DeviceOperationInstanceFactory<ck::tensor_operation::device::DeviceGroupe
                     add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_bf16_pad0_pipev2_instances(
                         op_ptrs);
                     add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_bf16_pad0_pipev5_instances(
+                        op_ptrs);
+
+                    add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_bf16_wavelet_default_instances(
+                        op_ptrs);
+                    add_device_grouped_conv3d_bwd_weight_xdl_ndhwgc_gkzyxc_ndhwgk_bf16_wavelet_pad0_instances(
                         op_ptrs);
 
                     add_device_grouped_conv3d_bwd_weight_two_stage_xdl_ndhwgc_gkzyxc_ndhwgk_bf16_pipev1_instances(
