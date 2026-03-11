@@ -106,9 +106,7 @@ endif()
 message(STATUS "Building for GPU targets: ${GPU_TARGETS}")
 
 set(HIPBLASLT_DIST_TARGETS "" CACHE STRING
-    "Full distribution GPU target list for metadata generation (hipblasltExtOpLibrary.dat, \
-TensileLiteLibrary_lazy_Mapping, hipblasltTransform.hsaco). When set by TheRock, all shards \
-produce identical metadata files, making shard overlay safe. Defaults to GPU_TARGETS when unset.")
+    "Full distribution GPU target list. When set by TheRock, all shards produce artifacts for each target in distribution list. Defaults to GPU_TARGETS when unset.")
 if(NOT HIPBLASLT_DIST_TARGETS)
     set(HIPBLASLT_DIST_TARGETS "${GPU_TARGETS}")
 endif()
