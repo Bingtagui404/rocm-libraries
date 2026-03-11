@@ -279,68 +279,71 @@ struct SageAttnV3KMeanKernel
 {
     using InputT = InputT_;
 
-    static constexpr index_t kRows      = kRows_;
-    static constexpr index_t kCols      = kCols_;
-    static constexpr index_t kBlockSize = kCols; // one thread per d-channel
+    static constexpr index_t kRows = kRows_;
+    static constexpr index_t kCols = kCols_;
 
-    // Pipeline reused only for RunKMeanPartial.
-    using Pipeline = SageAttnV3PreprocessPipeline<InputT, kRows, kCols>;
+    // Single-pass reduction: 1 CTA per (head, batch), no atomics.
+    // kBlockSize = kCols * kRowsPerBlock threads, where kRowsPerBlock threads collaborate
+    // per column.  kRowsPerBlock is chosen so that kBlockSize is a multiple of 64 (wave64)
+    // and 8+ wavefronts per CTA are available to hide HBM latency.
+    //   kCols=128, kRowsPerBlock=8  -> kBlockSize=1024 (16 wavefronts) - max allowed
+    //   kCols=256, kRowsPerBlock=4  -> kBlockSize=1024 (16 wavefronts)
+    static constexpr index_t kRowsPerBlock = (1024 / kCols < 1) ? 1 : (1024 / kCols);
+    static constexpr index_t kBlockSize    = kCols * kRowsPerBlock;
 
     using Kargs = SageAttnV3KMeanKargs<InputT>;
 
-    CK_TILE_HOST static dim3 GridSize(const Kargs& k)
-    {
-        return dim3(k.num_k_tiles, k.nhead, k.batch);
-    }
+    // Grid: (1, nhead, batch) -- one CTA handles all rows for one (head, batch).
+    CK_TILE_HOST static dim3 GridSize(const Kargs& k) { return dim3(1, k.nhead, k.batch); }
 
     CK_TILE_HOST static constexpr dim3 BlockSize() { return dim3(kBlockSize); }
 
-    // Smem: one int32 flag to broadcast "is_last" to all threads.
-    CK_TILE_HOST_DEVICE static constexpr index_t GetSmemSize() { return sizeof(int32_t); }
+    // Smem: kBlockSize floats for partial sums across kRowsPerBlock groups.
+    CK_TILE_HOST_DEVICE static constexpr index_t GetSmemSize()
+    {
+        return kBlockSize * static_cast<index_t>(sizeof(float));
+    }
 
     CK_TILE_DEVICE void operator()(Kargs kargs) const
     {
-        const index_t tile_x    = get_block_id();
         const index_t head_idx  = blockIdx.y;
         const index_t batch_idx = blockIdx.z;
+        const index_t tid       = get_thread_id();
 
-        // Tile row range (handles tail).
-        const index_t row_start = tile_x * kRows;
-        const index_t row_end   = min(row_start + kRows, kargs.seqlen_k);
-        const index_t n_rows    = row_end - row_start;
+        // Thread mapping: one thread per (col, row_group) pair.
+        // col      = tid % kCols         (0 .. kCols-1)
+        // row_grp  = tid / kCols         (0 .. kRowsPerBlock-1)
+        const index_t col     = tid % kCols;
+        const index_t row_grp = tid / kCols;
 
-        const InputT* k_tile = kargs.k_ptr + batch_idx * kargs.batch_stride_k +
-                               head_idx * kargs.nhead_stride_k + row_start * kargs.stride_k;
+        const InputT* k_head = kargs.k_ptr + batch_idx * kargs.batch_stride_k +
+                               head_idx * kargs.nhead_stride_k;
 
-        float* partial = kargs.k_mean_partial_ptr + batch_idx * kargs.batch_stride_kmean +
-                         head_idx * kargs.nhead_stride_kmean;
+        // --- Step 1: accumulate partial column-sum over strided rows ---
+        float acc = 0.0f;
+        for(index_t r = row_grp; r < kargs.seqlen_k; r += kRowsPerBlock)
+            acc += static_cast<float>(k_head[r * kargs.stride_k + col]);
 
-        // --- Step 1: accumulate partial column-sum via atomicAdd ---
-        Pipeline pipeline{};
-        pipeline.RunKMeanPartial(k_tile, n_rows, kargs.stride_k, partial);
-
-        // Ensure our atomicAdds are globally visible before incrementing counter.
-        __threadfence();
-
-        // --- Step 2: completion counter (thread 0 only) ---
-        __shared__ int32_t smem_is_last;
-        if(get_thread_id() == 0)
-        {
-            int32_t* cnt = kargs.counter_ptr + batch_idx * kargs.nhead + head_idx;
-            int32_t prev = atomicAdd(cnt, 1);
-            smem_is_last = (prev == kargs.num_k_tiles - 1) ? 1 : 0;
-        }
+        // --- Step 2: intra-block reduce across kRowsPerBlock groups via smem ---
+        __shared__ float smem[kBlockSize];
+        smem[tid] = acc;
         block_sync_lds();
 
-        // --- Step 3: last CTA normalises and stores k_mean as InputT ---
-        if(smem_is_last)
+        // Leader for each column (row_grp == 0) sums all kRowsPerBlock partials.
+        if(row_grp == 0)
         {
-            const index_t d = get_thread_id();
-            InputT* k_mean  = kargs.k_mean_ptr + batch_idx * kargs.batch_stride_kmean +
+            for(index_t g = 1; g < kRowsPerBlock; g++)
+                acc += smem[g * kCols + col];
+
+            // --- Step 3: write k_mean ---
+            float* partial = kargs.k_mean_partial_ptr + batch_idx * kargs.batch_stride_kmean +
+                             head_idx * kargs.nhead_stride_kmean;
+            InputT* k_mean = kargs.k_mean_ptr + batch_idx * kargs.batch_stride_kmean +
                              head_idx * kargs.nhead_stride_kmean;
 
-            const float mean_f = partial[d] / static_cast<float>(kargs.seqlen_k);
-            k_mean[d]          = static_cast<InputT>(mean_f);
+            const float mean_f = acc / static_cast<float>(kargs.seqlen_k);
+            partial[col]       = mean_f; // not strictly needed but keeps API compat
+            k_mean[col]        = static_cast<InputT>(mean_f);
         }
     }
 };
@@ -352,8 +355,13 @@ struct SageAttnV3KMeanKernel
 // avoids the non-coalesced column reads of the old per-channel approach.
 //
 // Grid:      (seqlen_k / (kVGroup * kVGroupsPerBlock), hdim / kVHdimTile, batch * nhead)
-// BlockSize: kVGroup * kVGroupsPerBlock  (kVGroupsPerBlock = 2 by default → 64 threads,
-//            filling one complete WAVE64 wavefront on gfx950)
+// BlockSize: kVGroup * kVGroupsPerBlock  (kVGroupsPerBlock = 4 by default -> 128 threads,
+//            2 WAVE64 wavefronts; LDS = 4*32*33*4 = 16896 bytes < 64 KB limit)
+//
+// Increasing kVGroupsPerBlock from 2 to 4 doubles the wavefronts per CTA from 1 to 2,
+// and the vectorized loads (128-bit/uint4) reduce instruction count 8x vs scalar.
+// seqlen_k_padded must be divisible by kVGroup * kVGroupsPerBlock = 128;
+// get_buffer_sizes enforces this by padding to a multiple of 128.
 //
 // Each CTA processes kVGroupsPerBlock consecutive seqlen groups.
 // Thread layout within the CTA:
@@ -364,7 +372,9 @@ struct SageAttnV3KMeanKernel
 // Algorithm per CTA (blockIdx.x, d_idx, bh_idx):
 //   1. Each thread loads one row of V:
 //        V[g_abs*kVGroup + row_local, d_idx*kVHdimTile .. +kVHdimTile]
-//      into smem[grp_local][row_local][0..kVHdimTile-1] as float32 → coalesced.
+//      into smem[grp_local][row_local][0..kVHdimTile-1] as float32.
+//      The load uses vectorized 128-bit reads (4 fp16 per instruction) for
+//      kVHdimTile = 32 elements (64 bytes per thread = 4 x 16-byte loads).
 //   2. After __syncthreads, thread row_local owns channel d_local=row_local
 //      and reads column smem[grp_local][0..kVGroup-1][d_local] from LDS.
 //   3. Computes MXFP4 scale and packs the group, then writes to V_hat /
@@ -373,14 +383,12 @@ struct SageAttnV3KMeanKernel
 // LDS bank conflict analysis (gfx950 / MI350):
 //   gfx950 has 64 physical banks, but ds_read_b32 conflict resolution acts
 //   as-if there are 32 banks (64 banks only matter for ds_read_b64/b128).
-//   Reference: "LDS Analysis gfx942/950" (Kerry Wang, internal Confluence).
-//
 //   smem[kVGroupsPerBlock][kVGroup][kVHdimTile + kLDSPad] as float32, kLDSPad = 1.
 //   Within each group slice, row stride = kVHdimTile + 1 = 33 floats.
 //   bank(j, d) = (j * 33 + d) % 32 = (j + d) % 32   [since 33 % 32 = 1]
-//   Column access (fixed d, j = 0..31): bank = (j + d) % 32 → 32 distinct banks ✓
+//   Column access (fixed d, j = 0..31): bank = (j + d) % 32 -> 32 distinct banks OK
 //   Between group slices the offset is kVGroup*(kVHdimTile+1) = 32*33 = 1056 floats,
-//   which is 1056 % 32 = 0 → same bank pattern per slice, still conflict-free ✓
+//   which is 1056 % 32 = 0 -> same bank pattern per slice, still conflict-free OK
 //
 // Caller requirements:
 //   seqlen_k % (kVGroup * kVGroupsPerBlock) == 0
@@ -418,7 +426,7 @@ struct SageAttnV3VPreprocessKargs
 template <typename InputT_,
           index_t kVGroup_          = 32,
           index_t kVHdimTile_       = 32,
-          index_t kVGroupsPerBlock_ = 2>
+          index_t kVGroupsPerBlock_ = 4>
 struct SageAttnV3VPreprocessKernel
 {
     using InputT = InputT_;
@@ -427,7 +435,11 @@ struct SageAttnV3VPreprocessKernel
     static constexpr index_t kVHdimTile        = kVHdimTile_;
     static constexpr index_t kVGroupsPerBlock  = kVGroupsPerBlock_;
     static constexpr index_t kScaleGranularity = 32;
-    // kVGroupsPerBlock groups per CTA → full WAVE64 wavefronts on gfx950.
+    // kVGroupsPerBlock groups per CTA; at kVGroupsPerBlock=4 the LDS is
+    // 4*32*33*4 = 16896 bytes (< 64 KB) and the CTA has 128 threads = 2 wavefronts.
+    // seqlen_k_padded must be divisible by kVGroup * kVGroupsPerBlock = 128.
+    // get_buffer_sizes pads seqlen_k to a multiple of kRows (64), so for
+    // seqlen_k_padded < 128 the caller must round up to 128 before launching.
     static constexpr index_t kBlockSize = kVGroup * kVGroupsPerBlock;
     // Pad LDS rows by 1 float32. For ds_read_b32 on gfx950 the effective bank
     // count is 32. Column stride = (kVHdimTile+1) % 32 = 1 → coprime with 32
@@ -476,7 +488,10 @@ struct SageAttnV3VPreprocessKernel
         // bank(j, d) = (j * 33 + d) % 32 = (j + d) % 32 → zero bank conflicts ✓
         __shared__ float smem[kVGroupsPerBlock][kVGroup][kVHdimTile + kLDSPad];
 
-        // ---- Step 1: coalesced load [kVGroup, kVHdimTile] from V → float LDS ----
+        // ---- Step 1: vectorized load [kVGroup, kVHdimTile] from V -> float LDS ----
+        // Each thread loads one row of V into LDS using 128-bit (uint4) reads.
+        // For fp16 input: kVHdimTile=32 elements = 64 bytes = 4 x uint4 loads.
+        // For float input: kVHdimTile=32 elements = 128 bytes = 8 x uint4 loads.
         const index_t row = g_abs * kVGroup + row_local;
 
         const InputT* v_base =
@@ -485,8 +500,17 @@ struct SageAttnV3VPreprocessKernel
         if(row < kargs.seqlen_k_real)
         {
             const InputT* v_row = v_base + row * kargs.hdim + col_start;
-            for(index_t d = 0; d < kVHdimTile; d++)
-                smem[grp_local][row_local][d] = static_cast<float>(v_row[d]);
+            // Vectorized: 8 elements per call (using load_vec8 from pipeline header).
+            constexpr index_t kVec = 8;
+            static_assert(kVHdimTile % kVec == 0,
+                          "kVHdimTile must be divisible by 8 for vectorized load");
+            for(index_t v = 0; v < kVHdimTile / kVec; v++)
+            {
+                float tmp[kVec];
+                ck_tile::load_vec8(v_row + v * kVec, tmp);
+                for(index_t j = 0; j < kVec; j++)
+                    smem[grp_local][row_local][v * kVec + j] = tmp[j];
+            }
         }
         else
         {

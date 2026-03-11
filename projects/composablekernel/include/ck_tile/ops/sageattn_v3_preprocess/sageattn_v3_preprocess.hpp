@@ -96,8 +96,14 @@ get_buffer_sizes(index_t batch, index_t nhead, index_t seqlen_q, index_t seqlen_
 {
     constexpr index_t kG = 32; // MXFP4 scale granularity
 
-    const index_t sq_pad = ((seqlen_q + kRows - 1) / kRows) * kRows;
-    const index_t sk_pad = ((seqlen_k + kRows - 1) / kRows) * kRows;
+    // V preprocess kernel requires seqlen_k_padded divisible by kVGroup * kVGroupsPerBlock.
+    // With kVGroup=32 and kVGroupsPerBlock=4, that is 128. Take the larger of kRows and 128.
+    constexpr index_t kVPad = 128; // = kVGroup (32) * kVGroupsPerBlock (4)
+    constexpr index_t kQPad = kRows;
+    constexpr index_t kKPad = (kVPad > kRows) ? kVPad : kRows; // lcm when both are powers of 2
+
+    const index_t sq_pad = ((seqlen_q + kQPad - 1) / kQPad) * kQPad;
+    const index_t sk_pad = ((seqlen_k + kKPad - 1) / kKPad) * kKPad;
     const index_t nqt    = sq_pad / kRows;
     const index_t nkt    = sk_pad / kRows;
 
