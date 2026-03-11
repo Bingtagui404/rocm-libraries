@@ -10,8 +10,12 @@
 #include <thread>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
-#include <Windows.h>
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <io.h>
 #else
 #include <unistd.h>
 #include <errno.h>
@@ -91,7 +95,7 @@ public:
     }
 #endif
 
-    file_lock(const file_lock&) = delete;
+    file_lock(const file_lock&)            = delete;
     file_lock& operator=(const file_lock&) = delete;
 
     file_lock(file_lock&& rhs) noexcept { this->swap(rhs); }
@@ -171,7 +175,8 @@ private:
             flags |= LOCKFILE_FAIL_IMMEDIATELY;
 
         OVERLAPPED ov = {};
-        return (LockFileEx(handle, flags, 0, MAXDWORD, MAXDWORD, &ov) != 0);
+        BOOL ok       = LockFileEx(handle, flags, 0, MAXDWORD, MAXDWORD, &ov);
+        return ok != 0;
     }
 
     void swap(file_lock& rhs) noexcept { std::swap(handle, rhs.handle); }

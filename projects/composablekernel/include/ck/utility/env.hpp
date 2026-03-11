@@ -9,6 +9,9 @@
 #include <string_view>
 #include <map>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wlifetime-safety-intra-tu-suggestions"
+
 namespace ck {
 namespace internal {
 template <typename T>
@@ -86,11 +89,8 @@ struct EnvVar
 
     explicit EnvVar(const char* const name, const T& def_val)
     {
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
         // NOLINTNEXTLINE (concurrency-mt-unsafe)
         const char* vp = std::getenv(name);
-        #pragma clang diagnostic pop
         if(vp != nullptr) // a value was provided
         {
             is_unset = false;
@@ -191,5 +191,5 @@ void UpdateEnvVar(EnvVar, const std::string_view& val)
 // environment variable to enable logging:
 // export CK_LOGGING=ON or CK_LOGGING=1 or CK_LOGGING=ENABLED
 CK_DECLARE_ENV_VAR_BOOL(CK_LOGGING)
-
+#pragma clang diagnostic pop
 #endif

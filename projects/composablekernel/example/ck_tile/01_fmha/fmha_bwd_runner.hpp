@@ -56,8 +56,6 @@ auto get_elimit<FmhaBwdBf16>(ck_tile::index_t hdim_q, ck_tile::index_t hdim_v)
     return ck_tile::make_tuple(rtol, atol);
 }
 
-extern template float fmha_bwd<2>(fmha_bwd_traits, fmha_bwd_args, const ck_tile::stream_config&);
-
 template <typename DataTypeConfig>
 bwd_result fmha_bwd_run(mode_enum mode,
                         ck_tile::index_t batch,
@@ -243,12 +241,29 @@ bwd_result fmha_bwd_run(mode_enum mode,
         (mode == mode_enum::batch ? seqlen_qs[0] : seqstart_q_host.back());
     const ck_tile::index_t shape_seqlen_k =
         (mode == mode_enum::batch ? seqlen_ks[0] : seqstart_k_host.back());
-    // Keep it equal to or smaller than minimal bn0 of all tiles in fmha_bwd.py
-    // TODO: add API for requesting kN0/nsplits/workspace_size? It is not safe to rely on internal
-    // implementation details in client code.
-    const ck_tile::index_t kN0 = 16;
-    const ck_tile::index_t nsplits =
-        deterministic ? ck_tile::integer_divide_ceil(max_seqlen_k, kN0) : 1;
+
+    const fmha_bwd_traits fmha_traits{
+        shape_seqlen_q,
+        shape_seqlen_k,
+        batch,
+        max_seqlen_q,
+        max_seqlen_k,
+        hdim_q,
+        hdim_v,
+        nhead,
+        nhead_k,
+        data_type,
+        mode == mode_enum::group,
+        mask.type,
+        bias.type,
+        use_dbias,
+        p_drop > 0.0f,
+        s_randval,
+        deterministic,
+    };
+    fmha_bwd_launcher launcher(fmha_traits);
+
+    const ck_tile::index_t nsplits = launcher.dq_acc_splits;
 
     ck_tile::HostTensor<QDataType> q_host(
         get_lengths(i_perm, shape_batch, nhead, shape_seqlen_q, hdim_q));
@@ -287,9 +302,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
             ? get_lengths(i_perm, shape_batch, nhead, shape_seqlen_q, max_seqlen_k)
             : std::array<ck_tile::index_t, 4>{1, 1, 1, 1} /* dummy shape for simplifying code */);
     ck_tile::HostTensor<AccDataType> dq_acc_host(
-        i_perm
-            ? std::array<ck_tile::index_t, 5>{nsplits, shape_batch, nhead, shape_seqlen_q, hdim_q}
-            : std::array<ck_tile::index_t, 5>{nsplits, shape_batch, shape_seqlen_q, nhead, hdim_q});
+        std::array<ck_tile::index_t, 5>{shape_batch, nhead, nsplits, shape_seqlen_q, hdim_q});
 
     if(init_method == "ui" || init_method == "0")
     {
@@ -408,17 +421,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                                 : "")
               << ", mask:" << mask << std::flush;
 
-    auto fmha_traits = fmha_bwd_traits{hdim_q,
-                                       hdim_v,
-                                       data_type,
-                                       mode == mode_enum::group,
-                                       mask.type,
-                                       bias.type,
-                                       use_dbias,
-                                       p_drop > 0.0f,
-                                       s_randval,
-                                       deterministic};
-    auto fmha_args   = [&]() {
+    auto fmha_args = [&]() {
         /// NOTE: we broadcast bias from [1, 1, seqlen_q, seqlen_k] to [batch, nhead, seqlen_q,
         ///       seqlen_k] in this example, hence both the 'batch_stride_bias' &
         ///       'nhead_stride_bias' are 0.
@@ -433,6 +436,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
         const ck_tile::index_t stride_dk      = (i_perm ? hdim_q : nhead * hdim_q);
         const ck_tile::index_t stride_dv      = (i_perm ? hdim_v : nhead * hdim_v);
         const ck_tile::index_t stride_dbias   = (i_perm ? max_seqlen_k : nhead * max_seqlen_k);
+        const auto split_stride_dq_acc        = (shape_seqlen_q * hdim_q);
         // setup nhead_stride_* arguments
         const ck_tile::index_t nhead_stride_q       = (i_perm ? shape_seqlen_q * hdim_q : hdim_q);
         const ck_tile::index_t nhead_stride_k       = (i_perm ? shape_seqlen_k * hdim_q : hdim_q);
@@ -444,6 +448,8 @@ bwd_result fmha_bwd_run(mode_enum mode,
         const ck_tile::index_t nhead_stride_lsed    = shape_seqlen_q;
         const ck_tile::index_t nhead_stride_dbias =
             (i_perm ? shape_seqlen_q * max_seqlen_k : max_seqlen_k);
+        const auto nhead_stride_dq_acc =
+            static_cast<ck_tile::long_index_t>(split_stride_dq_acc) * nsplits;
         // setup batch_stride_* arguments
         const ck_tile::index_t batch_stride_q       = (nhead * shape_seqlen_q * hdim_q);
         const ck_tile::index_t batch_stride_k       = (nhead_k * shape_seqlen_k * hdim_q);
@@ -456,8 +462,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
         const ck_tile::index_t batch_stride_dk      = (nhead * shape_seqlen_k * hdim_q);
         const ck_tile::index_t batch_stride_dv      = (nhead * shape_seqlen_k * hdim_v);
         const ck_tile::index_t batch_stride_dbias   = (nhead * shape_seqlen_q * max_seqlen_k);
-        const ck_tile::index_t split_stride_dq_acc =
-            (shape_batch * nhead * shape_seqlen_q * hdim_q);
+        const auto batch_stride_dq_acc              = nhead * nhead_stride_dq_acc;
 
         const auto drop_seed_offset = [&]() -> decltype(fmha_bwd_args::drop_seed_offset) {
             if(drop_prefs)
@@ -478,7 +483,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                              k_buf.GetDeviceBuffer(),
                              v_buf.GetDeviceBuffer(),
                              bias.type == bias_enum::alibi ? alibi_slope_buf.GetDeviceBuffer()
-                                                             : bias_buf.GetDeviceBuffer(),
+                                                           : bias_buf.GetDeviceBuffer(),
                              o_buf.GetDeviceBuffer(),
                              lse_buf.GetDeviceBuffer(),
                              do_buf.GetDeviceBuffer(),
@@ -509,11 +514,11 @@ bwd_result fmha_bwd_run(mode_enum mode,
                              stride_k,
                              stride_v,
                              bias.type == bias_enum::alibi ? (bias.rank_info == 0 ? 0 : nhead)
-                                                             : stride_bias,
+                                                           : stride_bias,
                              stride_o,
                              stride_randval,
                              stride_do,
-                             stride_q, // stride_dq_acc
+                             hdim_q,   // stride_dq_acc
                              stride_q, // stride_dq
                              stride_dk,
                              stride_dv,
@@ -526,7 +531,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                              nhead_stride_randval,
                              nhead_stride_do,
                              nhead_stride_lsed,
-                             nhead_stride_q, // nhead_stride_dq_acc
+                             nhead_stride_dq_acc,
                              nhead_stride_q, // nhead_stride_dq
                              nhead_stride_k, // nhead_stride_dk
                              nhead_stride_v, // nhead_stride_dv
@@ -539,7 +544,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                              batch_stride_randval,
                              batch_stride_do,
                              batch_stride_lsed,
-                             batch_stride_q, // batch_stride_dq_acc
+                             batch_stride_dq_acc,
                              batch_stride_q, // batch_stride_dq
                              batch_stride_dk,
                              batch_stride_dv,
@@ -553,7 +558,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                              drop_seed_offset};
     }();
 
-    const float ave_time = fmha_bwd(fmha_traits, fmha_args, stream_config);
+    const float ave_time = launcher(fmha_args, stream_config);
     if(ave_time < 0)
     {
         std::cout << ", not supported yet" << std::flush << std::endl;
@@ -621,8 +626,11 @@ bwd_result fmha_bwd_run(mode_enum mode,
                 {nhead, real_seqlen_q, real_seqlen_k}); // p_hp_g_m_n high precision
             ck_tile::HostTensor<AccDataType> p_dropped_hp_host_ref(
                 {nhead, real_seqlen_q, real_seqlen_k}); // p_dropped_hp_g_m_n high precision
-            ck_tile::HostTensor<GemmDataType> p_lp_host_ref(
-                {nhead, real_seqlen_q, real_seqlen_k}); // p_lp_g_m_n low precision
+
+            // p_lp_g_m_n low precision used for fwd (with rp_undrop)
+            ck_tile::HostTensor<GemmDataType> p_fwd_host_ref({nhead, real_seqlen_q, real_seqlen_k});
+            // p_lp_g_m_n low precision used for bwd (no rp_undrop)
+            ck_tile::HostTensor<GemmDataType> p_lp_host_ref({nhead, real_seqlen_q, real_seqlen_k});
 
             ck_tile::index_t nr = nhead / nhead_k;
 
@@ -762,8 +770,11 @@ bwd_result fmha_bwd_run(mode_enum mode,
                 ck_tile::reference_batched_dropout_randval(
                     randval_host_ref, wb, drop_seed, drop_offset);
                 ck_tile::reference_batched_dropout(
-                    p_dropped_hp_host_ref, randval_host_ref, p_undrop_in_uint8_t, rp_undrop);
+                    p_dropped_hp_host_ref, randval_host_ref, p_undrop_in_uint8_t, 1.f);
                 p_lp_host_ref = p_dropped_hp_host_ref.template CopyAsType<GemmDataType>();
+                p_dropped_hp_host_ref.ForEach(
+                    [&](auto& self, const auto& idx) { self(idx) *= rp_undrop; });
+                p_fwd_host_ref = p_dropped_hp_host_ref.template CopyAsType<GemmDataType>();
 
                 ck_tile::HostTensor<RandValOutputDataType> randval_host_result(
                     {nhead, real_seqlen_q, real_seqlen_k});
@@ -789,12 +800,13 @@ bwd_result fmha_bwd_run(mode_enum mode,
             }
             else
             {
-                p_lp_host_ref = p_hp_host_ref.template CopyAsType<GemmDataType>();
+                p_lp_host_ref  = p_hp_host_ref.template CopyAsType<GemmDataType>();
+                p_fwd_host_ref = p_lp_host_ref;
             }
 
             // O = P * V
             ck_tile::reference_batched_gemm<GemmDataType, VDataType, AccDataType, ODataType>(
-                p_lp_host_ref, v_host_ref, o_host_ref); // o_g_m_o = p_lp_g_m_n@v_g_o_n
+                p_fwd_host_ref, v_host_ref, o_host_ref); // o_g_m_o = p_lp_g_m_n@v_g_o_n
 
             // clang-format off
             // permute
@@ -837,7 +849,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
             dq_acc_buf.SetZero();
 
         ck_tile::stream_config stream_config_v{nullptr, true, 0, 0, 1};
-        fmha_bwd(fmha_traits, fmha_args, stream_config_v);
+        launcher(fmha_args, stream_config_v);
 
         dq_buf.FromDevice(dq_host.data());
         dk_buf.FromDevice(dk_host.data());
@@ -900,7 +912,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
             if(p_drop > 0)
             {
                 ck_tile::reference_batched_dropout(
-                    dp_hp_host_ref, randval_host_refs[ref_idx], p_undrop_in_uint8_t, rp_undrop);
+                    dp_hp_host_ref, randval_host_refs[ref_idx], p_undrop_in_uint8_t, 1.f);
             }
 
             // dS_i_j = P_i_j .* (dP_i_j - dO_i dot O_i)
@@ -911,7 +923,8 @@ bwd_result fmha_bwd_run(mode_enum mode,
                     {
                         do_dot_o +=
                             ck_tile::type_convert<AccDataType>(do_host_ref(i0, i1, o)) *
-                            ck_tile::type_convert<AccDataType>(o_host_refs[ref_idx](i0, i1, o));
+                            ck_tile::type_convert<AccDataType>(o_host_refs[ref_idx](i0, i1, o)) *
+                            p_undrop;
                     }
                     ds_hp_host_ref(i0, i1, i2) =
                         ck_tile::type_convert<AccDataType>(p_hp_host_refs[ref_idx](i0, i1, i2) *
@@ -935,7 +948,12 @@ bwd_result fmha_bwd_run(mode_enum mode,
             auto do_t_host_ref = do_host_ref.transpose({0, 2, 1}); // do_g_m_o -> do_g_o_m
             ck_tile::
                 reference_batched_gemm<GemmDataType, OGradDataType, AccDataType, VGradDataType>(
-                    p_t_lp_host_ref, do_t_host_ref, dv_host_ref); // dv_g_n_o = p_lp_g_n_m@do_g_o_m
+                    p_t_lp_host_ref,
+                    do_t_host_ref,
+                    dv_host_ref,
+                    ck_tile::identity{},
+                    ck_tile::identity{},
+                    ck_tile::scales(rp_undrop)); // dv_g_n_o = p_lp_g_n_m@do_g_o_m
 
             // dQ = scale * dS@K^T
             auto k_t_host_ref = k_host_refs[ref_idx].transpose({0, 2, 1}); // k_g_n_k -> k_g_k_n
@@ -945,7 +963,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                 dq_host_ref,
                 ck_tile::identity{},
                 ck_tile::identity{},
-                ck_tile::scales(scale)); // dq_g_m_k = ds_g_m_n@k_g_k_n
+                ck_tile::scales(scale * rp_undrop)); // dq_g_m_k = ds_g_m_n@k_g_k_n
 
             // dK = scale * dS^T@Q^T
             auto ds_t_lp_host_ref = ds_lp_host_ref.transpose({0, 2, 1}); // ds_g_m_n -> ds_g_n_m
@@ -956,7 +974,7 @@ bwd_result fmha_bwd_run(mode_enum mode,
                 dk_host_ref,
                 ck_tile::identity{},
                 ck_tile::identity{},
-                ck_tile::scales(scale)); // dk_g_n_k = ds_g_n_m@q_g_k_m
+                ck_tile::scales(scale * rp_undrop)); // dk_g_n_k = ds_g_n_m@q_g_k_m
 
             ck_tile::HostTensor<QGradDataType> dq_host_result(
                 {nhead, real_seqlen_q, hdim_q}); // dq_g_m_k

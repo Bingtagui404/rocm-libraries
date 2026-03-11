@@ -1,28 +1,6 @@
-/*******************************************************************************
- *
- * MIT License
- *
- * Copyright (c) 2017 Advanced Micro Devices, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- *******************************************************************************/
+// Copyright (c) Advanced Micro Devices, Inc., or its affiliates.
+// SPDX-License-Identifier:  MIT
+
 #include <miopen/db.hpp>
 #include <miopen/db_record.hpp>
 #include <miopen/errors.hpp>
@@ -64,7 +42,7 @@ PlainTextDb::PlainTextDb(DbKinds db_kind_, const fs::path& filename_, bool is_sy
             if(!fs::create_directories(directory))
                 MIOPEN_LOG_W("Unable to create a directory: " << directory);
             else
-                fs::permissions(directory, fs::perms::all);
+                fs::permissions(directory, miopen::fs::perms::all);
         }
     }
 }
@@ -85,7 +63,7 @@ std::optional<DbRecord> PlainTextDb::FindRecord(const std::string& key)
 {
     if(DisableUserDbFileIO)
         return {};
-    const auto lock = exclusive_lock(lock_file, GetLockTimeout());
+    const auto lock = shared_lock(lock_file, GetLockTimeout());
     MIOPEN_VALIDATE_LOCK(lock);
     return FindRecordUnsafe(key, nullptr);
 }
@@ -247,7 +225,7 @@ bool PlainTextDb::FlushUnsafe(const DbRecord& record, const RecordPositions* pos
             record.WriteContents(file);
         }
 
-        fs::permissions(filename, fs::perms::all);
+        fs::permissions(filename, miopen::fs::perms::all);
     }
     else
     {
@@ -259,8 +237,7 @@ bool PlainTextDb::FlushUnsafe(const DbRecord& record, const RecordPositions* pos
             return false;
         }
 
-        const auto temp_name = filename.string() + "." + sysinfo::GetSystemHostname() + "." +
-                               std::to_string(getpid()) + ".temp";
+        const auto temp_name = filename + ".temp";
         std::ofstream to(temp_name, std::ios::binary);
 
         if(!to)
@@ -275,21 +252,15 @@ bool PlainTextDb::FlushUnsafe(const DbRecord& record, const RecordPositions* pos
         Copy(from, to, pos->begin);
         record.WriteContents(to);
         from.seekg(pos->end);
-        if(from_size > pos->end)
-            Copy(from, to, from_size - pos->end);
+        Copy(from, to, from_size - pos->end);
 
         from.close();
         to.close();
 
-        // rename atomically deletes and replaces filename
+        fs::remove(filename);
         fs::rename(temp_name, filename);
         /// \todo What if rename fails? Thou shalt not loose the original file.
-        fs::permissions(filename, fs::perms::all);
-        while(fs::exists(temp_name))
-        {
-            MIOPEN_LOG_I2("Waiting for rename ");
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        fs::permissions(filename, miopen::fs::perms::all);
     }
     return true;
 }

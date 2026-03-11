@@ -8,10 +8,25 @@
 #if MIOPEN_BACKEND_HIP
 #include <hip/hip_runtime.h>
 
-// We need access to the internal set_device and get_device_id functions
+// We need the internal 'set_device' and 'get_device_id' functions
 namespace miopen {
-extern void set_device(int id);
-extern int get_device_id();
+
+int get_device_id() // Get random device
+{
+    int device;
+    auto status = hipGetDevice(&device);
+    if(status != hipSuccess)
+        MIOPEN_THROW_HIP_STATUS(status, "No device");
+    return device;
+}
+
+void set_device(int id)
+{
+    auto status = hipSetDevice(id);
+    if(status != hipSuccess)
+        MIOPEN_THROW_HIP_STATUS(status, "Error setting device " + std::to_string(id));
+}
+
 } // namespace miopen
 
 class CPU_HandleHipDevice_NONE : public ::testing::Test
@@ -29,8 +44,8 @@ protected:
     void TearDown() override
     {
         // Clear any HIP error triggered by asking for an invalid device ordinal
-        hipGetLastError();
-        hipExtGetLastError();
+        (void)hipGetLastError();
+        (void)hipExtGetLastError();
     }
 
     int device_count_ = 0;
