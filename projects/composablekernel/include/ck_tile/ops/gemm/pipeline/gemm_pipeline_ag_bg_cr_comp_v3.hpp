@@ -4,7 +4,7 @@
 #pragma once
 
 #include "ck_tile/core.hpp"
-#include "ck_tile/ops/gemm/pipeline/gemm_universal_pipeline_ag_bg_cr_policy.hpp"
+#include "ck_tile/ops/gemm/pipeline/gemm_pipeline_ag_bg_cr_default_policy.hpp"
 #include "ck_tile/ops/gemm/pipeline/gemm_pipeline_ag_bg_cr_scheduler.hpp"
 #include "ck_tile/ops/gemm/pipeline/gemm_pipeline_ag_bg_cr_base.hpp"
 
@@ -90,7 +90,7 @@ struct BaseGemmPipelineAgBgCrCompV3
 // LocalPreFillStages: 1
 // LocalPreFetchStages: 1
 // LocalSharedMemoryBuffer: 1
-template <typename Problem, typename Policy = UniversalGemmPipelineAgBgCrPolicy>
+template <typename Problem, typename Policy = GemmPipelineAgBgCrDefaultPolicy>
 struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
 {
     using Base             = BaseGemmPipelineAgBgCrCompV3<Problem>;
@@ -239,13 +239,178 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
         return str.str();
     }
 
-    template <GemmPipelineScheduler Scheduler>
+    template <GemmPipelineScheduler Scheduler, bool IsAsync>
     struct PipelineImpl : public PipelineImplBase
     {
     };
 
     template <>
-    struct PipelineImpl<GemmPipelineScheduler::Intrawave> : public PipelineImplBase
+    struct PipelineImpl<GemmPipelineScheduler::Intrawave, true> : public PipelineImplBase
+    {
+        using Base = PipelineImplBase;
+
+        template <bool HasHotLoop,
+                  TailNumber TailNum,
+                  typename AsDramBlockWindowTmp,
+                  typename BsDramBlockWindowTmp,
+                  typename AElementFunction,
+                  typename BElementFunction,
+                  typename std::enable_if_t<is_detected<is_tuple, AsDramBlockWindowTmp>::value &&
+                                                is_detected<is_tuple, BsDramBlockWindowTmp>::value,
+                                            bool>* = nullptr>
+        CK_TILE_DEVICE auto operator()(const AsDramBlockWindowTmp& a_dram_block_window_tmp,
+                                       const AElementFunction& a_element_func,
+                                       const BsDramBlockWindowTmp& b_dram_block_window_tmp,
+                                       const BElementFunction& b_element_func,
+                                       index_t num_loop,
+                                       void* p_smem) const
+        {
+            using ADramBlockWindowTmp =
+                remove_cvref_t<std::tuple_element_t<number<0>{}, AsDramBlockWindowTmp>>;
+            using BDramBlockWindowTmp =
+                remove_cvref_t<std::tuple_element_t<number<0>{}, BsDramBlockWindowTmp>>;
+
+            static_assert(
+                std::is_same_v<ADataType, remove_cvref_t<typename ADramBlockWindowTmp::DataType>> &&
+                    std::is_same_v<BDataType,
+                                   remove_cvref_t<typename BDramBlockWindowTmp::DataType>>,
+                "A/B Dram block window should have the same data type as appropriate "
+                "([A|B]DataType) defined in Problem definition!");
+
+            constexpr bool is_a_col_major =
+                std::is_same_v<ALayout, tensor_layout::gemm::ColumnMajor>;
+            constexpr bool is_b_row_major = std::is_same_v<BLayout, tensor_layout::gemm::RowMajor>;
+
+            static_assert(is_a_col_major
+                              ? (KPerBlock == ADramBlockWindowTmp{}.get_window_lengths()[I0{}] &&
+                                 MPerBlock == ADramBlockWindowTmp{}.get_window_lengths()[I1{}])
+                              : (MPerBlock == ADramBlockWindowTmp{}.get_window_lengths()[I0{}] &&
+                                 KPerBlock == ADramBlockWindowTmp{}.get_window_lengths()[I1{}]),
+                          "A block window has incorrect lengths for defined ALayout!");
+            static_assert(is_b_row_major
+                              ? (KPerBlock == BDramBlockWindowTmp{}.get_window_lengths()[I0{}] &&
+                                 NPerBlock == BDramBlockWindowTmp{}.get_window_lengths()[I1{}])
+                              : (NPerBlock == BDramBlockWindowTmp{}.get_window_lengths()[I0{}] &&
+                                 KPerBlock == BDramBlockWindowTmp{}.get_window_lengths()[I1{}]),
+                          "B block window has incorrect lengths for defined BLayout!");
+
+            // ------------------------------------------------------------------------------------
+            // Definitions of all needed tiles
+
+            // A/B tiles in LDS
+            auto&& [a_lds_block, b_lds_block] = Base::GetABLdsTensorViews(p_smem);
+
+            // A DRAM tile window(s) for load
+            constexpr auto a_lds_load_tile_distr =
+                make_static_tile_distribution(BlockGemm::MakeABlockDistributionEncode());
+            constexpr auto b_lds_load_tile_distr =
+                make_static_tile_distribution(BlockGemm::MakeBBlockDistributionEncode());
+
+            // A DRAM tile window for load
+            // A LDS tile window for store
+            // A LDS tile for block GEMM
+            auto&& [a_tile_windows, a_copy_lds_window, a_lds_ld_window] = Base::GetAWindows(
+                a_dram_block_window_tmp[I0{}], a_lds_block, a_lds_load_tile_distr);
+
+            // B DRAM tile window for load
+            // B LDS tile window for store
+            // B LDS tile for block GEMM
+            auto&& [b_tile_windows, b_copy_lds_window, b_lds_ld_window] = Base::GetBWindows(
+                b_dram_block_window_tmp[I0{}], b_lds_block, b_lds_load_tile_distr);
+
+            // Block GEMM
+            auto block_gemm   = BlockGemm();
+            auto c_block_tile = block_gemm.MakeCBlockTile();
+
+            using ADramTileWindowStep = typename ADramBlockWindowTmp::BottomTensorIndex;
+            using BDramTileWindowStep = typename BDramBlockWindowTmp::BottomTensorIndex;
+
+            constexpr ADramTileWindowStep a_dram_tile_window_step =
+                is_a_col_major ? make_array(KPerBlock, 0) : make_array(0, KPerBlock);
+            constexpr BDramTileWindowStep b_dram_tile_window_step =
+                is_b_row_major ? make_array(KPerBlock, 0) : make_array(0, KPerBlock);
+
+            // -----------------------------------------------------------------------------------------
+            // Gemm pipeline start
+            // initialize C
+            tile_elementwise_inout([](auto& c) { c = 0; }, c_block_tile);
+
+            ignore = a_element_func;
+            ignore = b_element_func;
+
+            Base::GlobalPrefetchAsync(a_copy_lds_window, a_tile_windows, a_dram_tile_window_step);
+            Base::GlobalPrefetchAsync(b_copy_lds_window, b_tile_windows, b_dram_tile_window_step);
+
+            block_sync_lds_direct_load();
+
+            block_gemm.LocalPrefetch(
+                a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+
+            block_sync_lds();
+
+            // global read 1
+            Base::GlobalPrefetchAsync(a_copy_lds_window, a_tile_windows, a_dram_tile_window_step);
+            Base::GlobalPrefetchAsync(b_copy_lds_window, b_tile_windows, b_dram_tile_window_step);
+
+            __builtin_amdgcn_sched_barrier(0);
+
+            // main body
+            if constexpr(HasHotLoop)
+            {
+                index_t i = 0;
+                do
+                {
+                    __builtin_amdgcn_sched_barrier(0);
+                    asm volatile(";; HotLoop Start ;;");
+                    __builtin_amdgcn_sched_barrier(0);
+
+                    block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                    __builtin_amdgcn_sched_barrier(0);
+
+                    block_sync_lds_direct_load();
+
+                    block_gemm.LocalPrefetch(
+                        a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+
+                    block_sync_lds();
+
+                    Base::GlobalPrefetchAsync(
+                        a_copy_lds_window, a_tile_windows, a_dram_tile_window_step);
+                    Base::GlobalPrefetchAsync(
+                        b_copy_lds_window, b_tile_windows, b_dram_tile_window_step);
+
+                    i += 1;
+                    __builtin_amdgcn_sched_barrier(0);
+                    asm volatile(";; HotLoop End ;;");
+                    __builtin_amdgcn_sched_barrier(0);
+                } while(i < (num_loop - 1));
+            }
+
+            // tail
+            if constexpr(TailNum == TailNumber::Odd)
+            {
+                // Leak last MFMA block to epilogue region, cover the potential lds-shuffle
+                // latency
+                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+            }
+            else
+            {
+                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                __builtin_amdgcn_sched_barrier(0);
+
+                block_sync_lds_direct_load();
+
+                block_gemm.LocalPrefetch(
+                    a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+
+                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+            }
+            return c_block_tile;
+        }
+    };
+
+    template <>
+    struct PipelineImpl<GemmPipelineScheduler::Intrawave, false> : public PipelineImplBase
     {
         using Base = PipelineImplBase;
 
@@ -640,17 +805,25 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
                                    index_t num_loop,
                                    void* p_smem) const
     {
+        constexpr bool IsAsyncPipeline =
+            Problem::Async && AsDramBlockWindowTmp::size() == 1 && BsDramBlockWindowTmp::size() == 1
+            && std::is_same_v<AElementFunction, element_wise::PassThrough>
+            && std::is_same_v<BElementFunction, element_wise::PassThrough>
+            && std::is_same_v<ADataType, BDataType>
+                ? true
+                : false;
+
         const bool has_hot_loop = Base::BlockHasHotloop(num_loop);
         const auto tail_number  = Base::GetBlockLoopTailNum(num_loop);
 
         const auto RunPipeline = [&](auto hot_loop_, auto tail_num_) {
-            return PipelineImpl<Scheduler>{}.template operator()<hot_loop_.value, tail_num_.value>(
-                a_dram_block_window_tmp,
-                a_element_func,
-                b_dram_block_window_tmp,
-                b_element_func,
-                num_loop,
-                p_smem);
+            return PipelineImpl<Scheduler, IsAsyncPipeline>{}
+                .template operator()<hot_loop_.value, tail_num_.value>(a_dram_block_window_tmp,
+                                                                       a_element_func,
+                                                                       b_dram_block_window_tmp,
+                                                                       b_element_func,
+                                                                       num_loop,
+                                                                       p_smem);
         };
 
         return Base::TailHandler(RunPipeline, has_hot_loop, tail_number);
@@ -674,17 +847,23 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
                                    TailNumber tail_number,
                                    void* p_smem) const
     {
+        constexpr bool IsAsyncPipeline =
+            Problem::Async && AsDramBlockWindowTmp::size() == 1 && BsDramBlockWindowTmp::size() == 1
+            && std::is_same_v<ADataType, BDataType>
+                ? true
+                : false;
+
         const auto RunPipeline = [&](auto hot_loop_, auto tail_num_) {
             constexpr bool hot_loop    = hot_loop_.value;
             constexpr auto tail_num    = tail_num_.value;
             constexpr auto PassThrough = [](auto& e, const auto& x) { e = x; };
-            return PipelineImpl<Scheduler>{}.template operator()<hot_loop, tail_num>(
-                a_dram_block_window_tmp,
-                PassThrough,
-                b_dram_block_window_tmp,
-                PassThrough,
-                num_loop,
-                p_smem);
+            return PipelineImpl<Scheduler, IsAsyncPipeline>{}
+                .template operator()<hot_loop, tail_num>(a_dram_block_window_tmp,
+                                                         PassThrough,
+                                                         b_dram_block_window_tmp,
+                                                         PassThrough,
+                                                         num_loop,
+                                                         p_smem);
         };
         return Base::TailHandler(RunPipeline, has_hot_loop, tail_number);
     }

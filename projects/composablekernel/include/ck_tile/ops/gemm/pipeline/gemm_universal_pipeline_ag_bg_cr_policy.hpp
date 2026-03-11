@@ -99,6 +99,21 @@ struct UniversalGemmBasePolicy
         }
     }();
 
+    template <typename T>
+    using has_async_type = decltype(T::Async);
+
+    template <typename Problem>
+    static constexpr bool IsAsync_v = [] {
+        if constexpr(is_detected<has_async_type, Problem>{})
+        {
+            return Problem::Async;
+        }
+        else
+        {
+            return false;
+        }
+    }();
+
     static constexpr auto I0 = number<0>{};
     static constexpr auto I1 = number<1>{};
     static constexpr auto I2 = number<2>{};
@@ -132,6 +147,9 @@ struct UniversalGemmBasePolicy
         constexpr index_t MPerBlock = Problem::BlockGemmShape::kM;
         constexpr index_t KPerBlock = Problem::BlockGemmShape::kK;
 
+        constexpr auto ATileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getATileAccessPattern();
+
         if constexpr(is_a_load_tr<Problem>)
         {
             // TODO: better lds descriptor for performance
@@ -159,7 +177,7 @@ struct UniversalGemmBasePolicy
                                                           KPerBlock,
                                                           MPerBlock,
                                                           VecLoadSize,
-                                                          getATileAccessPattern()>;
+                                                          ATileAccessPattern>;
                 // AK1: the shuffled tile dstr has shape <X1, Y2>, use Y2 as AK1
                 constexpr auto AK1 = number<TileEncodingPattern::Y2>{};
                 constexpr auto AK0 = number<KPerBlock / AK1>{};
@@ -333,6 +351,9 @@ struct UniversalGemmBasePolicy
         constexpr index_t NPerBlock = Problem::BlockGemmShape::kN;
         constexpr index_t KPerBlock = Problem::BlockGemmShape::kK;
 
+        constexpr auto BTileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getBTileAccessPattern();
+
         if constexpr(is_b_load_tr<Problem>)
         {
             // TODO: better lds descriptor for performance
@@ -356,7 +377,7 @@ struct UniversalGemmBasePolicy
                                                           KPerBlock,
                                                           NPerBlock,
                                                           VecLoadSize,
-                                                          getBTileAccessPattern()>;
+                                                          BTileAccessPattern>;
                 // BK1: the shuffled tile dstr has shape <X1, Y2>, use Y2 as BK1
                 constexpr auto BK1 = number<TileEncodingPattern::Y2>{};
                 constexpr auto BK0 = number<KPerBlock / BK1>{};
@@ -717,31 +738,31 @@ struct UniversalGemmBasePolicy
         constexpr index_t VecLoadSize =
             Problem::FixedVectorSize ? Problem::VectorSizeA : GetVectorSizeA<Problem>();
         constexpr index_t NumWaveGroups = Problem::NumWaveGroups;
+        constexpr auto ATileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getATileAccessPattern();
 
         using ALayout = remove_cvref_t<
             std::tuple_element_t<number<0>{}, remove_cvref_t<typename Problem::AsLayoutTuple>>>;
         // Tile: MPerBlock X KPerBlock
         if constexpr(std::is_same_v<ALayout, ck_tile::tensor_layout::gemm::RowMajor>)
         {
-            using TileEncodingPattern =
-                tile_distribution_encoding_pattern_2d<BlockSize,
-                                                      MPerBlock,
-                                                      KPerBlock,
-                                                      VecLoadSize,
-                                                      getATileAccessPattern(),
-                                                      NumWaveGroups>;
+            using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
+                                                                              MPerBlock,
+                                                                              KPerBlock,
+                                                                              VecLoadSize,
+                                                                              ATileAccessPattern,
+                                                                              NumWaveGroups>;
             return TileEncodingPattern::make_2d_static_tile_distribution();
         }
         // Tile: KPerBlock X MPerBlock
         else
         {
-            using TileEncodingPattern =
-                tile_distribution_encoding_pattern_2d<BlockSize,
-                                                      KPerBlock,
-                                                      MPerBlock,
-                                                      VecLoadSize,
-                                                      getATileAccessPattern(),
-                                                      NumWaveGroups>;
+            using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
+                                                                              KPerBlock,
+                                                                              MPerBlock,
+                                                                              VecLoadSize,
+                                                                              ATileAccessPattern,
+                                                                              NumWaveGroups>;
             return TileEncodingPattern::make_2d_static_tile_distribution();
         }
     }
@@ -762,28 +783,30 @@ struct UniversalGemmBasePolicy
         constexpr index_t NumWaveGroups = Problem::NumWaveGroups;
         using BLayout                   = remove_cvref_t<
                               std::tuple_element_t<number<0>{}, remove_cvref_t<typename Problem::BsLayoutTuple>>>;
+
+        constexpr auto BTileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getBTileAccessPattern();
+
         // Tile: KPerBlock X NPerBlock
         if constexpr(std::is_same_v<BLayout, ck_tile::tensor_layout::gemm::RowMajor>)
         {
-            using TileEncodingPattern =
-                tile_distribution_encoding_pattern_2d<BlockSize,
-                                                      KPerBlock,
-                                                      NPerBlock,
-                                                      VecLoadSize,
-                                                      getBTileAccessPattern(),
-                                                      NumWaveGroups>;
+            using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
+                                                                              KPerBlock,
+                                                                              NPerBlock,
+                                                                              VecLoadSize,
+                                                                              BTileAccessPattern,
+                                                                              NumWaveGroups>;
             return TileEncodingPattern::make_2d_static_tile_distribution();
         }
         // Tile: NPerBlock X KPerBlock
         else
         {
-            using TileEncodingPattern =
-                tile_distribution_encoding_pattern_2d<BlockSize,
-                                                      NPerBlock,
-                                                      KPerBlock,
-                                                      VecLoadSize,
-                                                      getBTileAccessPattern(),
-                                                      NumWaveGroups>;
+            using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
+                                                                              NPerBlock,
+                                                                              KPerBlock,
+                                                                              VecLoadSize,
+                                                                              BTileAccessPattern,
+                                                                              NumWaveGroups>;
             return TileEncodingPattern::make_2d_static_tile_distribution();
         }
     }
@@ -799,12 +822,14 @@ struct UniversalGemmBasePolicy
         constexpr index_t KPerBlock     = Problem::BlockGemmShape::kK;
         constexpr index_t VecLoadSize   = GetVectorSizeA<Problem>();
         constexpr index_t NumWaveGroups = Problem::NumWaveGroups;
+        constexpr auto ATileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getATileAccessPattern();
 
         using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
                                                                           KPerBlock,
                                                                           MPerBlock,
                                                                           VecLoadSize,
-                                                                          getATileAccessPattern(),
+                                                                          ATileAccessPattern,
                                                                           NumWaveGroups>;
         return TileEncodingPattern::make_shuffled_2d_static_tile_distribution();
     }
@@ -821,11 +846,14 @@ struct UniversalGemmBasePolicy
         constexpr index_t VecLoadSize   = GetVectorSizeB<Problem>();
         constexpr index_t NumWaveGroups = Problem::NumWaveGroups;
 
+        constexpr auto BTileAccessPattern =
+            IsAsync_v<Problem> ? tile_distribution_pattern::warp_raked : getBTileAccessPattern();
+
         using TileEncodingPattern = tile_distribution_encoding_pattern_2d<BlockSize,
                                                                           KPerBlock,
                                                                           NPerBlock,
                                                                           VecLoadSize,
-                                                                          getBTileAccessPattern(),
+                                                                          BTileAccessPattern,
                                                                           NumWaveGroups>;
         return TileEncodingPattern::make_shuffled_2d_static_tile_distribution();
     }
