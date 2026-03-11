@@ -869,12 +869,12 @@ namespace rocRoller
             else
             {
                 elementNumberX
-                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(1))));
+                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(0))));
                 elementNumberY
-                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(0))));
+                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(1))));
 
-                graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberY});
-                graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberX});
+                graph.coordinates.addElement(PassThrough(), {iThrX}, {elementNumberX});
+                graph.coordinates.addElement(PassThrough(), {iThrY}, {elementNumberY});
 
                 graph.coordinates.addElement(PassThrough(), {nThrX}, {workitemX});
 
@@ -1317,15 +1317,15 @@ namespace rocRoller
             else
             {
                 elementNumberX
-                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(1))));
+                    = graph.coordinates.addElement(ElementNumber(0, literal(thrTile.sizes.at(0))));
                 elementNumberY
-                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(0))));
+                    = graph.coordinates.addElement(ElementNumber(1, literal(thrTile.sizes.at(1))));
 
                 connections.push_back(DC<ElementNumber>(elementNumberX, 0));
                 connections.push_back(DC<ElementNumber>(elementNumberY, 1));
 
-                graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrX});
-                graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrY});
+                graph.coordinates.addElement(PassThrough(), {elementNumberX}, {iThrX});
+                graph.coordinates.addElement(PassThrough(), {elementNumberY}, {iThrY});
 
                 auto workitemY
                     = graph.coordinates.addElement(Workitem(1, literal(workgroupSizes.at(1))));
