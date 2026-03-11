@@ -42,6 +42,7 @@ using enable_if_target_id_dummy_t = std::enable_if_t<is_dummy_target(CompilerTar
 // TODO: c++20 template <amdgcn_target_arch_id CompilerTarget>
 template <typename CompilerTarget>
 // clang-format off
+//               | A B C DataTypes      | MNK + WaveSize |AParams |BPar |CPar |
 struct amdgcn_mma<fp32_t, fp32_t, fp32_t, 8u, 8u, 8u, DummyCtrlFlags, CompilerTarget, MmaOpFamily::DENSE, enable_if_target_id_dummy_t<CompilerTarget>>
 : amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 8u, 8u, 8u, 64u, 1, 1, 1, 1, 1, 1, 1, DummyOpType, MmaOpFamily::DENSE>
 // clang-format on
