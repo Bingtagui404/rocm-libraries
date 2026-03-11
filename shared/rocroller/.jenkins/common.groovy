@@ -386,7 +386,7 @@ def runPerformanceCommand (platform, project)
                         --commit \$COMMIT_SHORT \\
                         --library_size 0 \\
                         --streamk 0 \\
-                        --comment "testing CI db insertion" || echo "Warning: Database insertion failed, continuing..."
+                        --comment "testing CI db insertion (PR)" || echo "Warning: Database insertion failed, continuing..."
                     set -e
 
                     # Archive the CSV file
@@ -588,7 +588,7 @@ def runPerformanceCommand (platform, project)
                         --commit \$COMMIT_SHORT \\
                         --library_size 0 \\
                         --streamk 0 \\
-                        --comment "testing CI db insertion" || echo "Warning: Database insertion failed, continuing..."
+                        --comment "testing CI db insertion (develop)" || echo "Warning: Database insertion failed, continuing..."
                     set -e
 
                     # Archive the CSV file
