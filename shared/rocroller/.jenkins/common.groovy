@@ -370,17 +370,22 @@ def runPerformanceCommand (platform, project)
 
                 if [ -n "\$CSV_FILE" ] && [ -f "\$CSV_FILE" ]; then
                     DB_LABEL="rocroller_perf_ci_pr${env.CHANGE_ID}"
+                    COMMIT_SHORT=\$(git rev-parse --short HEAD)
 
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
                     python gemmaiperf/playground/rocblas-bench_scripts/db_insert.py \\
-                        --db_host executive-dashboard.amd.com \\
-                        --db_port 3307 \\
-                        --db_name gemm_perf \\
-                        --db_user \$DB_USER \\
-                        --db_pass \$DB_PASS \\
-                        --db_label \$DB_LABEL \\
-                        --csv_file \$CSV_FILE \\
+                        --host executive-dashboard.amd.com \\
+                        --port 3307 \\
+                        --name gemm_perf \\
+                        --user \$DB_USER \\
+                        --pass \$DB_PASS \\
+                        --label \$DB_LABEL \\
+                        --csv \$CSV_FILE \\
+                        --arch ${platform.gpu} \\
+                        --commit \$COMMIT_SHORT \\
+                        --library_size 0 \\
+                        --streamk 0 \\
                         --comment "testing CI db insertion" || echo "Warning: Database insertion failed, continuing..."
                     set -e
 
@@ -567,17 +572,23 @@ def runPerformanceCommand (platform, project)
 
                 if [ -f "\$CSV_FILE" ]; then
                     DB_LABEL="rocroller_perf_ci_develop"
+                    COMMIT_SHORT=\$(git rev-parse --short HEAD)
 
                     # Try to insert into database, but don't fail if it doesn't work
                     set +e
                     python gemmaiperf/playground/rocblas-bench_scripts/db_insert.py \\
-                        --db_host executive-dashboard.amd.com \\
-                        --db_port 3307 \\
-                        --db_name gemm_perf \\
-                        --db_user \$DB_USER \\
-                        --db_pass \$DB_PASS \\
-                        --db_label \$DB_LABEL \\
-                        --csv_file \$CSV_FILE || echo "Warning: Database insertion failed, continuing..."
+                        --host executive-dashboard.amd.com \\
+                        --port 3307 \\
+                        --name gemm_perf \\
+                        --user \$DB_USER \\
+                        --pass \$DB_PASS \\
+                        --label \$DB_LABEL \\
+                        --csv \$CSV_FILE \\
+                        --arch ${platform.gpu} \\
+                        --commit \$COMMIT_SHORT \\
+                        --library_size 0 \\
+                        --streamk 0 \\
+                        --comment "testing CI db insertion" || echo "Warning: Database insertion failed, continuing..."
                     set -e
 
                     # Archive the CSV file
