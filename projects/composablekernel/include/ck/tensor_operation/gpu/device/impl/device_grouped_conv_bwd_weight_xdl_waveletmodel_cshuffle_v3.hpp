@@ -202,12 +202,14 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
     // Transfer cluster product must equal TileLoadThreadGroupSize (each load thread gets
     // exactly one slot in the cluster partitioning).
     static_assert(ABlockTransferThreadClusterLengths_K0_M_K1::At(0) *
-                  ABlockTransferThreadClusterLengths_K0_M_K1::At(1) *
-                  ABlockTransferThreadClusterLengths_K0_M_K1::At(2) == TileLoadThreadGroupSize,
+                          ABlockTransferThreadClusterLengths_K0_M_K1::At(1) *
+                          ABlockTransferThreadClusterLengths_K0_M_K1::At(2) ==
+                      TileLoadThreadGroupSize,
                   "A transfer cluster size must equal TileLoadThreadGroupSize");
     static_assert(BBlockTransferThreadClusterLengths_K0_N_K1::At(0) *
-                  BBlockTransferThreadClusterLengths_K0_N_K1::At(1) *
-                  BBlockTransferThreadClusterLengths_K0_N_K1::At(2) == TileLoadThreadGroupSize,
+                          BBlockTransferThreadClusterLengths_K0_N_K1::At(1) *
+                          BBlockTransferThreadClusterLengths_K0_N_K1::At(2) ==
+                      TileLoadThreadGroupSize,
                   "B transfer cluster size must equal TileLoadThreadGroupSize");
 
     using DeviceOp = DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3;
@@ -502,6 +504,38 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                 this->k_batch_ = split_k;
             }
 
+            // Create descriptors first (with hack flags temporarily set to false)
+            // so we can check if element space sizes match product of dimensions
+            const auto descs_initial =
+                conv_to_gemm_transformer
+                    .template MakeABCGridDescriptor_A_K0_M_K1_B_K0_N_K1_C_M_N<NDimSpatial>(
+                        Conv_N_,
+                        Conv_K_,
+                        Conv_C_,
+                        input_spatial_lengths_,
+                        filter_spatial_lengths_,
+                        output_spatial_lengths_,
+                        b_g_n_c_wis_strides,
+                        e_g_k_c_xs_strides,
+                        a_g_n_k_wos_strides,
+                        conv_filter_strides,
+                        conv_filter_dilations,
+                        input_left_pads,
+                        input_right_pads,
+                        this->k_batch_,
+                        false, // split_k_offset_b_hack (temporary)
+                        true); // use_full_batch_kindex=true for V1-compatible descriptors
+
+            split_k_offset_hack_ =
+                SplitKHackEligibility<NDimSpatial, InLayout, WeiLayout, OutLayout>::Check(
+                    descs_initial[I0],
+                    descs_initial[I1],
+                    this->k_batch_,
+                    Conv_N_,
+                    output_spatial_lengths_,
+                    K0PerBlock);
+
+            // Now create descriptors with the correct hack flag
             const auto descs =
                 conv_to_gemm_transformer
                     .template MakeABCGridDescriptor_A_K0_M_K1_B_K0_N_K1_C_M_N<NDimSpatial>(
@@ -518,43 +552,15 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                         conv_filter_dilations,
                         input_left_pads,
                         input_right_pads,
-                        this->k_batch_);
+                        this->k_batch_,
+                        split_k_offset_hack_,
+                        true); // use_full_batch_kindex=true for V1-compatible descriptors
 
             a_grid_desc_k0_m_k1_ = descs[I0];
             b_grid_desc_k0_n_k1_ = descs[I1];
             c_grid_desc_m_n_     = descs[I2];
 
-            const auto GemmM = c_grid_desc_m_n_.GetLength(I0);
-            const auto GemmN = c_grid_desc_m_n_.GetLength(I1);
-
-            const auto MBlock = GridwiseGemm64::CalculateMBlock(GemmM);
-            const auto NBlock = GridwiseGemm64::CalculateNBlock(GemmN);
-
-            c_grid_desc_mblock_mperblock_nblock_nperblock_ =
-                GridwiseGemm64::MakeCGridDescriptor_MBlock_MPerBlock_NBlock_NPerBlock(
-                    c_grid_desc_m_n_, MBlock, NBlock);
-
-            // split-K pointer offset
-            compute_ptr_offset_of_batch_.BatchStrideA_ =
-                a_g_n_k_wos_strides[0] * Conv_K_ / NumGroupsToMerge;
-            compute_ptr_offset_of_batch_.BatchStrideB_ =
-                b_g_n_c_wis_strides[0] * Conv_C_ / NumGroupsToMerge;
-            compute_ptr_offset_of_batch_.BatchStrideE_ =
-                e_g_k_c_xs_strides[0] *
-                ck::accumulate_n<long_index_t>(
-                    e_g_k_c_xs_lengths.begin() + 1, NDimSpatial + I2, 1, std::multiplies<>()) /
-                NumGroupsToMerge;
-
-            // split-K offset hack
-            split_k_offset_hack_ =
-                SplitKHackEligibility<NDimSpatial, InLayout, WeiLayout, OutLayout>::Check(
-                    a_grid_desc_k0_m_k1_,
-                    b_grid_desc_k0_n_k1_,
-                    this->k_batch_,
-                    Conv_N_,
-                    output_spatial_lengths_,
-                    K0PerBlock);
-
+            // Calculate stride using GetElementSpaceSize for accurate stride
             split_k_stride_a_ = a_grid_desc_k0_m_k1_.GetElementSpaceSize();
             if(split_k_offset_hack_)
                 split_k_stride_a_ /= this->k_batch_;
@@ -562,6 +568,26 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
             split_k_stride_b_ = b_grid_desc_k0_n_k1_.GetElementSpaceSize();
             if(split_k_offset_hack_)
                 split_k_stride_b_ /= this->k_batch_;
+
+            // A/B/C Batch Stride (multiply by NumGroupsToMerge for group merging)
+            compute_ptr_offset_of_batch_.BatchStrideA_ = a_g_n_k_wos_strides[0] * NumGroupsToMerge;
+            compute_ptr_offset_of_batch_.BatchStrideB_ = b_g_n_c_wis_strides[0] * NumGroupsToMerge;
+            compute_ptr_offset_of_batch_.BatchStrideC_ =
+                Conv_K_ * Conv_C_ *
+                std::accumulate(begin(filter_spatial_lengths_),
+                                end(filter_spatial_lengths_),
+                                index_t{1},
+                                std::multiplies<>{}) *
+                NumGroupsToMerge;
+
+            const index_t GemmM = a_grid_desc_k0_m_k1_.GetLength(I1);
+            const index_t GemmN = b_grid_desc_k0_n_k1_.GetLength(I1);
+
+            c_grid_desc_mblock_mperblock_nblock_nperblock_ =
+                GridwiseGemm64::MakeCGridDescriptor_MBlock_MPerBlock_NBlock_NPerBlock(
+                    c_grid_desc_m_n_,
+                    GridwiseGemm64::CalculateMBlock(GemmM),
+                    GridwiseGemm64::CalculateNBlock(GemmN));
         }
 
         const ADataType* p_a_grid_;
@@ -757,15 +783,7 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
     {
         // Both thread groups must be a whole number of hardware waves.
         const index_t warp_size = get_warp_size();
-        if(TileMathThreadGroupSize % warp_size != 0 ||
-           TileLoadThreadGroupSize % warp_size != 0)
-        {
-            return false;
-        }
-
-        // TODO: grouped convolutions (G>1) have a bug in batch offset computation.
-        // Reject until the group indexing is debugged and verified.
-        if(arg.Conv_G_ > 1)
+        if(TileMathThreadGroupSize % warp_size != 0 || TileLoadThreadGroupSize % warp_size != 0)
         {
             return false;
         }
