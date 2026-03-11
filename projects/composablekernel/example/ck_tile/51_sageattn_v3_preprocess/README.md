@@ -66,18 +66,36 @@ cmake --build . --target tile_example_sageattn_v3_preprocess -j$(nproc)
 | `-t` | fp16 | Input type: `fp16` or `fp32` |
 | `-w` | 5 | Warmup iterations |
 | `-r` | 50 | Measurement iterations |
-| `--csv` | off | Print CSV header + row |
+| `--csv` | off | Print CSV header + rows (one row per kernel + total) |
 
 ---
 
 ## Output
 
+Benchmark mode always reports a per-kernel breakdown plus a total (all four kernels
+timed end-to-end):
+
 ```
-dtype=fp16  B=1 H=32 Sq=1024 Sk=4096 D=128  |  0.412 ms  1234.5 GB/s  (total HBM 509 MB)
+dtype=fp16  B=1 H=32 Sq=1024 Sk=4096 D=128
+  [0] KMean            0.042 ms    123.4 GB/s  (2048 MB)
+  [1] Prep Q/K         0.210 ms    567.8 GB/s  (... MB)
+  [1b] Prep V          0.089 ms    234.5 GB/s  (... MB)
+  [2] delta_s GEMM     0.180 ms    456.7 GB/s  (... MB)
+  --------------------------------------------------
+  Total                0.521 ms    987.6 GB/s  (... MB)
 ```
 
-HBM bandwidth accounts for all reads (Q, K, V) and writes (Q_hat, Q_scale, q_mean,
-K_hat, K_scale, K', V_hat, V_scale, delta_s).
+### HBM accounting per kernel
+
+| Kernel | Reads | Writes |
+|--------|-------|--------|
+| [0] KMean | K [B,H,Sk,D] | k_mean [B,H,D] |
+| [1] Prep Q/K | Q [B,H,Sq,D], K [B,H,Sk,D] (2nd pass), k_mean | q_mean, q_hat, q_scale, K', k_hat, k_scale |
+| [1b] Prep V | V [B,H,Sk,D] | v_hat [B,H,D,Sk/2], v_scale [B,H,D,Sk/G] |
+| [2] delta_s GEMM | q_mean, K' | delta_s [B,H,T_q,Sk] float32 |
+
+Note: K is read twice (KMean + Preprocess). q_mean and K' are written then re-read by
+the GEMM. Each kernel is timed independently, with the full pipeline used for warmup.
 
 ---
 

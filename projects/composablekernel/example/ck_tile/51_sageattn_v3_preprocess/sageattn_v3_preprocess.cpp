@@ -1,9 +1,9 @@
 // Copyright (c) Advanced Micro Devices, Inc., or its affiliates.
 // SPDX-License-Identifier: MIT
 
-// Benchmark / correctness verifier for sageattn_v3_preprocess_run() —
+// Benchmark / correctness verifier for sageattn_v3_preprocess_run() --
 // the four-kernel SA3 preprocessing pipeline:
-//   k_mean → preprocess Q/K → V tile-transpose → delta_s GEMM
+//   k_mean -> preprocess Q/K -> V tile-transpose -> delta_s GEMM
 //
 // Usage:
 //   ./bin/tile_example_sageattn_v3_preprocess [options]
@@ -16,29 +16,28 @@
 //   -t <str>    input type: fp16 | fp32      (default fp16)
 //   -w <int>    warmup iterations            (default 5)
 //   -r <int>    measurement iterations       (default 50)
-//   --csv       print header+row in CSV format
+//   --csv       print header+rows in CSV format
 //   --verify    run correctness check against CPU reference instead of bench
 //
-// HBM traffic counted (one-way, reads+writes):
+// Benchmark mode reports per-kernel HBM bandwidth breakdown.
+// Each kernel is timed independently; a total (all four kernels) is also shown.
 //
-//   Kernel 0 (KMean):
-//     Read:  K  [B,H,Sk,D]                         -- first K pass
-//     Write: k_mean [B,H,D]                         -- tiny
+//   [0] KMean:
+//     Read:  K  [B,H,Sk,D]
+//     Write: k_mean [B,H,D]
 //
-//   Kernel 1 (Preprocess Q/K):
-//     Read:  Q  [B,H,Sq,D]
-//            K  [B,H,Sk,D]                          -- second K pass
-//            k_mean [B,H,D]                         -- tiny
+//   [1] Preprocess Q/K:
+//     Read:  Q [B,H,Sq,D], K [B,H,Sk,D] (second pass), k_mean [B,H,D]
 //     Write: q_mean [B,H,T_q,D], q_hat [B,H,Sq,D/2], q_scale [B,H,Sq,D/G]
-//            K'     [B,H,Sk,D],  k_hat [B,H,Sk,D/2], k_scale [B,H,Sk,D/G]
+//            K' [B,H,Sk,D], k_hat [B,H,Sk,D/2], k_scale [B,H,Sk,D/G]
 //
-//   Kernel 1b (V Preprocess):
-//     Read:  V  [B,H,Sk,D]
+//   [1b] V Preprocess:
+//     Read:  V [B,H,Sk,D]
 //     Write: v_hat [B,H,D,Sk/2], v_scale [B,H,D,Sk/G]
 //
-//   Kernel 2 (delta_s GEMM) -- excluded when --no-delta-s:
+//   [2] delta_s GEMM:
 //     Read:  q_mean [B,H,T_q,D], K' [B,H,Sk,D]
-//     Write: delta_s [B,H,T_q,Sk] (float32)
+//     Write: delta_s [B,H,T_q,Sk] float32
 //
 //   where G=32 (MXFP4 scale granularity), T_q = ceil(Sq/128).
 
@@ -87,7 +86,16 @@ struct BenchArgs
     int repeat        = 50;
     bool csv          = false;
     bool verify       = false;
-    bool no_delta_s   = false; // exclude delta_s GEMM from BW accounting
+};
+
+// Per-kernel timing result returned by run_benchmark.
+struct BenchResult
+{
+    float kmean_ms        = 0.0f; // Kernel 0: KMean
+    float preprocess_ms   = 0.0f; // Kernel 1: Q/K preprocess
+    float v_preprocess_ms = 0.0f; // Kernel 1b: V preprocess
+    float delta_s_ms      = 0.0f; // Kernel 2: delta_s GEMM
+    float total_ms        = 0.0f; // All four kernels timed end-to-end
 };
 
 static BenchArgs parse_args(int argc, char** argv)
@@ -116,8 +124,6 @@ static BenchArgs parse_args(int argc, char** argv)
             a.csv = true;
         else if(s == "--verify")
             a.verify = true;
-        else if(s == "--no-delta-s")
-            a.no_delta_s = true;
         else if(s == "--help" || s == "-?")
         {
             std::cout << "Usage: tile_example_sageattn_v3_preprocess [options]\n"
@@ -130,8 +136,7 @@ static BenchArgs parse_args(int argc, char** argv)
                          "  -w <warmup>     default 5\n"
                          "  -r <repeat>     default 50\n"
                          "  --csv           CSV output\n"
-                         "  --verify        correctness check vs CPU reference\n"
-                         "  --no-delta-s    exclude delta_s GEMM from BW accounting\n";
+                         "  --verify        correctness check vs CPU reference\n";
             std::exit(0);
         }
     }
@@ -143,7 +148,7 @@ static BenchArgs parse_args(int argc, char** argv)
 // ---------------------------------------------------------------------------
 
 template <typename InputT, int kRows, int kCols>
-float run_benchmark(const BenchArgs& a)
+BenchResult run_benchmark(const BenchArgs& a)
 {
     const int b  = a.batch;
     const int h  = a.nhead;
@@ -251,30 +256,42 @@ float run_benchmark(const BenchArgs& a)
     HIP_CHECK(hipEventCreate(&ev_start));
     HIP_CHECK(hipEventCreate(&ev_stop));
 
-    auto run_once = [&]() {
-        ck_tile::sageattn_v3_preprocess_run<InputT, kRows, kCols>(
-            hargs, delta_s_ptr, k_mean_ptr, k_prime_ptr, k_partial_ptr, counter_ptr, stream);
+    using namespace ck_tile;
+
+    auto run_stages = [&](uint32_t stages) {
+        sageattn_v3_preprocess_run<InputT, kRows, kCols>(
+            hargs, delta_s_ptr, k_mean_ptr, k_prime_ptr, k_partial_ptr, counter_ptr, stream,
+            stages);
     };
 
-    // Warmup
+    // Full pipeline warmup (populates k_mean, k_prime so per-stage timing is cache-warm).
     for(int i = 0; i < a.warmup; ++i)
-        run_once();
+        run_stages(kSA3StageAll);
     HIP_CHECK(hipStreamSynchronize(stream));
 
-    // Timed loop
-    HIP_CHECK(hipEventRecord(ev_start, stream));
-    for(int i = 0; i < a.repeat; ++i)
-        run_once();
-    HIP_CHECK(hipEventRecord(ev_stop, stream));
-    HIP_CHECK(hipEventSynchronize(ev_stop));
+    // Helper: time one stage mask, return average ms.
+    auto time_ms = [&](uint32_t stage_mask) -> float {
+        HIP_CHECK(hipEventRecord(ev_start, stream));
+        for(int i = 0; i < a.repeat; ++i)
+            run_stages(stage_mask);
+        HIP_CHECK(hipEventRecord(ev_stop, stream));
+        HIP_CHECK(hipEventSynchronize(ev_stop));
+        float ms = 0.0f;
+        HIP_CHECK(hipEventElapsedTime(&ms, ev_start, ev_stop));
+        return ms / static_cast<float>(a.repeat);
+    };
 
-    float total_ms = 0.0f;
-    HIP_CHECK(hipEventElapsedTime(&total_ms, ev_start, ev_stop));
+    BenchResult res;
+    res.total_ms        = time_ms(kSA3StageAll);
+    res.kmean_ms        = time_ms(kSA3StageKMean);
+    res.preprocess_ms   = time_ms(kSA3StagePreprocess);
+    res.v_preprocess_ms = time_ms(kSA3StageVPreprocess);
+    res.delta_s_ms      = time_ms(kSA3StageDeltaS);
 
     HIP_CHECK(hipEventDestroy(ev_start));
     HIP_CHECK(hipEventDestroy(ev_stop));
 
-    return total_ms / static_cast<float>(a.repeat);
+    return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -770,10 +787,10 @@ bool run_verify(const BenchArgs& a)
 }
 
 // ---------------------------------------------------------------------------
-// Print one benchmark result row
+// Print benchmark result with per-kernel breakdown
 // ---------------------------------------------------------------------------
 
-static void print_result(const BenchArgs& a, float ave_ms, bool csv_mode)
+static void print_result(const BenchArgs& a, const BenchResult& res, bool csv_mode)
 {
     const int b           = a.batch;
     const int h           = a.nhead;
@@ -786,58 +803,77 @@ static void print_result(const BenchArgs& a, float ave_ms, bool csv_mode)
 
     const std::size_t elem_bytes = (a.dtype == "fp16") ? sizeof(ck_tile::fp16_t) : sizeof(float);
 
-    // ---- HBM bytes ----
-    // Kernel 0: KMean -- reads K once, writes k_mean (tiny)
-    const std::size_t read_K_0      = std::size_t(b) * h * sk * hd * elem_bytes;
-    const std::size_t write_K_mean  = std::size_t(b) * h * hd * elem_bytes; // tiny
+    // ---- HBM bytes per kernel ----
+    // Kernel 0: KMean
+    const std::size_t bytes_kmean = std::size_t(b) * h * sk * hd * elem_bytes // read K
+                                    + std::size_t(b) * h * hd * elem_bytes;   // write k_mean
 
-    // Kernel 1: Preprocess Q/K -- reads Q, K again, k_mean (tiny)
-    const std::size_t read_Q        = std::size_t(b) * h * sq * hd * elem_bytes;
-    const std::size_t read_K_1      = std::size_t(b) * h * sk * hd * elem_bytes;
-    const std::size_t write_Q_hat   = std::size_t(b) * h * sq * (hd / 2);
-    const std::size_t write_Q_scale = std::size_t(b) * h * sq * (hd / kG);
+    // Kernel 1: Q/K preprocess
     const std::size_t write_Q_mean  = std::size_t(b) * h * num_q_tiles * hd * elem_bytes;
-    const std::size_t write_K_hat   = std::size_t(b) * h * sk * (hd / 2);
-    const std::size_t write_K_scale = std::size_t(b) * h * sk * (hd / kG);
     const std::size_t write_K_prime = std::size_t(b) * h * sk * hd * elem_bytes;
+    const std::size_t bytes_preprocess =
+        std::size_t(b) * h * sq * hd * elem_bytes       // read Q
+        + std::size_t(b) * h * sk * hd * elem_bytes     // read K (second pass)
+        + std::size_t(b) * h * hd * elem_bytes          // read k_mean
+        + write_Q_mean                                   // write q_mean
+        + std::size_t(b) * h * sq * (hd / 2)            // write q_hat
+        + std::size_t(b) * h * sq * (hd / kG)           // write q_scale
+        + write_K_prime                                  // write K'
+        + std::size_t(b) * h * sk * (hd / 2)            // write k_hat
+        + std::size_t(b) * h * sk * (hd / kG);          // write k_scale
 
-    // Kernel 1b: V Preprocess
-    const std::size_t read_V        = std::size_t(b) * h * sk * hd * elem_bytes;
-    const std::size_t write_V_hat   = std::size_t(b) * h * hd * (sk / 2);
-    const std::size_t write_V_scale = std::size_t(b) * h * hd * (sk / kG);
+    // Kernel 1b: V preprocess
+    const std::size_t bytes_v_preprocess =
+        std::size_t(b) * h * sk * hd * elem_bytes       // read V
+        + std::size_t(b) * h * hd * (sk / 2)            // write v_hat
+        + std::size_t(b) * h * hd * (sk / kG);          // write v_scale
 
-    // Kernel 2: delta_s GEMM -- reads q_mean and K' back from HBM, writes delta_s
-    const std::size_t read_Q_mean_gemm  = write_Q_mean;
-    const std::size_t read_K_prime_gemm = write_K_prime;
-    const std::size_t write_delta_s     = std::size_t(b) * h * num_q_tiles * sk * sizeof(float);
+    // Kernel 2: delta_s GEMM
+    const std::size_t bytes_delta_s =
+        write_Q_mean                                              // read q_mean
+        + write_K_prime                                           // read K'
+        + std::size_t(b) * h * num_q_tiles * sk * sizeof(float); // write delta_s
 
-    // Preprocess-only total (memory-bound portion, no GEMM reads/write)
-    const std::size_t total_preprocess = read_K_0 + write_K_mean + read_Q + read_K_1 +
-                                         write_Q_hat + write_Q_scale + write_Q_mean +
-                                         write_K_hat + write_K_scale + write_K_prime +
-                                         read_V + write_V_hat + write_V_scale;
+    const std::size_t bytes_total =
+        bytes_kmean + bytes_preprocess + bytes_v_preprocess + bytes_delta_s;
 
-    // Full total including delta_s GEMM traffic
-    const std::size_t total_bytes =
-        a.no_delta_s ? total_preprocess
-                     : (total_preprocess + read_Q_mean_gemm + read_K_prime_gemm + write_delta_s);
-
-    const double gb_per_s = static_cast<double>(total_bytes) / 1.0e6 / ave_ms;
+    auto gbs = [](std::size_t bytes, float ms) -> double {
+        return static_cast<double>(bytes) / 1.0e6 / static_cast<double>(ms);
+    };
 
     if(csv_mode)
     {
-        std::cout << a.dtype << "," << b << "," << h << "," << sq << "," << sk << "," << hd << ","
-                  << (a.no_delta_s ? 1 : 0) << "," << std::fixed << std::setprecision(3) << ave_ms
-                  << "," << std::setprecision(1) << gb_per_s << "\n";
+        // Header printed once by caller.
+        // One row per kernel + a total row.
+        auto row = [&](const char* kernel, float ms, std::size_t bytes) {
+            std::cout << a.dtype << "," << b << "," << h << "," << sq << "," << sk << "," << hd
+                      << "," << kernel << "," << std::fixed << std::setprecision(3) << ms << ","
+                      << std::setprecision(1) << gbs(bytes, ms) << "\n";
+        };
+        row("kmean",       res.kmean_ms,        bytes_kmean);
+        row("preprocess",  res.preprocess_ms,   bytes_preprocess);
+        row("v_preprocess",res.v_preprocess_ms, bytes_v_preprocess);
+        row("delta_s_gemm",res.delta_s_ms,      bytes_delta_s);
+        row("total",       res.total_ms,        bytes_total);
     }
     else
     {
+        // Header line
         std::cout << "dtype=" << a.dtype << "  B=" << b << " H=" << h << " Sq=" << sq
-                  << " Sk=" << sk << " D=" << hd
-                  << (a.no_delta_s ? "  [no-delta-s]" : "") << "  |  " << std::fixed
-                  << std::setprecision(3) << ave_ms << " ms"
-                  << "  " << std::setprecision(1) << gb_per_s << " GB/s"
-                  << "  (total HBM " << std::setprecision(0) << total_bytes / 1.0e6 << " MB)\n";
+                  << " Sk=" << sk << " D=" << hd << "\n";
+
+        auto line = [&](const char* name, float ms, std::size_t bytes) {
+            std::cout << "  " << std::left << std::setw(16) << name << std::right << std::fixed
+                      << std::setprecision(3) << std::setw(8) << ms << " ms"
+                      << "  " << std::setprecision(1) << std::setw(8) << gbs(bytes, ms) << " GB/s"
+                      << "  (" << std::setprecision(0) << bytes / 1.0e6 << " MB)\n";
+        };
+        line("[0] KMean",        res.kmean_ms,        bytes_kmean);
+        line("[1] Prep Q/K",     res.preprocess_ms,   bytes_preprocess);
+        line("[1b] Prep V",      res.v_preprocess_ms, bytes_v_preprocess);
+        line("[2] delta_s GEMM", res.delta_s_ms,      bytes_delta_s);
+        std::cout << "  " << std::string(50, '-') << "\n";
+        line("Total",            res.total_ms,        bytes_total);
     }
 }
 
@@ -845,7 +881,7 @@ static void print_result(const BenchArgs& a, float ave_ms, bool csv_mode)
 // Dispatch: (dtype, hdim) → template instantiation
 // ---------------------------------------------------------------------------
 
-static float dispatch_bench(const BenchArgs& a)
+static BenchResult dispatch_bench(const BenchArgs& a)
 {
     if(a.dtype == "fp16")
     {
@@ -984,12 +1020,12 @@ int main(int argc, char** argv)
     // Benchmark mode
     // ------------------------------------------------------------------ //
     if(a.csv)
-        std::cout << "dtype,batch,nhead,seqlen_q,seqlen_k,hdim,no_delta_s,ms,GB_per_s\n";
+        std::cout << "dtype,batch,nhead,seqlen_q,seqlen_k,hdim,kernel,ms,GB_per_s\n";
 
     if(explicit_shape)
     {
-        float ms = dispatch_bench(a);
-        print_result(a, ms, a.csv);
+        BenchResult res = dispatch_bench(a);
+        print_result(a, res, a.csv);
     }
     else
     {
@@ -1004,8 +1040,10 @@ int main(int argc, char** argv)
                 cur.seqlen_k  = sk;
                 cur.hdim      = hd;
                 cur.dtype     = dtype;
-                float ms      = dispatch_bench(cur);
-                print_result(cur, ms, a.csv);
+                BenchResult res = dispatch_bench(cur);
+                print_result(cur, res, a.csv);
+                if(!a.csv)
+                    std::cout << "\n";
             }
         }
     }

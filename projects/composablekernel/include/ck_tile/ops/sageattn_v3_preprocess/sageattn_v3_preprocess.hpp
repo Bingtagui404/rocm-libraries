@@ -13,6 +13,14 @@
 
 namespace ck_tile {
 
+// Stage bitmask for sageattn_v3_preprocess_run.
+// Each bit enables one kernel launch; default (kSA3StageAll) runs all four.
+static constexpr uint32_t kSA3StageKMean       = 1u << 0; // Launch 0: k_mean kernel
+static constexpr uint32_t kSA3StagePreprocess   = 1u << 1; // Launch 1: Q/K preprocess
+static constexpr uint32_t kSA3StageVPreprocess  = 1u << 2; // Launch 1b: V preprocess
+static constexpr uint32_t kSA3StageDeltaS       = 1u << 3; // Launch 2: delta_s GEMM
+static constexpr uint32_t kSA3StageAll          = 0xFu;    // All stages
+
 // ============================================================================
 // sageattn_v3_preprocess_run
 //
@@ -143,7 +151,9 @@ void sageattn_v3_preprocess_run(
     float* k_mean_partial_buf, // [batch, nhead, hdim]          float  (scratch)
     int32_t* counter_buf,      // [batch, nhead]                int32  (scratch)
     // ---- stream ----
-    hipStream_t stream)
+    hipStream_t stream,
+    // ---- optional: select which kernel stages to launch ----
+    uint32_t stages = kSA3StageAll)
 {
     const index_t batch    = prep_args.batch;
     const index_t nhead    = prep_args.nhead;
@@ -161,6 +171,8 @@ void sageattn_v3_preprocess_run(
     // ------------------------------------------------------------------ //
     // Launch 0: k_mean kernel
     // ------------------------------------------------------------------ //
+    if(stages & kSA3StageKMean)
+    {
     (void)hipMemsetAsync(k_mean_partial_buf, 0, batch * nhead * hdim * sizeof(float), stream);
     (void)hipMemsetAsync(counter_buf, 0, batch * nhead * sizeof(int32_t), stream);
 
@@ -191,10 +203,12 @@ void sageattn_v3_preprocess_run(
         stream_config sc{stream};
         launch_and_check(sc, make_kernel(KMeanKernel{}, grids, blocks, smem, kargs));
     }
+    } // end if(stages & kSA3StageKMean)
 
     // ------------------------------------------------------------------ //
     // Launch 1: preprocess kernel (Q + K')
     // ------------------------------------------------------------------ //
+    if(stages & kSA3StagePreprocess)
     {
         using PrepKernel = SageAttnV3PreprocessKernel<InputT, kRows, kCols>;
         using PrepKargs  = typename PrepKernel::Kargs;
@@ -262,11 +276,12 @@ void sageattn_v3_preprocess_run(
 
         stream_config sc{stream};
         launch_and_check(sc, make_kernel(PrepKernel{}, grids, blocks, smem, kargs));
-    }
+    } // end if(stages & kSA3StagePreprocess)
 
     // ------------------------------------------------------------------ //
     // Launch 1b: V preprocess — LDS-based tile transpose + MXFP4 quantize
     // ------------------------------------------------------------------ //
+    if(stages & kSA3StageVPreprocess)
     {
         using VKernel = SageAttnV3VPreprocessKernel<InputT>;
         using VKargs  = typename VKernel::Kargs;
@@ -295,11 +310,12 @@ void sageattn_v3_preprocess_run(
 
         stream_config sc{stream};
         launch_and_check(sc, make_kernel(VKernel{}, grids, blocks, smem, kargs));
-    }
+    } // end if(stages & kSA3StageVPreprocess)
 
     // ------------------------------------------------------------------ //
     // Launch 2: batched GEMM  delta_s = q_mean @ K'^T
     // ------------------------------------------------------------------ //
+    if(stages & kSA3StageDeltaS)
     {
         using ALayout = tensor_layout::gemm::RowMajor;
         // K' stored naturally as [seqlen_k=N, hdim=K] row-major → ColMajor B[K, N] → K'^T ✓
