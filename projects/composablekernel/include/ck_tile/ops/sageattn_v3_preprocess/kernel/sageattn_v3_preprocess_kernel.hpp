@@ -394,30 +394,25 @@ struct SageAttnV3KMeanKernel
 // Grid:      (seqlen_k / (kVGroup * kVGroupsPerBlock), hdim / kVHdimTile, batch * nhead)
 // BlockSize: kVGroup * kVGroupsPerBlock = 128 threads = 2 WAVE64 wavefronts
 //
-// Three-phase pipeline:
-//   Phase 1: Load V tile [kVGroupsPerBlock*kVGroup, kVHdimTile] from global -> smem_v
-//            (coalesced reads, transposed into smem for column access in Phase 2).
-//   Phase 2: Quantize each (d_local, grp_local) group from smem_v -> FP4 result.
-//            Stage scale (1 byte) and hat (kVGroup/2 bytes) into smem_fp4/smem_scale.
-//            Staging layout: [d_local][grp_local] so Phase 3 gets coalesced layout.
-//   Phase 3: Write-out with thread remapping:
+// Four-phase pipeline (looped single-group smem_v for high occupancy):
+//   Loop over grp_iter = 0 .. kVGroupsPerBlock - 1:
+//     Phase 1: Load ONE group's V tile [kVGroup, kVHdimTile] from global -> smem_v
+//              (smem_v reused each iteration; only 1 group's worth of LDS needed).
+//     Phase 2: Quantize from smem_v -> stage into smem_fp4[grp_iter][...] /
+//              smem_scale[grp_iter][...].  No sync needed after stage since each
+//              thread writes its own exclusive slot.
+//   After loop:
+//   Phase 3: barrier (all groups staged).
+//   Phase 4: Write-out with thread remapping (coalesced):
 //            tid -> (write_d_idx = tid/kVGroupsPerBlock, write_g_idx = tid%kVGroupsPerBlock)
-//            Consecutive threads share d_idx, differ in g_idx by 1:
-//              -> write to v_hat[d_global * stride + g_abs*16], g_abs consecutive
-//              -> kVGroupsPerBlock=4 consecutive threads write 4*16=64 contiguous bytes
-//              -> 8x reduction in L2 cache-line misses vs. the scatter write pattern.
-//
-// kVGroupsPerBlock=4:
-//   kBlockSize = 32 * 4 = 128 threads = 2 WAVE64 wavefronts.
-//   Phase 2 assigns 1 (d_local, grp_local) pair per thread (128 pairs = 128 threads).
-//   Phase 3 assigns 1 (d_idx, g_idx) pair per thread (kVHdimTile * kVGroupsPerBlock = 128).
-//   seqlen_k_padded must be divisible by kVGroup * kVGroupsPerBlock = 128.
+//            Consecutive threads share d_idx, differ in g_idx -> 16-byte stride writes.
 //
 // LDS layout (bytes, kVGroupsPerBlock=4, kVHdimTile=32):
-//   smem_v:     4 * 32 * 33 * 4 = 16896  (float32, +1 pad per row, bank-conflict free)
-//   smem_fp4:  32 *  4 * 16     = 2048   (uint8, packed FP4 staging buffer)
-//   smem_scale: 32 *  4          =  128   (uint8, e8m0 scale staging buffer)
-//   Total: 19072 bytes < 64 KB.
+//   smem_v:     1 * 32 * 33 * 4 = 4224  (float32, 1 group at a time, +1 pad/row)
+//   smem_fp4:  32 *  4 * 16     = 2048  (all groups staged)
+//   smem_scale: 32 *  4          =  128  (all groups staged)
+//   Total: 6400 bytes  (vs. 19072 previously)
+//   -> 10 CTAs per CU (LDS-limited) vs. 3 previously => 3.3x occupancy improvement.
 //
 // smem_v bank conflict analysis (gfx950, 32 banks x 4 bytes):
 //   Row stride = kVHdimTile + 1 = 33 floats.
@@ -484,12 +479,12 @@ struct SageAttnV3VPreprocessKernel
 
     CK_TILE_HOST static constexpr dim3 BlockSize() { return dim3(kBlockSize); }
 
-    // LDS: smem_v + smem_fp4 staging + smem_scale staging.
-    //   smem_v:     kVGroupsPerBlock * kVGroup * (kVHdimTile + kLDSPad) * 4 bytes
-    //   smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup / 2) bytes
-    //   smem_scale: kVHdimTile * kVGroupsPerBlock bytes
+    // LDS: smem_v (1 group at a time, reused) + smem_fp4/scale staging (all groups).
+    //   smem_v:     1 * kVGroup * (kVHdimTile + kLDSPad) * 4 bytes  [reused per iteration]
+    //   smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup / 2) bytes  [all groups]
+    //   smem_scale: kVHdimTile * kVGroupsPerBlock bytes                   [all groups]
     static constexpr index_t kSmemVBytes =
-        kVGroupsPerBlock * kVGroup * (kVHdimTile + kLDSPad) * static_cast<index_t>(sizeof(float));
+        kVGroup * (kVHdimTile + kLDSPad) * static_cast<index_t>(sizeof(float));
     static constexpr index_t kSmemFp4Bytes  = kVHdimTile * kVGroupsPerBlock * (kVGroup / 2);
     static constexpr index_t kSmemScaleBytes = kVHdimTile * kVGroupsPerBlock;
 
@@ -506,80 +501,97 @@ struct SageAttnV3VPreprocessKernel
         const index_t batch_idx = bh_idx / kargs.nhead;
         const index_t tid       = get_thread_id();
 
-        const index_t grp_local  = tid / kVGroup;
+        // row_local: element index within a V-group (0..kVGroup-1), used by Phase 2.
+        // g_abs_base: base V-group index (in units of kVGroup Sk-elements) for this CTA.
         const index_t row_local  = tid % kVGroup;
         const index_t g_abs_base = blockIdx.x * kVGroupsPerBlock;
-        const index_t g_abs      = g_abs_base + grp_local;
 
         const index_t col_start = d_idx * kVHdimTile;
 
-        // Smem layout: [smem_v | smem_fp4 | smem_scale]
+        // Smem layout: [smem_v (1 group, reused) | smem_fp4 (all groups) | smem_scale (all)]
+        // smem_v:     kVGroup * (kVHdimTile + kLDSPad) * 4 = 4224 bytes
+        // smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup/2) = 2048 bytes
+        // smem_scale: kVHdimTile * kVGroupsPerBlock = 128 bytes
+        // Total: 6400 bytes -> 10 CTAs/CU vs 3 CTAs/CU (19072 bytes) previously.
         __shared__ char smem_raw[GetSmemSize()];
         auto* smem_v =
             reinterpret_cast<float (*)[kVGroup][kVHdimTile + kLDSPad]>(smem_raw);
         uint8_t* smem_fp4   = reinterpret_cast<uint8_t*>(smem_raw + kSmemVBytes);
         uint8_t* smem_scale = smem_fp4 + kSmemFp4Bytes;
 
-        // ---- Phase 1: Load V -> smem_v (coalesced reads, LDS transpose) ----
         const InputT* v_base =
             kargs.v_ptr + batch_idx * kargs.batch_stride_v + head_idx * kargs.nhead_stride_v;
-        const index_t row = g_abs * kVGroup + row_local;
 
-        if(row < kargs.seqlen_k_real)
+        constexpr float rcp_dst_max  = 1.0f / 6.0f;
+        constexpr index_t kVec       = 8;
+        static_assert(kVHdimTile % kVec == 0, "kVHdimTile must be divisible by 8");
+        // With kVHdimTile=32 and kVec=8: kVGroupsPerBlock=4 D-packs per row.
+        // load_row covers kVGroup=32 Sk positions; load_d_pack covers D dimension.
+        // kBlockSize=128: threads 0..31 = d_pack 0, threads 32..63 = d_pack 1, etc.
+        // => ALL threads participate in load (fully utilized, unlike my_iter=1/4 approach).
+        const index_t load_row    = tid % kVGroup;       // 0..31: Sk element within group
+        const index_t load_d_pack = tid / kVGroup;       // 0..3: which D-pack (8 fp16 each)
+        const index_t load_d_base = load_d_pack * kVec;  // 0, 8, 16, 24
+
+        // Loop over groups: smem_v (4224 bytes) reused each iteration.
+        // => 10 CTAs/CU vs. 3 previously (3.3x more occupancy).
+        for(index_t grp_iter = 0; grp_iter < kVGroupsPerBlock; grp_iter++)
         {
-            const InputT* v_row = v_base + row * kargs.hdim + col_start;
-            constexpr index_t kVec = 8;
-            static_assert(kVHdimTile % kVec == 0, "kVHdimTile must be divisible by 8");
-            for(index_t v = 0; v < kVHdimTile / kVec; v++)
+            // ---- Phase 1: All 128 threads load one group's V tile -> smem_v ----
+            // Thread tid loads smem_v[0][load_row][load_d_base..load_d_base+7]
+            // from V[(g_abs_base+grp_iter)*kVGroup + load_row, col_start + load_d_base..].
+            // Consecutive threads with same load_row, adjacent load_d_pack access
+            // consecutive 8-fp16 blocks in the same V row: 4 threads * 16B = 64B = 1 CL.
+            const index_t sk_row = (g_abs_base + grp_iter) * kVGroup + load_row;
+
+            if(sk_row < kargs.seqlen_k_real)
             {
+                const InputT* v_row = v_base + sk_row * kargs.hdim + col_start + load_d_base;
                 float tmp[kVec];
-                ck_tile::load_vec8(v_row + v * kVec, tmp);
+                ck_tile::load_vec8(v_row, tmp);
                 for(index_t j = 0; j < kVec; j++)
-                    smem_v[grp_local][row_local][v * kVec + j] = tmp[j];
+                    smem_v[0][load_row][load_d_base + j] = tmp[j];
             }
-        }
-        else
-        {
-            for(index_t d = 0; d < kVHdimTile; d++)
-                smem_v[grp_local][row_local][d] = 0.0f;
-        }
-        block_sync_lds();
-
-        // ---- Phase 2: Quantize from smem_v -> stage to smem_fp4 / smem_scale ----
-        // Thread assignment: (grp_local, d_local = row_local), loop runs once since
-        // kVHdimTile == kVGroup.  Each thread owns exactly one (grp_local, d_local).
-        // Staging layout: [d_local * kVGroupsPerBlock + grp_local] so that Phase 3's
-        // thread remapping (tid -> d_idx, g_idx) reads consecutive g positions together.
-        constexpr float rcp_dst_max = 1.0f / 6.0f;
-
-        for(index_t d_local = row_local; d_local < kVHdimTile; d_local += kVGroup)
-        {
-            float group_data[kVGroup];
-            float max_abs = 0.0f;
-            for(index_t j = 0; j < kVGroup; j++)
+            else
             {
-                group_data[j] = smem_v[grp_local][j][d_local];
-                max_abs       = max(max_abs, abs(group_data[j]));
+                for(index_t d = load_d_base; d < load_d_base + kVec; d++)
+                    smem_v[0][load_row][d] = 0.0f;
             }
+            block_sync_lds();
 
-            const float scale = bit_cast<float>(
-                (bit_cast<uint32_t>(max_abs * rcp_dst_max) + numeric_traits<float>::mant_mask) &
-                numeric_traits<float>::head_mask);
+            // ---- Phase 2: Quantize smem_v -> stage into smem_fp4 / smem_scale ----
+            // row_local iterates over D-columns owned by this thread.
+            // kVHdimTile == kVGroup (= 32): loop runs exactly once per thread.
+            // Each thread with row_local < kVHdimTile owns one D-column.
+            // With kBlockSize > kVHdimTile, threads with row_local >= kVHdimTile idle
+            // (only possible when kVGroupsPerBlock > 1 and kVHdimTile < kVGroup; here
+            // kVHdimTile == kVGroup so every thread has exactly one d_local to process).
+            for(index_t d_local = row_local; d_local < kVHdimTile; d_local += kVGroup)
+            {
+                float group_data[kVGroup];
+                float max_abs = 0.0f;
+                for(index_t j = 0; j < kVGroup; j++)
+                {
+                    group_data[j] = smem_v[0][j][d_local];
+                    max_abs       = max(max_abs, abs(group_data[j]));
+                }
 
-            // Stage into LDS at layout [d_local][grp_local].
-            const index_t stage_idx = d_local * kVGroupsPerBlock + grp_local;
-            smem_scale[stage_idx]   = static_cast<uint8_t>(bit_cast<uint32_t>(scale) >> 23);
-            PackFP4Group<kVGroup>(group_data, smem_fp4 + stage_idx * (kVGroup / 2), scale);
+                const float scale = bit_cast<float>(
+                    (bit_cast<uint32_t>(max_abs * rcp_dst_max) +
+                     numeric_traits<float>::mant_mask) &
+                    numeric_traits<float>::head_mask);
+
+                const index_t stage_idx = d_local * kVGroupsPerBlock + grp_iter;
+                smem_scale[stage_idx]   = static_cast<uint8_t>(bit_cast<uint32_t>(scale) >> 23);
+                PackFP4Group<kVGroup>(group_data, smem_fp4 + stage_idx * (kVGroup / 2), scale);
+            }
+            block_sync_lds();
         }
-        block_sync_lds();
 
         // ---- Phase 3: Coalesced write-back from LDS staging to global ----
-        // Remap: tid -> (write_d_idx = tid/kVGroupsPerBlock, write_g_idx = tid%kVGroupsPerBlock)
-        // Consecutive kVGroupsPerBlock threads share the same d_idx and differ in g_idx by 1:
-        //   -> v_hat[d_global * stride_v_hat + (g_abs_base + write_g_idx) * (kVGroup/2)]
-        //   -> addresses differ by kVGroup/2 = 16 bytes  -> coalesced!
-        // Each group of kVGroupsPerBlock consecutive threads writes kVGroupsPerBlock * 16 bytes
-        // to a single cache-line region (vs. 1 scatter write per thread previously).
+        // All staging done.  Remap threads for coalesced writes:
+        //   tid -> (write_d_idx = tid/kVGroupsPerBlock, write_g_idx = tid%kVGroupsPerBlock)
+        // Consecutive write_g_idx -> consecutive 16-byte hat chunks -> coalesced.
         const index_t write_d_idx    = tid / kVGroupsPerBlock;
         const index_t write_g_idx    = tid % kVGroupsPerBlock;
         const index_t write_d_global = col_start + write_d_idx;
@@ -591,11 +603,9 @@ struct SageAttnV3VPreprocessKernel
         uint8_t* v_scale_base = kargs.v_scale_ptr + batch_idx * kargs.batch_stride_v_scale +
                                 head_idx * kargs.nhead_stride_v_scale;
 
-        // Scale (1 byte): consecutive write_g_idx -> consecutive addresses.
         v_scale_base[write_d_global * kargs.stride_v_scale + write_g_abs] =
             smem_scale[stage_idx];
 
-        // Hat (16 bytes): consecutive write_g_idx -> consecutive 16-byte chunks.
         const uint8_t* hat_src = smem_fp4 + stage_idx * (kVGroup / 2);
         uint8_t* hat_dst =
             v_hat_base + write_d_global * kargs.stride_v_hat + write_g_abs * (kVGroup / 2);
