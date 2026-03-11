@@ -305,8 +305,8 @@ namespace rocRollerTest::Graphs
 
         auto params = std::make_shared<CommandParameters>();
 
-        auto macTileLDS  = MacroTile({m_macM, m_macN}, MemoryType::LDS, {m_thrM, m_thrN});
-        auto macTileVGPR = MacroTile({m_macM, m_macN}, MemoryType::VGPR, {m_thrM, m_thrN});
+        auto macTileLDS  = MacroTile({m_macM, m_macN}, LayoutType::ROW_MAJOR, {m_thrM, m_thrN}, MemoryType::LDS);
+        auto macTileVGPR = MacroTile({m_macM, m_macN}, LayoutType::ROW_MAJOR, {m_thrM, m_thrN}, MemoryType::VGPR);
 
         params->setDimensionInfo(m_tagA, macTileLDS);
         params->setDimensionInfo(m_tagB, macTileVGPR);
