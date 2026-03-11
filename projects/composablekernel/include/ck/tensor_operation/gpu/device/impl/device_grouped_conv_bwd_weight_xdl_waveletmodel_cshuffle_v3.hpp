@@ -437,8 +437,6 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                  const std::array<ck::index_t, NDimSpatial>& conv_filter_dilations,
                  const std::array<ck::index_t, NDimSpatial>& input_left_pads,
                  const std::array<ck::index_t, NDimSpatial>& input_right_pads,
-                 const ck::index_t M01,
-                 const ck::index_t N01,
                  InElementwiseOperation in_element_op,
                  WeiElementwiseOperation wei_element_op,
                  OutElementwiseOperation out_element_op,
@@ -451,8 +449,6 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
               c_grid_desc_m_n_{},
               c_grid_desc_mblock_mperblock_nblock_nperblock_{},
               compute_ptr_offset_of_batch_{},
-              M01_{M01},
-              N01_{N01},
               a_element_op_{out_element_op},
               b_element_op_{in_element_op},
               c_element_op_{wei_element_op},
@@ -495,6 +491,11 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                     calculate_mn_grid_size<MPerBlock, NPerBlock>(gemmM, gemmN) * Conv_G_;
                 this->k_batch_ = get_best_occupancy_k_batch_value(
                     active_workgroups_per_cu.max_occupancy_, grid_size);
+
+                // Ensure k_batch_ does not exceed the maximum for the GEMM pipeline
+                const auto k_batch_max = static_cast<index_t>((gemmK - 1) / K0PerBlock);
+                this->k_batch_         = std::max(std::min(this->k_batch_, k_batch_max), 1);
+
                 // Clamp to 128: higher split counts degrade accuracy because
                 // inter-split accumulation uses data type (e.g. F16) not compute type (F32).
                 this->k_batch_ = std::min(this->k_batch_, index_t{128});
@@ -598,8 +599,6 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
         CGridDesc_M_N c_grid_desc_m_n_;
         CGridDesc_MBlock_MPerBlock_NBlock_NPerBlock c_grid_desc_mblock_mperblock_nblock_nperblock_;
         ComputePtrOffsetOfStridedBatch<I1, I1, I0> compute_ptr_offset_of_batch_;
-        index_t M01_;
-        index_t N01_;
         AElementwiseOperation a_element_op_;
         BElementwiseOperation b_element_op_;
         CElementwiseOperation c_element_op_;
@@ -918,8 +917,6 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                         conv_filter_dilations,
                         input_left_pads,
                         input_right_pads,
-                        1,
-                        1,
                         in_element_op,
                         wei_element_op,
                         out_element_op,
@@ -960,8 +957,6 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
                                           conv_filter_dilations,
                                           input_left_pads,
                                           input_right_pads,
-                                          1,
-                                          1,
                                           in_element_op,
                                           wei_element_op,
                                           out_element_op,

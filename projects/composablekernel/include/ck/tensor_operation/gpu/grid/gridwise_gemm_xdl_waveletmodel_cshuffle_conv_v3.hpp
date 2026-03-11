@@ -648,7 +648,16 @@ struct GridwiseGemm_xdl_waveletmodel_cshuffle_conv_v3
                 b_block_slice_copy_step,
                 num_k_block_main_loop);
 
-            // Match epilogue LDS syncs (2 per CShuffle access iteration)
+            // Match epilogue LDS syncs: RunEpilogue calls block_sync_lds() twice per
+            // SFC access iteration (once before VGPR→LDS, once before LDS→global).
+            // For !TransposeC && !IsMxGemm, the SFC access count equals
+            // (MXdlPerWave / CShuffleMXdlPerWavePerShuffle) * (NXdlPerWave /
+            // CShuffleNXdlPerWavePerShuffle) because the M2/M4/N2 SFC dimensions have equal total
+            // and per-access lengths. See Base::GetCThreadWiseSpaceFillingCurve and RunEpilogue in
+            // gridwise_gemm_xdl_cshuffle_common.hpp.
+            static_assert(MXdlPerWave % CShuffleMXdlPerWavePerShuffle == 0 &&
+                              NXdlPerWave % CShuffleNXdlPerWavePerShuffle == 0,
+                          "CShuffle XdlPerWave must divide MXdlPerWave/NXdlPerWave");
             constexpr index_t num_access = (MXdlPerWave / CShuffleMXdlPerWavePerShuffle) *
                                            (NXdlPerWave / CShuffleNXdlPerWavePerShuffle);
             static_for<0, 2 * num_access, 1>{}([&](auto) { block_sync_lds(); });
