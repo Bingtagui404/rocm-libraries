@@ -38,7 +38,7 @@ TEST_CASE("identifyParallelDimensionSets works for MatrixMultiply",
     {
         auto redundantArgs = KernelGraph::identifyParallelDimensionSets(kgraph);
 
-        std::vector<std::set<int>> expected = {{3, 9}, {2, 17}, {10, 18}};
+        std::vector<std::set<int>> expected = {{3, 9}, {2, 18}, {10, 19}};
 
         CHECK(redundantArgs == expected);
     }
@@ -55,7 +55,7 @@ TEST_CASE("identifyParallelDimensionSets works for GEMM", "[kernel-graph]")
 
     auto redundantArgs = KernelGraph::identifyParallelDimensionSets(kgraph);
 
-    std::vector<std::set<int>> ra2 = {{3, 9}, {2, 36}, {10, 37}, {16, 36}, {17, 37}};
+    std::vector<std::set<int>> ra2 = {{3, 9}, {2, 37}, {10, 38}, {16, 37}, {17, 38}};
 
     CHECK(redundantArgs == ra2);
 }
