@@ -34,6 +34,7 @@ CK Tile is a composable GPU programming API that expresses kernels as a composit
 | [35_batched_transpose](35_batched_transpose/README.md) | Batched Transpose | NCHW <-> NHWC and other layout conversions |
 | [36_copy](36_copy/README.md) | Copy | Minimal example for tile-based memory movement |
 | [37_transpose](37_transpose/README.md) | Block Transpose | High-performance tiled transpose for large tensors |
+| [51_sageattn_v3_preprocess](51_sageattn_v3_preprocess/README.md) | SageAttention V3 Preprocessing | MXFP4 Q/K/V quantization + delta_s GEMM for SageAttention V3 (gfx950) |
 
 ---
 

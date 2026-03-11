@@ -7,7 +7,7 @@ set(FMHA_FWD_INSTANCES "tile_fmha_fwd_instances")
 set(TEST_NAME "test_ck_tile_fmha")
 
 function(add_gtest_fwd test_group)
-    set(V_TYPES "fp16" "bf16" "fp8bf16" "fp32" "mxfp8" "mxfp4")
+    set(V_TYPES "fp16" "bf16" "fp8bf16" "fp32" "mxfp8" "mxfp4" "sageattnv3" "sageattnv3fp16")
     if(GPU_TARGETS MATCHES "gfx908|gfx90a" AND NOT CK_USE_FP8_ON_UNSUPPORTED_ARCH)
         # fp8 instances are built for all gfx9, do not test on archs without hardware support
         list(REMOVE_ITEM V_TYPES "fp8bf16")
@@ -18,6 +18,8 @@ function(add_gtest_fwd test_group)
     set(CPP_TYPE_fp32 "FmhaFwdFp32")
     set(CPP_TYPE_mxfp8 "FmhaFwdMxFp8")
     set(CPP_TYPE_mxfp4 "FmhaFwdMxFp4")
+    set(CPP_TYPE_sageattnv3 "FmhaFwdSageAttnV3")
+    set(CPP_TYPE_sageattnv3fp16 "FmhaFwdSageAttnV3Fp16")
 
     set(sources)
     if(TARGET ${FMHA_FWD_INSTANCES})
@@ -36,6 +38,10 @@ function(add_gtest_fwd test_group)
         get_test_property(${name} LABELS COMMON_LABELS)
         set_tests_properties(${name} PROPERTIES LABELS "${COMMON_LABELS};${TEST_NAME};${test_group};CK_TILE_FMHA_TESTS")
         target_compile_definitions(${name} PRIVATE DataTypeConfig=${CPP_TYPE_${type}})
+        if(type STREQUAL "mxfp8" OR type STREQUAL "mxfp4" OR
+           type STREQUAL "sageattnv3" OR type STREQUAL "sageattnv3fp16")
+            target_compile_definitions(${name} PRIVATE CK_USE_NATIVE_MX_SUPPORT=1)
+        endif()
         target_link_libraries(${name} PRIVATE ${FMHA_FWD_INSTANCES})
         list(APPEND all_tests ${name})
     endforeach()
@@ -86,3 +92,13 @@ add_custom_target(ck_tile_fmha_tests
     USES_TERMINAL
     COMMENT "Running all ck_tile fmha tests..."
 )
+
+# SageAttention V3 preprocessing tests (gfx950 only)
+if("gfx950" IN_LIST GPU_TARGETS)
+    set(sa3_preprocess_test "test_ck_tile_fmha_sageattn_v3_preprocess")
+    add_gtest_executable(${sa3_preprocess_test} test_fmha_sageattn_preprocess.cpp)
+    target_compile_definitions(${sa3_preprocess_test} PRIVATE CK_USE_NATIVE_MX_SUPPORT=1)
+    get_test_property(${sa3_preprocess_test} LABELS COMMON_LABELS)
+    set_tests_properties(${sa3_preprocess_test}
+        PROPERTIES LABELS "${COMMON_LABELS};SMOKE_TEST;${TEST_NAME}")
+endif()
