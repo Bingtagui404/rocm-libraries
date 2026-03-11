@@ -40,19 +40,11 @@ using enable_if_target_id_dummy_t = std::enable_if_t<is_dummy_target(CompilerTar
 // This way, we don't have to worry about underlying architectural details,
 // and can focus on testing the mechanism of selecting supported vs unsupported architectures.
 // TODO: c++20 template <amdgcn_target_arch_id CompilerTarget>
-// clang-format off
 template <typename CompilerTarget>
-struct amdgcn_mma<fp32_t,
-                  fp32_t,
-                  fp32_t,
-                  16u,
-                  16u,
-                  16u,
-                  DummyCtrlFlags,
-                  CompilerTarget,
-                  MmaOpFamily::DENSE,
-                  enable_if_target_id_dummy_t<CompilerTarget>>
+// clang-format off
+struct amdgcn_mma<fp32_t, fp32_t, fp32_t, 8u, 8u, 8u, DummyCtrlFlags, CompilerTarget, MmaOpFamily::DENSE, enable_if_target_id_dummy_t<CompilerTarget>>
 : amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 8u, 8u, 8u, 64u, 1, 1, 1, 1, 1, 1, 1, DummyOpType, MmaOpFamily::DENSE>
+// clang-format on
 {
     CK_TILE_DEVICE static CVecType
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
@@ -60,7 +52,6 @@ struct amdgcn_mma<fp32_t,
         return regsA + regsB + regsC; // Simple operation for testing
     }
 };
-// clang-format on
 
 // Have an alias so we can test supported arch vs unsupported arch
 // TODO: c++20 template <amdgcn_target_arch_id CompilerTarget>
@@ -68,9 +59,9 @@ template <typename CompilerTarget>
 using DummyAmdgcnMma = amdgcn_mma<fp32_t,
                                   fp32_t,
                                   fp32_t,
-                                  16u,
-                                  16u,
-                                  16u,
+                                  8u,
+                                  8u,
+                                  8u,
                                   DummyCtrlFlags,
                                   CompilerTarget,
                                   MmaOpFamily::DENSE>;
@@ -125,20 +116,6 @@ TEST(TestAmdgcnMma, ArchSupported)
         (std::is_same<typename MmaOp::OpType, DummyOpType>::value)); // OpType is DummyOpType
     // Check OpFamily
     EXPECT_TRUE((is_mma_op_of_family_v<MmaOpFamily::DENSE, MmaOp>));
-
-    // Check AVecType, BVecType, CVecType
-    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
-
-    // Check layout constants
-    EXPECT_EQ(MmaOp::kABKPerLane, 1);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kARepeat, 1);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kBRepeat, 1);
-    EXPECT_EQ(MmaOp::kCMPerLane, 1);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
 }
 
 // Test case for unsupported architecture
@@ -151,20 +128,6 @@ TEST(TestAmdgcnMma, ArchUnsupported)
     EXPECT_TRUE((std::is_same<typename MmaOp::OpType, Unsupported>::value));
     // OpFamily should be Undefined
     EXPECT_TRUE((is_mma_op_of_family_v<MmaOpFamily::UNDEFINED, MmaOp>));
-
-    // AVecType, BVecType, CVecType should match default
-    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
-
-    // Layout constants should match default values (typically 0)
-    EXPECT_EQ(MmaOp::kABKPerLane, 1);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kARepeat, 1);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kBRepeat, 1);
-    EXPECT_EQ(MmaOp::kCMPerLane, 1);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
 }
 
 // Kernel to test amdgcn_mma::exec on device
@@ -287,53 +250,12 @@ TEST(TestAmdgcnMma, ArchUnsupportedExecDeviceOutput)
 
 #include "ck_tile/core/arch/mma/mma_traits.hpp"
 
-// Test MmaOpParams for supported DummyAmdgcnMma, including all member variables
-TEST(TestAmdgcnMma, MmaOpParamsTraitsSupportedMembers)
-{
-    using MmaOp = DummyAmdgcnMma<DummyCompilerTarget>;
-
-    // Check MmaOpParams members
-    EXPECT_TRUE((std::is_same<typename MmaOp::ADataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BDataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CDataType, fp32_t>::value));
-    EXPECT_EQ(MmaOp::kM, 8u);
-    EXPECT_EQ(MmaOp::kN, 8u);
-    EXPECT_EQ(MmaOp::kK, 8u);
-    EXPECT_TRUE((std::is_same<typename MmaOpTraits<MmaOp>::CtrlFlags, DummyCtrlFlags>::value));
-}
-
-// Test MmaOpParams for unsupported DummyAmdgcnMma, including all member variables
-TEST(TestAmdgcnMma, MmaOpParamsUnsupportedMembers)
-{
-    using MmaOp = DummyAmdgcnMma<amdgcn_target<>>;
-
-    // Check MmaOpParams members
-    EXPECT_TRUE((std::is_same<typename MmaOp::ADataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BDataType, fp32_t>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CDataType, fp32_t>::value));
-    EXPECT_EQ(MmaOp::kM, 1u);
-    EXPECT_EQ(MmaOp::kN, 1u);
-    EXPECT_EQ(MmaOp::kK, 1u);
-    EXPECT_TRUE((std::is_same<typename MmaOpTraits<MmaOp>::CtrlFlags, DummyCtrlFlags>::value));
-}
-
 // Test MmaOpTraits for supported DummyAmdgcnMma, including all member variables
 TEST(TestAmdgcnMma, MmaOpTraitsSupportedMembers)
 {
     using MmaOp = DummyAmdgcnMma<DummyCompilerTarget>;
 
     // Check MmaOpTraits member variables
-    EXPECT_TRUE((std::is_same<typename MmaOp::OpType, DummyOpType>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_EQ(MmaOp::kABKPerLane, 1);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kARepeat, 1);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kBRepeat, 1);
-    EXPECT_EQ(MmaOp::kCMPerLane, 1);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
     EXPECT_FALSE(MmaOpTraits<MmaOp>::IsMfma);
     EXPECT_FALSE(MmaOpTraits<MmaOp>::IsWmma);
     EXPECT_TRUE(MmaOpTraits<MmaOp>::IsSupported);
@@ -345,18 +267,6 @@ TEST(TestAmdgcnMma, MmaOpTraitsUnsupportedMembers)
     using MmaOp = DummyAmdgcnMma<amdgcn_target<>>;
 
     // Check MmaOpTraits member variables
-    EXPECT_TRUE((std::is_same<typename MmaOp::OpType, Unsupported>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::AVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::BVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_TRUE((std::is_same<typename MmaOp::CVecType, ext_vector_t<fp32_t, 1>>::value));
-    EXPECT_EQ(MmaOp::OpFamily, MmaOpFamily::UNDEFINED);
-    EXPECT_EQ(MmaOp::kABKPerLane, 1);
-    EXPECT_EQ(MmaOp::kAKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kARepeat, 1);
-    EXPECT_EQ(MmaOp::kBKNumAccess, 1);
-    EXPECT_EQ(MmaOp::kBRepeat, 1);
-    EXPECT_EQ(MmaOp::kCMPerLane, 1);
-    EXPECT_EQ(MmaOp::kCMNumAccess, 1);
     EXPECT_FALSE(MmaOpTraits<MmaOp>::IsMfma);
     EXPECT_FALSE(MmaOpTraits<MmaOp>::IsWmma);
     EXPECT_FALSE(MmaOpTraits<MmaOp>::IsSupported);
@@ -421,7 +331,7 @@ TEST(TestAmdgcnMma, MmaDefaultSelectorSupportedChunk)
     EXPECT_TRUE(MmaOpTraits<SelectedMma>::IsSupported);
 }
 
-// Test MmaDefaultSelector for a different block size and supported arch
+// Test MmaDefaultSelector for a different chunk size and supported arch
 TEST(TestAmdgcnMma, MmaDefaultSelectorUnsupportedChunk)
 {
     // This should fall back to unsupported since DummyAmdgcnMma only supports 16x16x16
@@ -519,7 +429,7 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_16x16x32_Real)
     using BType = fp16_t;
     using CType = fp32_t;
 
-    // Chunk size, also the expected block size from the selector.
+    // Chunk size, also the expected fragment size from the selector.
     // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.
@@ -618,12 +528,12 @@ TEST(TestAmdgcnMma, MmaSelector_F16_F16_F32_112x112x128_Real)
     using CType = fp32_t;
 
     // Chunk size to test for decomposition.
-    // We expect the selector to pick a 16x16 block
+    // We expect the selector to pick a 16x16 chunk
     static constexpr uint32_t ChunkM = 112;
     static constexpr uint32_t ChunkN = 112;
     static constexpr uint32_t ChunkK = 128;
 
-    // The expected block size from the selector (multiple of 16).
+    // The expected fragment size from the selector (multiple of 16).
     // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.

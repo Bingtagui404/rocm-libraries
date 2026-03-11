@@ -18,16 +18,16 @@ namespace ck_tile::core::arch::mma {
  */
 enum struct MmaAccumPolicy
 {
-    // Decomposition and accumulation in row-major block order
+    // Decomposition and accumulation in row-major fragment order
     ROW_MAJOR,
-    // Decomposition and accumulation in col-major block order
+    // Decomposition and accumulation in col-major fragment order
     COL_MAJOR
 };
 
 /**
  * @class Mma
- * @brief Driver for the wave-tile Mma operation. Given a backend block-wise MmaOp implementation
- * (e.g., mfma or wmma), this class performs block-wise decomposition to matrix-multiply input
+ * @brief Driver for the wave-tile Mma operation. Given a backend MmaOp implementation
+ * (e.g., mfma or wmma), this class performs fragment-wise decomposition to matrix-multiply input
  * chunks of (A: ChunkM x ChunkK) x (B: ChunkK x ChunkN) and accumulates results into output chunk
  * (C: ChunkM x ChunkN).
  * @tparam ADataType Data type of input chunk A
@@ -36,16 +36,15 @@ enum struct MmaAccumPolicy
  * @tparam ChunkM Mma chunk M dimension
  * @tparam ChunkN Mma chunk K dimension
  * @tparam ChunkK Mma chunk M dimension
- * @tparam AccumPolicy The block order of the accumulation registers (row major or col major block
- * order)
+ * @tparam AccumPolicy The fragment order of the accumulation registers (row major or col major
+ * fragment order)
  * @tparam CompilerTarget The compiler target
- * @tparam MmaOp The backend wrapper class that will perform block-wise mma op (e.g., mfma or
- * wmma)
+ * @tparam MmaOp The backend wrapper class that will perform the mma op (e.g., mfma or wmma)
  * @tparam MmaTransforms The set of transforms to be applied to input/output chunks
  * @par This is an example of an Mma decomposition driver class that can be used in a wave-tile
- * context. Given a chunk size, we can decompose the chunk into smaller block-wise mma ops
+ * context. Given a chunk size, we can decompose the chunk into smaller mma op fragments
  * that are natively supported by the hardware (e.g., mfma or wmma). The class also supports
- * applying transforms to the input/output chunks as needed (e.g., layout conversions, data type
+ * applying transforms to the input/output frags as needed (e.g., layout conversions, data type
  * conversions, etc.). We may also specify the accumulation order (row-major or col-major) for the
  * output chunk. This is a powerful example of how to build a flexible and reusable mma driver
  * that can adapt to different hardware capabilities and requirements.
@@ -75,28 +74,28 @@ template <typename ADataType,
           typename MmaTransformsDefaultSelector<MmaOp, CompilerTarget>::SelectedTransforms>
 struct WaveWiseMma
 {
-    using BlockWiseMmaOp = MmaOp;
+    using FragWiseMmaOp = MmaOp;
 
-    // Block dimensions
+    // Fragment dimensions
     constexpr static uint32_t FragM = MmaOp::kM;
     constexpr static uint32_t FragN = MmaOp::kN;
     constexpr static uint32_t FragK = MmaOp::kK;
 
-    // Block counts for decomposition
-    constexpr static uint32_t BlocksM = ChunkM / FragM;
-    constexpr static uint32_t BlocksN = ChunkN / FragN;
-    constexpr static uint32_t BlocksK = ChunkK / FragK;
-    constexpr static uint32_t BlocksC = BlocksM * BlocksN;
+    // Fragment counts for decomposition
+    constexpr static uint32_t FragsM = ChunkM / FragM;
+    constexpr static uint32_t FragsN = ChunkN / FragN;
+    constexpr static uint32_t FragsK = ChunkK / FragK;
+    constexpr static uint32_t FragsC = FragsM * FragsN;
 
-    // Vector types for packed registers in each block
+    // Vector types for packed registers in each fragment
     using AVecType = typename MmaOp::AVecType;
     using BVecType = typename MmaOp::BVecType;
     using CVecType = typename MmaOp::CVecType;
 
     // Buffer types for chunks
-    using ABufferType = AVecType[BlocksM][BlocksK];
-    using BBufferType = BVecType[BlocksN][BlocksK];
-    using CBufferType = CVecType[BlocksM][BlocksN];
+    using ABufferType = AVecType[FragsM][FragsK];
+    using BBufferType = BVecType[FragsN][FragsK];
+    using CBufferType = CVecType[FragsM][FragsN];
 
     // Transforms
     using ATransform = typename MmaTransforms::ATransform;
@@ -118,7 +117,7 @@ struct WaveWiseMma
     {
         // TODO: Implement formatting logic as needed.
         // This is intended to convert input chunks to the native vector types
-        // required by the BlockWiseMma operation for iteration
+        // required by the FragWiseMma operation for iteration
         static_assert(sizeof(DstT) == sizeof(SrcT), "Size mismatch in formatBuffer");
         return reinterpret_cast<DstT const&>(inputBuffer);
     }
@@ -128,7 +127,7 @@ struct WaveWiseMma
     {
         // TODO: Implement formatting logic as needed.
         // This is intended to convert input chunks to the native vector types
-        // required by the BlockWiseMma operation for iteration
+        // required by the FragWiseMma operation for iteration
         static_assert(sizeof(DstT) == sizeof(SrcT), "Size mismatch in formatBuffer");
         return reinterpret_cast<DstT&>(inputBuffer);
     }
@@ -142,31 +141,31 @@ struct WaveWiseMma
     CK_TILE_DEVICE static decltype(auto) exec_col_major(VecTA&& a, VecTB&& b, VecTC&& accum)
     {
         // We implement an example wave-tile pipeline here.
-        // First, we apply the necessary transforms to the input chunks,
+        // First, we apply the necessary transforms to the input fragments,
         // then we convert the result into buffers of native vector formats
         // that we can easily index. Native vector formats are necessary inputs
         // to the given MmaOp exec function.
-        auto a_chunk = formatBuffer<ABufferType>(ATransform::exec(a));
-        auto b_chunk = formatBuffer<BBufferType>(BTransform::exec(b));
-        auto c_chunk = formatBuffer<CBufferType>(CTransform::exec(accum));
+        auto a_frag = formatBuffer<ABufferType>(ATransform::exec(a));
+        auto b_frag = formatBuffer<BBufferType>(BTransform::exec(b));
+        auto c_frag = formatBuffer<CBufferType>(CTransform::exec(accum));
 
-        // "Col-major" accumulation over the M-dimension blocks first.
-        // Pseudo code here, but we would basically iterate over the blocks in col-major order
-        for(uint32_t bn = 0u; bn < BlocksN; ++bn)
+        // "Col-major" accumulation over the M-dimension fragments first.
+        // Pseudo code here, but we would basically iterate over the fragments in col-major order
+        for(uint32_t bn = 0u; bn < FragsN; ++bn)
         {
-            for(uint32_t bm = 0u; bm < BlocksM; ++bm)
+            for(uint32_t bm = 0u; bm < FragsM; ++bm)
             {
-                for(uint32_t bk = 0u; bk < BlocksK; ++bk)
+                for(uint32_t bk = 0u; bk < FragsK; ++bk)
                 {
-                    c_chunk[bm][bn] =
-                        BlockWiseMmaOp::exec(a_chunk[bm][bk], b_chunk[bn][bk], c_chunk[bm][bn]);
+                    c_frag[bm][bn] =
+                        FragWiseMmaOp::exec(a_frag[bm][bk], b_frag[bn][bk], c_frag[bm][bn]);
                 }
             }
         }
 
         // Convert native vector results back to the output chunk format
         // and then return after we apply the final output transform.
-        return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_chunk));
+        return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_frag));
     }
 
     /*! @brief Execute Mma in row-major accumulation order.
@@ -182,29 +181,29 @@ struct WaveWiseMma
         // then we convert the result into buffers of native vector formats
         // that we can easily index. Native vector formats are necessary inputs
         // to the given MmaOp exec function.
-        auto a_chunk = formatBuffer<ABufferType>(ATransform::exec(a));
-        auto b_chunk = formatBuffer<BBufferType>(BTransform::exec(b));
-        auto c_chunk = formatBuffer<CBufferType>(CTransform::exec(accum));
+        auto a_frag = formatBuffer<ABufferType>(ATransform::exec(a));
+        auto b_frag = formatBuffer<BBufferType>(BTransform::exec(b));
+        auto c_frag = formatBuffer<CBufferType>(CTransform::exec(accum));
 
-        // "Row-major" accumulation over the N-dimension blocks first.
-        // Pseudo code here, but we would basically iterate over the blocks in row-major order.
+        // "Row-major" accumulation over the N-dimension fragments first.
+        // Pseudo code here, but we would basically iterate over the fragments in row-major order.
         // We also have to ensure that the incoming vector chunks are converted to native vector
-        // types before passing to the BlockWiseMma exec function.
-        for(uint32_t bm = 0u; bm < BlocksM; ++bm)
+        // types before passing to the FragWiseMma exec function.
+        for(uint32_t bm = 0u; bm < FragsM; ++bm)
         {
-            for(uint32_t bn = 0u; bn < BlocksN; ++bn)
+            for(uint32_t bn = 0u; bn < FragsN; ++bn)
             {
-                for(uint32_t bk = 0u; bk < BlocksK; ++bk)
+                for(uint32_t bk = 0u; bk < FragsK; ++bk)
                 {
-                    c_chunk[bm][bn] =
-                        BlockWiseMmaOp::exec(a_chunk[bm][bk], b_chunk[bn][bk], c_chunk[bm][bn]);
+                    c_frag[bm][bn] =
+                        FragWiseMmaOp::exec(a_frag[bm][bk], b_frag[bn][bk], c_frag[bm][bn]);
                 }
             }
         }
 
         // Convert native vector results back to the output chunk format
         // and then return after we apply the final output transform.
-        return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_chunk));
+        return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_frag));
     }
 
     public:

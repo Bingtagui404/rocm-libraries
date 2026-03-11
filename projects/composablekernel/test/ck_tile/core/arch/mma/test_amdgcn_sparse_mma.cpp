@@ -207,7 +207,7 @@ TEST(SparseMMATrait, MmaSelector_Sparse_F16_F16_F32_16x16x32_Real)
     using BType = fp16_t;
     using CType = fp32_t;
 
-    // Chunk size, also the expected block size from the selector.
+    // Chunk size, also the expected fragment size from the selector.
     // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.

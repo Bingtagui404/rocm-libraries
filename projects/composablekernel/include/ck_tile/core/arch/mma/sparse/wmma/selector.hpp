@@ -16,20 +16,20 @@ namespace ck_tile::core::arch::mma {
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam FragM Size of the M dimension
- * @tparam FragN Size of the N dimension
- * @tparam FragKTest Size of the K dimension
+ * @tparam ChunkM Size of the M dimension
+ * @tparam ChunkN Size of the N dimension
+ * @tparam ChunkKTest Size of the K dimension
  * @tparam CompilerTarget The compiler target
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t FragM,
-          uint32_t FragN,
-          uint32_t FragKTest,
+          uint32_t ChunkM,
+          uint32_t ChunkN,
+          uint32_t ChunkKTest,
           typename CompilerTarget>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
-// TODO: c++20 requires(is_target_arch_rdna(CompilerTarget) && is_power_of_two_integer(FragKTest))
+// TODO: c++20 requires(is_target_arch_rdna(CompilerTarget) && is_power_of_two_integer(ChunkKTest))
 struct SparseWmmaDefaultSelector
 {
     private:
@@ -37,9 +37,9 @@ struct SparseWmmaDefaultSelector
     using CandidateOp = amdgcn_mma<ADataType,
                                    BDataType,
                                    CDataType,
-                                   FragM,
-                                   FragN,
-                                   FragKTest,
+                                   ChunkM,
+                                   ChunkN,
+                                   ChunkKTest,
                                    DefaultSparseWmmaCtrlFlags,
                                    CompilerTarget,
                                    MmaOpFamily::SPARSE>;
@@ -54,9 +54,9 @@ struct SparseWmmaDefaultSelector
                                           amdgcn_mma<ADataType,
                                                      BDataType,
                                                      CDataType,
-                                                     FragM,
-                                                     FragN,
-                                                     FragKTest,
+                                                     ChunkM,
+                                                     ChunkN,
+                                                     ChunkKTest,
                                                      void,
                                                      amdgcn_target<>,
                                                      MmaOpFamily::UNDEFINED>>;
@@ -69,18 +69,18 @@ struct SparseWmmaDefaultSelector
  * @tparam ADataType Data type of matrix A
  * @tparam BDataType Data type of matrix B
  * @tparam CDataType Data type of the accumulator
- * @tparam FragM Size of the M dimension of the fragment to decompose
- * @tparam FragN Size of the N dimension of the fragment to decompose
- * @tparam FragK Size of the K dimension of the fragment to decompose
+ * @tparam ChunkM Size of the M dimension of the chunk to decompose
+ * @tparam ChunkN Size of the N dimension of the chunk to decompose
+ * @tparam ChunkK Size of the K dimension of the chunk to decompose
  * @tparam CompilerTarget The compiler target
  * @tparam OpFamily The MMA operation family
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t FragM,
-          uint32_t FragN,
-          uint32_t FragK,
+          uint32_t ChunkM,
+          uint32_t ChunkN,
+          uint32_t ChunkK,
           typename CompilerTarget,
           MmaOpFamily OpFamily>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
@@ -88,9 +88,9 @@ template <typename ADataType,
 struct MmaDefaultSelector<ADataType,
                           BDataType,
                           CDataType,
-                          FragM,
-                          FragN,
-                          FragK,
+                          ChunkM,
+                          ChunkN,
+                          ChunkK,
                           CompilerTarget,
                           OpFamily,
                           enable_if_all<enable_if_target_family_gfx12_t<CompilerTarget>,
@@ -116,15 +116,14 @@ struct MmaDefaultSelector<ADataType,
                                                          1u,
                                                          CompilerTarget>::SelectedOp;
 
-    // Check if each candidate is supported for the given fragment sizes
-    // For this case, we require the fragment sizes to be multiples of the WMMA shape
-    static constexpr bool IsSupported16x16 = MmaOpTraits<CandidateOp16x16>::IsSupported && 
-                                            (FragM % CandidateOp16x16::kM == 0u) &&
-                                            (FragN % CandidateOp16x16::kN == 0u) && 
-                                            (FragK % CandidateOp16x16::kK == 0u);
+    // Check if each candidate is supported for the given chunk sizes
+    // For this case, we require the chunk sizes to be multiples of the WMMA shape
+    static constexpr bool IsSupported16x16 =
+        MmaOpTraits<CandidateOp16x16>::IsSupported && (ChunkM % CandidateOp16x16::kM == 0u) &&
+        (ChunkN % CandidateOp16x16::kN == 0u) && (ChunkK % CandidateOp16x16::kK == 0u);
 
     public:
-    // Select the largest supported WMMA operation for the given fragment shape
+    // Select the largest supported WMMA operation for the given chunk shape
     using SelectedOp = std::conditional_t<IsSupported16x16, CandidateOp16x16, DefaultOp>;
 };
 
