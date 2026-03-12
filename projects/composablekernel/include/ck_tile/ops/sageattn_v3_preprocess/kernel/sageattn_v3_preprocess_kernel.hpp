@@ -412,7 +412,9 @@ struct SageAttnV3KMeanKernel
 //   smem_fp4:  32 *  4 * 16     = 2048  (all groups staged)
 //   smem_scale: 32 *  4          =  128  (all groups staged)
 //   Total: 6400 bytes  (vs. 19072 previously)
-//   -> 10 CTAs per CU (LDS-limited) vs. 3 previously => 3.3x occupancy improvement.
+//   gfx950 LDS = 160 KiB/CU -> LDS allows floor(163840/6400) = 25 CTAs/CU.
+//   Wavefront limit = 32 wavefronts / 2 per CTA = 16 CTAs/CU (binding constraint).
+//   -> 16 CTAs per CU (wavefront-limited) vs. 3 previously => 5.3x occupancy improvement.
 //
 // smem_v bank conflict analysis (gfx950, 32 banks x 4 bytes):
 //   Row stride = kVHdimTile + 1 = 33 floats.
@@ -512,7 +514,7 @@ struct SageAttnV3VPreprocessKernel
         // smem_v:     kVGroup * (kVHdimTile + kLDSPad) * 4 = 4224 bytes
         // smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup/2) = 2048 bytes
         // smem_scale: kVHdimTile * kVGroupsPerBlock = 128 bytes
-        // Total: 6400 bytes -> 10 CTAs/CU vs 3 CTAs/CU (19072 bytes) previously.
+        // Total: 6400 bytes -> 16 CTAs/CU (wavefront-limited) vs 3 CTAs/CU (19072 bytes) before.
         __shared__ char smem_raw[GetSmemSize()];
         auto* smem_v =
             reinterpret_cast<float (*)[kVGroup][kVHdimTile + kLDSPad]>(smem_raw);
