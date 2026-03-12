@@ -779,4 +779,65 @@ std::enable_if_t<(std::is_same_v<ranges::range_value_t<Range>, ranges::range_val
     return err_count == 0;
 }
 
+/**
+ * @brief check_err for strided (padded) GPU output vs compact reference.
+ *
+ * GPU buffer layout: [n_outer][gpu_stride], only the first n_valid elements
+ * per outer row are valid. Reference buffer layout: [n_outer][n_valid] (compact).
+ *
+ * Elements are converted to double for comparison, so this overload works for
+ * any arithmetic or CK numeric type (float, half_t, bf16_t, uint8_t, int32_t, ...).
+ *
+ * @param gpu_ptr    Pointer to the GPU (padded) output buffer.
+ * @param gpu_stride Number of elements between consecutive outer rows in gpu_ptr.
+ * @param ref_ptr    Pointer to the compact reference buffer.
+ * @param n_outer    Number of outer rows.
+ * @param n_valid    Number of valid elements per row (n_valid <= gpu_stride).
+ * @param msg        Label printed with each failing element.
+ * @param rtol       Relative tolerance.
+ * @param atol       Absolute tolerance.
+ * @return True if all valid elements satisfy |gpu - ref| <= atol + rtol * |ref|.
+ */
+template <typename T>
+CK_TILE_HOST bool check_err(const T* gpu_ptr,
+                             std::size_t gpu_stride,
+                             const T* ref_ptr,
+                             std::size_t n_outer,
+                             std::size_t n_valid,
+                             const std::string& msg = "Error: Incorrect results!",
+                             double rtol            = 0,
+                             double atol            = 0)
+{
+    bool res      = true;
+    int err_count = 0;
+    double max_err = 0;
+    const std::size_t total = n_outer * n_valid;
+
+    for(std::size_t i = 0; i < n_outer; i++)
+    {
+        for(std::size_t j = 0; j < n_valid; j++)
+        {
+            const double o = static_cast<double>(gpu_ptr[i * gpu_stride + j]);
+            const double r = static_cast<double>(ref_ptr[i * n_valid + j]);
+            const double e = std::abs(o - r);
+            if(e > atol + rtol * std::abs(r))
+            {
+                max_err = e > max_err ? e : max_err;
+                err_count++;
+                if(err_count < ERROR_DETAIL_LIMIT)
+                {
+                    std::cerr << msg << " out[" << i << "," << j << "] != ref[" << i << "," << j
+                              << "]: " << o << " != " << r << std::endl;
+                }
+                res = false;
+            }
+        }
+    }
+    if(!res)
+    {
+        report_error_stats(err_count, max_err, total);
+    }
+    return res;
+}
+
 } // namespace ck_tile

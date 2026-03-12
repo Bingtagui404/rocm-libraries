@@ -3,68 +3,35 @@
 
 // End-to-end GPU correctness test for SageAttn preprocessing (SA3).
 //
-// Exercises the three-kernel pipeline launched by sageattn_v3_preprocess_run():
-//   Launch 0: SageAttnKMeanKernel     — computes k_mean[b,h,d] = mean_n(K[b,h,n,d])
-//   Launch 1: SageAttnV3PreprocessKernel — Q mean+quantize, K smooth+quantize, V transpose+quantize
-//   Launch 2: BatchedGemmKernel        — delta_s = q_mean @ K'^T
+// Exercises the four-kernel pipeline launched by SageAttnV3Preprocess::run():
+//   Launch 0: SageAttnV3KMeanKernel     -- computes k_mean[b,h,d] = mean_n(K[b,h,n,d])
+//   Launch 1: SageAttnV3PreprocessKernel -- Q mean+quantize, K smooth+quantize
+//   Launch 1b: SageAttnV3VPreprocessKernel -- V transpose+quantize
+//   Launch 2: BatchedGemmKernel         -- delta_s = q_mean @ K'^T
 //
 // Verified outputs:
-//   k_mean   — InputT, compared vs CPU reference (< 2e-3 abs error for fp16)
-//   q_mean   — InputT, compared vs CPU reference (< 2e-3 abs error for fp16)
-//   delta_s  — float,  compared vs CPU reference (< 1e-2 * hdim abs error)
-//   Q hat    — MXFP4, dequantized and compared with Q_smooth reference (< 1.0 abs error)
-//   Q scale  — e8m0 bytes, compared directly with CPU reference
-//   K hat    — MXFP4, dequantized and compared with K_smooth reference (< 1.0 abs error)
-//   K scale  — e8m0 bytes, compared directly with CPU reference
-//   V hat    — MXFP4 (transposed), dequantized and compared with V reference (< 1.0 abs error)
-//   V scale  — e8m0 bytes, compared directly with CPU reference
-
-#include <cmath>
-#include <cstdint>
-#include <random>
-#include <tuple>
-#include <vector>
+//   k_mean   -- InputT, compared vs CPU reference (< 2e-3 abs error for fp16)
+//   q_mean   -- InputT, compared vs CPU reference (< 2e-3 abs error for fp16)
+//   delta_s  -- float,  compared vs CPU reference (< 1e-2 * hdim abs error)
+//   Q hat    -- MXFP4, dequantized and compared with Q_smooth reference (< 1.0 abs error)
+//   Q scale  -- e8m0 bytes, compared directly with CPU reference
+//   K hat    -- MXFP4, dequantized and compared with K_smooth reference (< 1.0 abs error)
+//   K scale  -- e8m0 bytes, compared directly with CPU reference
+//   V hat    -- MXFP4 (transposed), dequantized and compared with V reference (< 1.0 abs error)
+//   V scale  -- e8m0 bytes, compared directly with CPU reference
 
 #include "gtest/gtest.h"
 
 #ifdef CK_USE_NATIVE_MX_SUPPORT
 
 #include "ck_tile/host.hpp"
+#include "ck_tile/host/hip_check_error.hpp"
 #include "ck_tile/ops/sageattn_v3_preprocess/sageattn_v3_preprocess.hpp"
 #include "ck_tile/host/reference/reference_sageattn_v3_preprocess.hpp"
 
+CK_TILE_DECLARE_ENV_VAR(CK_TILE_TEST_SEED, uint64_t, 11939)
+
 namespace {
-
-// Dispatch sageattn_v3_preprocess_run for runtime hdim (128 or 256).
-template <typename InputT>
-void run_sageattn_v3_preprocess(const ck_tile::SageAttnV3PreprocessArgs<InputT>& h,
-                                float* delta_s_ptr,
-                                InputT* k_mean_buf,
-                                InputT* k_prime_buf,
-                                float* k_mean_partial_buf,
-                                int32_t* counter_buf,
-                                hipStream_t stream)
-{
-    if(h.hdim == 128)
-        ck_tile::sageattn_v3_preprocess_run<InputT, /*kRows=*/128, /*kCols=*/128>(
-            h, delta_s_ptr, k_mean_buf, k_prime_buf, k_mean_partial_buf, counter_buf, stream);
-    else if(h.hdim == 256)
-        ck_tile::sageattn_v3_preprocess_run<InputT, /*kRows=*/128, /*kCols=*/256>(
-            h, delta_s_ptr, k_mean_buf, k_prime_buf, k_mean_partial_buf, counter_buf, stream);
-    else
-        throw std::runtime_error("Unsupported hdim (must be 128 or 256)");
-}
-
-// Convert float vector to fp16, round-trip through fp16 so values match GPU.
-std::vector<ck_tile::fp16_t> float_to_fp16_vec(const std::vector<float>& src)
-{
-    std::vector<ck_tile::fp16_t> dst(src.size());
-    for(std::size_t i = 0; i < src.size(); i++)
-        dst[i] = ck_tile::type_convert<ck_tile::fp16_t>(src[i]);
-    return dst;
-}
-
-} // namespace
 
 // ---------------------------------------------------------------------------
 // Test fixture: parameterized by (B, H, seqlen_q, seqlen_k, hdim, use_fp16)
@@ -83,16 +50,6 @@ class SageAttnV3PreprocessTest
     static constexpr int kM0 = 128; // Q/K tile rows (padding granularity)
     static constexpr int kG  = 32;  // MXFP4 scale granularity
 
-    static std::vector<float> RandFloat(int n, float lo = -1.0f, float hi = 1.0f)
-    {
-        std::mt19937 rng(42);
-        std::uniform_real_distribution<float> dist(lo, hi);
-        std::vector<float> v(n);
-        for(auto& x : v)
-            x = dist(rng);
-        return v;
-    }
-
     template <typename InputT>
     void RunGPUTest();
 };
@@ -104,37 +61,50 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     ASSERT_EQ(hd % kG, 0) << "hdim must be divisible by 32";
 
     // Use get_buffer_sizes to get padded dimensions and required buffer sizes.
-    const auto bsz        = ck_tile::get_buffer_sizes<InputT, kM0>(b, h, sq, sk, hd);
+    // Dispatch on hdim to select the right kCols instantiation.
+    ck_tile::SageAttnV3PreprocessBufferSizes bsz{};
+    if(hd == 128)
+        bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::get_buffer_sizes(b, h, sq, sk, hd);
+    else if(hd == 256)
+        bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::get_buffer_sizes(b, h, sq, sk, hd);
+    else
+        FAIL() << "Unsupported hdim (must be 128 or 256)";
+
     const int sq_pad      = static_cast<int>(bsz.seqlen_q_padded);
     const int sk_pad      = static_cast<int>(bsz.seqlen_k_padded);
     const int num_q_tiles = static_cast<int>(bsz.num_q_tiles);
     const int num_k_tiles = static_cast<int>(bsz.num_k_tiles);
 
-    // ---- Generate float inputs ----
-    auto Q_f32 = RandFloat(b * h * sq * hd);
-    auto K_f32 = RandFloat(b * h * sk * hd);
-    auto V_f32 = RandFloat(b * h * sk * hd);
+    // ---- Generate input data using HostTensor + FillUniformDistribution ----
+    const uint32_t seed = static_cast<uint32_t>(ck_tile::EnvValue(CK_TILE_ENV(CK_TILE_TEST_SEED)));
 
-    // For fp16: round-trip so CPU reference values match what the GPU sees.
-    if constexpr(std::is_same_v<InputT, ck_tile::fp16_t>)
-    {
-        auto round_trip = [](std::vector<float>& v) {
-            for(auto& x : v)
-                x = ck_tile::type_convert<float>(ck_tile::type_convert<ck_tile::fp16_t>(x));
-        };
-        round_trip(Q_f32);
-        round_trip(K_f32);
-        round_trip(V_f32);
-    }
+    ck_tile::HostTensor<InputT> q_host({b, h, sq, hd});
+    ck_tile::HostTensor<InputT> k_host({b, h, sk, hd});
+    ck_tile::HostTensor<InputT> v_host({b, h, sk, hd});
+
+    ck_tile::FillUniformDistribution<InputT>{-1.f, 1.f, seed + 0}(q_host);
+    ck_tile::FillUniformDistribution<InputT>{-1.f, 1.f, seed + 1}(k_host);
+    ck_tile::FillUniformDistribution<InputT>{-1.f, 1.f, seed + 2}(v_host);
+
+    // Convert to float for CPU reference (round-trip through InputT so values match GPU).
+    auto to_f32 = [](const ck_tile::HostTensor<InputT>& t) {
+        std::vector<float> v(t.get_element_space_size());
+        for(std::size_t i = 0; i < v.size(); i++)
+            v[i] = ck_tile::type_convert<float>(t.data()[i]);
+        return v;
+    };
+    auto Q_f32 = to_f32(q_host);
+    auto K_f32 = to_f32(k_host);
+    auto V_f32 = to_f32(v_host);
 
     // ---- CPU reference: k_mean (float precision) ----
     std::vector<float> k_mean_ref_f32(b * h * hd, 0.0f);
     ck_tile::reference::reference_sageattn_v3_k_smooth(
         K_f32.data(), k_mean_ref_f32.data(), b, h, sk, hd);
 
-    // If InputT = fp16, the GPU stores k_mean as fp16 → quantise the CPU reference too.
+    // If InputT = fp16, the GPU stores k_mean as fp16 -> quantise the CPU reference too.
     // All downstream references (delta_s, K_smooth) must use the rounded k_mean.
-    std::vector<float> k_mean_ref_rt = k_mean_ref_f32; // "round-tripped" version
+    std::vector<float> k_mean_ref_rt = k_mean_ref_f32;
     if constexpr(std::is_same_v<InputT, ck_tile::fp16_t>)
     {
         for(auto& x : k_mean_ref_rt)
@@ -155,7 +125,7 @@ void SageAttnV3PreprocessTest::RunGPUTest()
                                                            hd,
                                                            kM0);
 
-    // q_mean also stored as InputT on GPU → round-trip if fp16.
+    // q_mean also stored as InputT on GPU -> round-trip if fp16.
     std::vector<float> q_mean_ref_rt = q_mean_ref_f32;
     if constexpr(std::is_same_v<InputT, ck_tile::fp16_t>)
     {
@@ -184,27 +154,13 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     ck_tile::reference::reference_sageattn_v3_v_preprocess(
         V_f32.data(), v_hat_ref.data(), v_scale_ref.data(), b, h, sk, hd);
 
-    // ---- Allocate and upload GPU input buffers ----
-    const std::size_t elem_bytes = sizeof(InputT);
-    ck_tile::DeviceMem q_dev(static_cast<std::size_t>(b * h * sq * hd) * elem_bytes);
-    ck_tile::DeviceMem k_dev(static_cast<std::size_t>(b * h * sk * hd) * elem_bytes);
-    ck_tile::DeviceMem v_dev(static_cast<std::size_t>(b * h * sk * hd) * elem_bytes);
-
-    if constexpr(std::is_same_v<InputT, ck_tile::fp16_t>)
-    {
-        auto Q_fp16 = float_to_fp16_vec(Q_f32);
-        auto K_fp16 = float_to_fp16_vec(K_f32);
-        auto V_fp16 = float_to_fp16_vec(V_f32);
-        q_dev.ToDevice(Q_fp16.data());
-        k_dev.ToDevice(K_fp16.data());
-        v_dev.ToDevice(V_fp16.data());
-    }
-    else
-    {
-        q_dev.ToDevice(Q_f32.data());
-        k_dev.ToDevice(K_f32.data());
-        v_dev.ToDevice(V_f32.data());
-    }
+    // ---- Upload input tensors to GPU ----
+    ck_tile::DeviceMem q_dev(q_host.get_element_space_size() * sizeof(InputT));
+    ck_tile::DeviceMem k_dev(k_host.get_element_space_size() * sizeof(InputT));
+    ck_tile::DeviceMem v_dev(v_host.get_element_space_size() * sizeof(InputT));
+    q_dev.ToDevice(q_host.data());
+    k_dev.ToDevice(k_host.data());
+    v_dev.ToDevice(v_host.data());
 
     // ---- Output / scratch GPU buffers ----
     ck_tile::DeviceMem q_hat_dev(bsz.q_hat_bytes);
@@ -221,7 +177,7 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     ck_tile::DeviceMem k_mean_partial_buf(bsz.k_mean_partial_bytes);
     ck_tile::DeviceMem counter_buf(bsz.counter_bytes);
 
-    // ---- Fill Hargs (k_mean_ptr / k_prime_ptr filled by sageattn_v3_preprocess_run) ----
+    // ---- Build kernel args ----
     ck_tile::SageAttnV3PreprocessArgs<InputT> hargs{};
     hargs.q_ptr                = static_cast<const InputT*>(q_dev.GetDeviceBuffer());
     hargs.seqlen_q             = sq;
@@ -256,7 +212,6 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     hargs.stride_k_scale       = hd / kG;
     hargs.nhead_stride_k_scale = sk_pad * (hd / kG);
     hargs.batch_stride_k_scale = h * sk_pad * (hd / kG);
-    // k_mean_ptr and k_prime_ptr are set inside sageattn_v3_preprocess_run().
 
     hargs.v_ptr                = static_cast<const InputT*>(v_dev.GetDeviceBuffer());
     hargs.nhead_stride_v       = sk * hd;
@@ -276,17 +231,28 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     hargs.num_k_tiles = num_k_tiles;
 
     // ---- Launch ----
-    run_sageattn_v3_preprocess<InputT>(hargs,
-                                       static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
-                                       static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
-                                       static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-                                       static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
-                                       static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
-                                       /*stream=*/nullptr);
+    if(hd == 128)
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::run(
+            hargs,
+            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
+            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
+            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
+            static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
+            static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
+            /*stream=*/nullptr);
+    else
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::run(
+            hargs,
+            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
+            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
+            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
+            static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
+            static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
+            /*stream=*/nullptr);
+
     HIP_CHECK_ERROR(hipDeviceSynchronize());
 
     // ---- Copy results back ----
-    // q_mean and k_mean are stored as InputT on the GPU.
     std::vector<InputT> k_mean_gpu_raw(b * h * hd);
     std::vector<InputT> q_mean_gpu_raw(b * h * num_q_tiles * hd);
     k_mean_buf.FromDevice(k_mean_gpu_raw.data());
@@ -315,232 +281,141 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     v_hat_dev.FromDevice(v_hat_gpu.data());
     v_scale_dev.FromDevice(v_scale_gpu.data());
 
-    // Tolerance: fp16 introduces ~1/2^10 relative error vs float operations.
+    // Tolerances
     const float mean_tol     = use_fp16() ? 2e-3f : 1e-4f;
-    const int max_scale_diff = use_fp16() ? 1 : 0;
+    const float scl_atol     = use_fp16() ? 1.0f : 0.0f;
+    const float delta_s_atol = 1e-2f * static_cast<float>(hd);
+
+    // Helper: compact valid rows from a padded GPU buffer and build dequant+smooth reference.
+    // For padded outputs (hat/scale), use ck_tile::check_err with gpu_stride overload directly.
 
     // ======================== VERIFY k_mean =================================
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int d = 0; d < hd; d++)
-            {
-                const int off = bi * h * hd + hi * hd + d;
-                EXPECT_NEAR(k_mean_gpu_f32[off], k_mean_ref_f32[off], mean_tol)
-                    << "k_mean b=" << bi << " h=" << hi << " d=" << d;
-            }
+    ASSERT_TRUE(ck_tile::check_err(
+        k_mean_gpu_f32.data(), 1, k_mean_ref_f32.data(), 1, k_mean_gpu_f32.size(), "k_mean",
+        0.0, mean_tol));
 
     // ======================== VERIFY q_mean =================================
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int qi = 0; qi < num_q_tiles; qi++)
-                for(int d = 0; d < hd; d++)
-                {
-                    const int off = bi * h * num_q_tiles * hd + hi * num_q_tiles * hd + qi * hd + d;
-                    EXPECT_NEAR(q_mean_gpu_f32[off], q_mean_ref_f32[off], mean_tol)
-                        << "q_mean b=" << bi << " h=" << hi << " qi=" << qi << " d=" << d;
-                }
+    ASSERT_TRUE(ck_tile::check_err(
+        q_mean_gpu_f32.data(), 1, q_mean_ref_f32.data(), 1, q_mean_gpu_f32.size(), "q_mean",
+        0.0, mean_tol));
 
     // ======================== VERIFY delta_s ================================
-    // Tolerance accounts for GEMM with InputT accumulators over hdim additions.
-    const float delta_s_tol = 1e-2f * static_cast<float>(hd);
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int qi = 0; qi < num_q_tiles; qi++)
-                for(int kj = 0; kj < sk; kj++)
-                {
-                    const int gpu_off = bi * h * num_q_tiles * sk_pad + hi * num_q_tiles * sk_pad +
-                                        qi * sk_pad + kj;
-                    const int ref_off =
-                        bi * h * num_q_tiles * sk + hi * num_q_tiles * sk + qi * sk + kj;
-                    EXPECT_NEAR(delta_s_gpu[gpu_off], delta_s_ref[ref_off], delta_s_tol)
-                        << "delta_s b=" << bi << " h=" << hi << " qi=" << qi << " kj=" << kj;
-                }
+    // GPU: [b*h*num_q_tiles, sk_pad], valid: sk columns per row.
+    ASSERT_TRUE(ck_tile::check_err(delta_s_gpu.data(),
+                                   sk_pad,
+                                   delta_s_ref.data(),
+                                   b * h * num_q_tiles,
+                                   sk,
+                                   "delta_s",
+                                   0.0,
+                                   delta_s_atol));
 
     // ======================== VERIFY Q scale bytes ==========================
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int n = 0; n < sq; n++)
-                for(int g = 0; g < hd / kG; g++)
-                {
-                    const int gpu_off =
-                        bi * h * sq_pad * (hd / kG) + hi * sq_pad * (hd / kG) + n * (hd / kG) + g;
-                    const int ref_off =
-                        bi * h * sq * (hd / kG) + hi * sq * (hd / kG) + n * (hd / kG) + g;
-                    const int diff = std::abs(static_cast<int>(q_scale_gpu[gpu_off]) -
-                                              static_cast<int>(q_scale_ref[ref_off]));
-                    EXPECT_LE(diff, max_scale_diff)
-                        << "q_scale b=" << bi << " h=" << hi << " n=" << n << " g=" << g
-                        << " gpu=" << static_cast<int>(q_scale_gpu[gpu_off])
-                        << " ref=" << static_cast<int>(q_scale_ref[ref_off]);
-                }
+    // GPU: [b*h, sq_pad*(hd/kG)], valid: sq*(hd/kG) per outer row.
+    ASSERT_TRUE(ck_tile::check_err(q_scale_gpu.data(),
+                                   sq_pad * (hd / kG),
+                                   q_scale_ref.data(),
+                                   b * h,
+                                   sq * (hd / kG),
+                                   "q_scale",
+                                   0.0,
+                                   scl_atol));
+
+    // ======================== VERIFY K scale bytes ==========================
+    ASSERT_TRUE(ck_tile::check_err(k_scale_gpu.data(),
+                                   sk_pad * (hd / kG),
+                                   k_scale_ref.data(),
+                                   b * h,
+                                   sk * (hd / kG),
+                                   "k_scale",
+                                   0.0,
+                                   scl_atol));
+
+    // ======================== VERIFY V scale bytes ==========================
+    // GPU: [b*h*hd, sk_pad/kG], valid: sk/kG per outer row.
+    ASSERT_TRUE(ck_tile::check_err(v_scale_gpu.data(),
+                                   sk_pad / kG,
+                                   v_scale_ref.data(),
+                                   b * h * hd,
+                                   sk / kG,
+                                   "v_scale",
+                                   0.0,
+                                   scl_atol));
+
+    // Helper: compact valid rows from a padded GPU uint8 buffer.
+    auto compact_u8 = [](const std::vector<uint8_t>& src,
+                         std::size_t n_outer,
+                         std::size_t gpu_stride,
+                         std::size_t n_valid) {
+        std::vector<uint8_t> out(n_outer * n_valid);
+        for(std::size_t i = 0; i < n_outer; i++)
+            std::copy(src.data() + i * gpu_stride,
+                      src.data() + i * gpu_stride + n_valid,
+                      out.data() + i * n_valid);
+        return out;
+    };
 
     // ======================== VERIFY Q hat (dequantized) ====================
     {
-        // Extract valid rows from padded GPU buffer.
-        std::vector<uint8_t> q_hat_real(b * h * sq * (hd / 2));
-        std::vector<uint8_t> q_scale_real(b * h * sq * (hd / kG));
-        for(int bi = 0; bi < b; bi++)
-            for(int hi = 0; hi < h; hi++)
-                for(int n = 0; n < sq; n++)
-                {
-                    const int src_hat =
-                        bi * h * sq_pad * (hd / 2) + hi * sq_pad * (hd / 2) + n * (hd / 2);
-                    const int dst_hat = bi * h * sq * (hd / 2) + hi * sq * (hd / 2) + n * (hd / 2);
-                    std::copy(q_hat_gpu.begin() + src_hat,
-                              q_hat_gpu.begin() + src_hat + (hd / 2),
-                              q_hat_real.begin() + dst_hat);
-                    const int src_sc =
-                        bi * h * sq_pad * (hd / kG) + hi * sq_pad * (hd / kG) + n * (hd / kG);
-                    const int dst_sc =
-                        bi * h * sq * (hd / kG) + hi * sq * (hd / kG) + n * (hd / kG);
-                    std::copy(q_scale_gpu.begin() + src_sc,
-                              q_scale_gpu.begin() + src_sc + (hd / kG),
-                              q_scale_real.begin() + dst_sc);
-                }
-
+        const auto q_hat_c   = compact_u8(q_hat_gpu,   b * h, sq_pad * (hd / 2),  sq * (hd / 2));
+        const auto q_scale_c = compact_u8(q_scale_gpu, b * h, sq_pad * (hd / kG), sq * (hd / kG));
         std::vector<float> q_dequant(b * h * sq * hd);
         ck_tile::reference::reference_dequant_mxfp4(
-            q_hat_real.data(), q_scale_real.data(), q_dequant.data(), b, h, sq, hd);
+            q_hat_c.data(), q_scale_c.data(), q_dequant.data(), b, h, sq, hd);
 
-        std::vector<float> q_smooth_ref(b * h * sq * hd);
+        std::vector<float> q_smooth(b * h * sq * hd);
         for(int bi = 0; bi < b; bi++)
             for(int hi = 0; hi < h; hi++)
                 for(int qi = 0; qi < num_q_tiles; qi++)
                 {
-                    const int rs = qi * kM0;
-                    const int re = std::min(rs + kM0, sq);
+                    const int rs = qi * kM0, re = std::min(rs + kM0, sq);
                     for(int n = rs; n < re; n++)
                         for(int d = 0; d < hd; d++)
-                        {
-                            const float qval = Q_f32[bi * h * sq * hd + hi * sq * hd + n * hd + d];
-                            const float mean = q_mean_ref_rt[bi * h * num_q_tiles * hd +
-                                                             hi * num_q_tiles * hd + qi * hd + d];
-                            q_smooth_ref[bi * h * sq * hd + hi * sq * hd + n * hd + d] =
-                                qval - mean;
-                        }
+                            q_smooth[bi * h * sq * hd + hi * sq * hd + n * hd + d] =
+                                Q_f32[bi * h * sq * hd + hi * sq * hd + n * hd + d] -
+                                q_mean_ref_rt[bi * h * num_q_tiles * hd +
+                                              hi * num_q_tiles * hd + qi * hd + d];
                 }
-
-        for(std::size_t i = 0; i < q_dequant.size(); i++)
-            EXPECT_NEAR(q_dequant[i], q_smooth_ref[i], 1.0f) << "Q_hat dequant[" << i << "]";
+        ASSERT_TRUE(ck_tile::check_err(q_dequant, q_smooth, "q_hat (dequant)", 0.0, 1.0));
     }
-
-    // ======================== VERIFY K scale bytes ==========================
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int n = 0; n < sk; n++)
-                for(int g = 0; g < hd / kG; g++)
-                {
-                    const int gpu_off =
-                        bi * h * sk_pad * (hd / kG) + hi * sk_pad * (hd / kG) + n * (hd / kG) + g;
-                    const int ref_off =
-                        bi * h * sk * (hd / kG) + hi * sk * (hd / kG) + n * (hd / kG) + g;
-                    const int diff = std::abs(static_cast<int>(k_scale_gpu[gpu_off]) -
-                                              static_cast<int>(k_scale_ref[ref_off]));
-                    EXPECT_LE(diff, max_scale_diff)
-                        << "k_scale b=" << bi << " h=" << hi << " n=" << n << " g=" << g
-                        << " gpu=" << static_cast<int>(k_scale_gpu[gpu_off])
-                        << " ref=" << static_cast<int>(k_scale_ref[ref_off]);
-                }
 
     // ======================== VERIFY K hat (dequantized) ====================
     {
-        // Extract valid rows from padded GPU buffer.
-        std::vector<uint8_t> k_hat_real(b * h * sk * (hd / 2));
-        std::vector<uint8_t> k_scale_real(b * h * sk * (hd / kG));
-        for(int bi = 0; bi < b; bi++)
-            for(int hi = 0; hi < h; hi++)
-                for(int n = 0; n < sk; n++)
-                {
-                    const int src_hat =
-                        bi * h * sk_pad * (hd / 2) + hi * sk_pad * (hd / 2) + n * (hd / 2);
-                    const int dst_hat = bi * h * sk * (hd / 2) + hi * sk * (hd / 2) + n * (hd / 2);
-                    std::copy(k_hat_gpu.begin() + src_hat,
-                              k_hat_gpu.begin() + src_hat + (hd / 2),
-                              k_hat_real.begin() + dst_hat);
-                    const int src_sc =
-                        bi * h * sk_pad * (hd / kG) + hi * sk_pad * (hd / kG) + n * (hd / kG);
-                    const int dst_sc =
-                        bi * h * sk * (hd / kG) + hi * sk * (hd / kG) + n * (hd / kG);
-                    std::copy(k_scale_gpu.begin() + src_sc,
-                              k_scale_gpu.begin() + src_sc + (hd / kG),
-                              k_scale_real.begin() + dst_sc);
-                }
-
+        const auto k_hat_c   = compact_u8(k_hat_gpu,   b * h, sk_pad * (hd / 2),  sk * (hd / 2));
+        const auto k_scale_c = compact_u8(k_scale_gpu, b * h, sk_pad * (hd / kG), sk * (hd / kG));
         std::vector<float> k_dequant(b * h * sk * hd);
         ck_tile::reference::reference_dequant_mxfp4(
-            k_hat_real.data(), k_scale_real.data(), k_dequant.data(), b, h, sk, hd);
+            k_hat_c.data(), k_scale_c.data(), k_dequant.data(), b, h, sk, hd);
 
-        std::vector<float> k_smooth_ref(b * h * sk * hd);
+        std::vector<float> k_smooth(b * h * sk * hd);
         for(int bi = 0; bi < b; bi++)
             for(int hi = 0; hi < h; hi++)
                 for(int n = 0; n < sk; n++)
                     for(int d = 0; d < hd; d++)
-                    {
-                        const float kval = K_f32[bi * h * sk * hd + hi * sk * hd + n * hd + d];
-                        const float mean = k_mean_ref_rt[bi * h * hd + hi * hd + d];
-                        k_smooth_ref[bi * h * sk * hd + hi * sk * hd + n * hd + d] = kval - mean;
-                    }
-
-        for(std::size_t i = 0; i < k_dequant.size(); i++)
-            EXPECT_NEAR(k_dequant[i], k_smooth_ref[i], 1.0f) << "K_hat dequant[" << i << "]";
+                        k_smooth[bi * h * sk * hd + hi * sk * hd + n * hd + d] =
+                            K_f32[bi * h * sk * hd + hi * sk * hd + n * hd + d] -
+                            k_mean_ref_rt[bi * h * hd + hi * hd + d];
+        ASSERT_TRUE(ck_tile::check_err(k_dequant, k_smooth, "k_hat (dequant)", 0.0, 1.0));
     }
 
-    // ======================== VERIFY V scale bytes ==========================
-    for(int bi = 0; bi < b; bi++)
-        for(int hi = 0; hi < h; hi++)
-            for(int d = 0; d < hd; d++)
-                for(int g = 0; g < sk / kG; g++)
-                {
-                    const int gpu_off = bi * h * hd * (sk_pad / kG) + hi * hd * (sk_pad / kG) +
-                                        d * (sk_pad / kG) + g;
-                    const int ref_off =
-                        bi * h * hd * (sk / kG) + hi * hd * (sk / kG) + d * (sk / kG) + g;
-                    const int diff = std::abs(static_cast<int>(v_scale_gpu[gpu_off]) -
-                                              static_cast<int>(v_scale_ref[ref_off]));
-                    EXPECT_LE(diff, max_scale_diff)
-                        << "v_scale b=" << bi << " h=" << hi << " d=" << d << " g=" << g
-                        << " gpu=" << static_cast<int>(v_scale_gpu[gpu_off])
-                        << " ref=" << static_cast<int>(v_scale_ref[ref_off]);
-                }
-
-    // ======================== VERIFY V hat (dequantized, transposed layout) =
+    // ======================== VERIFY V hat (dequantized, transposed layout) ==
     {
-        // V hat GPU layout: [B, H, hdim, sk_pad/2]. Extract valid sk columns.
-        std::vector<uint8_t> v_hat_real(b * h * hd * (sk / 2));
-        std::vector<uint8_t> v_scale_real(b * h * hd * (sk / kG));
-        for(int bi = 0; bi < b; bi++)
-            for(int hi = 0; hi < h; hi++)
-                for(int d = 0; d < hd; d++)
-                {
-                    const int src_hat =
-                        bi * h * hd * (sk_pad / 2) + hi * hd * (sk_pad / 2) + d * (sk_pad / 2);
-                    const int dst_hat = bi * h * hd * (sk / 2) + hi * hd * (sk / 2) + d * (sk / 2);
-                    std::copy(v_hat_gpu.begin() + src_hat,
-                              v_hat_gpu.begin() + src_hat + (sk / 2),
-                              v_hat_real.begin() + dst_hat);
-                    const int src_sc =
-                        bi * h * hd * (sk_pad / kG) + hi * hd * (sk_pad / kG) + d * (sk_pad / kG);
-                    const int dst_sc =
-                        bi * h * hd * (sk / kG) + hi * hd * (sk / kG) + d * (sk / kG);
-                    std::copy(v_scale_gpu.begin() + src_sc,
-                              v_scale_gpu.begin() + src_sc + (sk / kG),
-                              v_scale_real.begin() + dst_sc);
-                }
-
+        // V hat GPU layout: [b*h*hd, sk_pad/2], valid: sk/2 per outer row.
+        const auto v_hat_c   = compact_u8(v_hat_gpu,   b * h * hd, sk_pad / 2,  sk / 2);
+        const auto v_scale_c = compact_u8(v_scale_gpu, b * h * hd, sk_pad / kG, sk / kG);
         std::vector<float> v_dequant(b * h * hd * sk);
         ck_tile::reference::reference_dequant_mxfp4(
-            v_hat_real.data(), v_scale_real.data(), v_dequant.data(), b, h, hd, sk);
+            v_hat_c.data(), v_scale_c.data(), v_dequant.data(), b, h, hd, sk);
 
+        // v_dequant is [b,h,hd,sk]; build transposed ref from V_f32 [b,h,sk,hd].
+        std::vector<float> v_ref_t(b * h * hd * sk);
         for(int bi = 0; bi < b; bi++)
             for(int hi = 0; hi < h; hi++)
                 for(int d = 0; d < hd; d++)
                     for(int n = 0; n < sk; n++)
-                    {
-                        const float vref = V_f32[bi * h * sk * hd + hi * sk * hd + n * hd + d];
-                        const float vgpu = v_dequant[bi * h * hd * sk + hi * hd * sk + d * sk + n];
-                        EXPECT_NEAR(vgpu, vref, 1.0f)
-                            << "V_hat dequant b=" << bi << " h=" << hi << " d=" << d << " n=" << n;
-                    }
+                        v_ref_t[bi * h * hd * sk + hi * hd * sk + d * sk + n] =
+                            V_f32[bi * h * sk * hd + hi * sk * hd + n * hd + d];
+        ASSERT_TRUE(ck_tile::check_err(v_dequant, v_ref_t, "v_hat (dequant)", 0.0, 1.0));
     }
 }
 
@@ -573,6 +448,8 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(1, 1, 65, 96, 256, true),   // hdim=256 + misaligned
         std::make_tuple(1, 2, 300, 192, 256, true)  // hdim=256 + multi-tile
         ));
+
+} // namespace
 
 #else // CK_USE_NATIVE_MX_SUPPORT not defined
 
