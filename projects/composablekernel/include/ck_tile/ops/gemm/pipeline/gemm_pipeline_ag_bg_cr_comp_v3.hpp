@@ -806,10 +806,11 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
                                    void* p_smem) const
     {
         constexpr bool IsAsyncPipeline =
-            Problem::Async && AsDramBlockWindowTmp::size() == 1 && BsDramBlockWindowTmp::size() == 1
-            && std::is_same_v<AElementFunction, element_wise::PassThrough>
-            && std::is_same_v<BElementFunction, element_wise::PassThrough>
-            && std::is_same_v<ADataType, BDataType>
+            Problem::Async && AsDramBlockWindowTmp::size() == 1 &&
+                    BsDramBlockWindowTmp::size() == 1 &&
+                    std::is_same_v<AElementFunction, element_wise::PassThrough> &&
+                    std::is_same_v<BElementFunction, element_wise::PassThrough> &&
+                    std::is_same_v<ADataType, BDataType>
                 ? true
                 : false;
 
@@ -847,11 +848,11 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
                                    TailNumber tail_number,
                                    void* p_smem) const
     {
-        constexpr bool IsAsyncPipeline =
-            Problem::Async && AsDramBlockWindowTmp::size() == 1 && BsDramBlockWindowTmp::size() == 1
-            && std::is_same_v<ADataType, BDataType>
-                ? true
-                : false;
+        constexpr bool IsAsyncPipeline = Problem::Async && AsDramBlockWindowTmp::size() == 1 &&
+                                                 BsDramBlockWindowTmp::size() == 1 &&
+                                                 std::is_same_v<ADataType, BDataType>
+                                             ? true
+                                             : false;
 
         const auto RunPipeline = [&](auto hot_loop_, auto tail_num_) {
             constexpr bool hot_loop    = hot_loop_.value;
