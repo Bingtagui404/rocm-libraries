@@ -125,7 +125,7 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
     static constexpr index_t NPerBlock = BlockGemmShape::kN;
     static constexpr index_t KPerBlock = BlockGemmShape::kK;
 
-    static constexpr bool Async = false;
+    static constexpr bool Async = Problem::Async;
 
     template <bool IsWave32Host = false>
     static constexpr index_t GetVectorSizeA()
@@ -330,6 +330,18 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
             constexpr BDramTileWindowStep b_dram_tile_window_step =
                 is_b_row_major ? make_array(KPerBlock, 0) : make_array(0, KPerBlock);
 
+            constexpr auto ALdsTileDistr =
+                make_static_tile_distribution(BlockGemm::MakeABlockDistributionEncode());
+            constexpr auto BLdsTileDistr =
+                make_static_tile_distribution(BlockGemm::MakeBBlockDistributionEncode());
+
+            using ALdsTile = decltype(make_static_distributed_tensor<ADataType>(ALdsTileDistr));
+            using BLdsTile = decltype(make_static_distributed_tensor<BDataType>(BLdsTileDistr));
+
+            // register tiles
+            ALdsTile a_block_tiles;
+            BLdsTile b_block_tiles;
+
             // -----------------------------------------------------------------------------------------
             // Gemm pipeline start
             // initialize C
@@ -343,8 +355,8 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
 
             block_sync_lds_direct_load();
 
-            block_gemm.LocalPrefetch(
-                a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+            Base::LocalPrefetch(a_block_tiles, a_lds_ld_window, is_a_load_tr_v);
+            Base::LocalPrefetch(b_block_tiles, b_lds_ld_window, is_b_load_tr_v);
 
             block_sync_lds();
 
@@ -364,13 +376,13 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
                     asm volatile(";; HotLoop Start ;;");
                     __builtin_amdgcn_sched_barrier(0);
 
-                    block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                    block_gemm(c_block_tile, a_block_tiles, b_block_tiles);
                     __builtin_amdgcn_sched_barrier(0);
 
                     block_sync_lds_direct_load();
 
-                    block_gemm.LocalPrefetch(
-                        a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+                    Base::LocalPrefetch(a_block_tiles, a_lds_ld_window, is_a_load_tr_v);
+                    Base::LocalPrefetch(b_block_tiles, b_lds_ld_window, is_b_load_tr_v);
 
                     block_sync_lds();
 
@@ -391,19 +403,19 @@ struct GemmPipelineAgBgCrCompV3 : public BaseGemmPipelineAgBgCrCompV3<Problem>
             {
                 // Leak last MFMA block to epilogue region, cover the potential lds-shuffle
                 // latency
-                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                block_gemm(c_block_tile, a_block_tiles, b_block_tiles);
             }
             else
             {
-                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                block_gemm(c_block_tile, a_block_tiles, b_block_tiles);
                 __builtin_amdgcn_sched_barrier(0);
 
                 block_sync_lds_direct_load();
 
-                block_gemm.LocalPrefetch(
-                    a_lds_ld_window, b_lds_ld_window, is_a_load_tr_v, is_b_load_tr_v);
+                Base::LocalPrefetch(a_block_tiles, a_lds_ld_window, is_a_load_tr_v);
+                Base::LocalPrefetch(b_block_tiles, b_lds_ld_window, is_b_load_tr_v);
 
-                block_gemm(c_block_tile, a_lds_ld_window, b_lds_ld_window);
+                block_gemm(c_block_tile, a_block_tiles, b_block_tiles);
             }
             return c_block_tile;
         }

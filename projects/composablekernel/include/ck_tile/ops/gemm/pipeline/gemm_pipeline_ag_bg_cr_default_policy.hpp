@@ -145,12 +145,22 @@ struct GemmPipelineAgBgCrDefaultPolicy
                                             Problem::UseStructuredSparsity,
                                             wg_attr_num_access>;
 
-        using BlockGemmPolicy = BlockGemmASmemBSmemCRegV1CustomPolicy<ATypeToUse,
-                                                                      BTypeToUse,
-                                                                      typename Problem::CDataType,
-                                                                      BlockWarps,
-                                                                      WarpGemm>;
-        return BlockUniversalGemmAsBsCr<Problem, BlockGemmPolicy>{};
+        using BlockGemmPolicy =
+            std::conditional_t<Problem::Async,
+                               BlockGemmARegBRegCRegV1CustomPolicy<ATypeToUse,
+                                                                   BTypeToUse,
+                                                                   typename Problem::CDataType,
+                                                                   BlockWarps,
+                                                                   WarpGemm>,
+                               BlockGemmASmemBSmemCRegV1CustomPolicy<ATypeToUse,
+                                                                     BTypeToUse,
+                                                                     typename Problem::CDataType,
+                                                                     BlockWarps,
+                                                                     WarpGemm>>;
+        using BlockGemm = std::conditional_t<Problem::Async,
+                                             BlockGemmARegBRegCRegV1<Problem, BlockGemmPolicy>,
+                                             BlockUniversalGemmAsBsCr<Problem, BlockGemmPolicy>>;
+        return BlockGemm{};
     }
 };
 

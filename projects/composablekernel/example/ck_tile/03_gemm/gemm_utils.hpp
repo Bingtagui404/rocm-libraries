@@ -437,8 +437,7 @@ template <>
 struct PipelineTypeTraits<ck_tile::GemmPipeline::MEMORY>
 {
     template <typename PipelineProblem>
-    // using GemmPipeline = ck_tile::GemmPipelineAgBgCrMem<PipelineProblem>;
-    using GemmPipeline = ck_tile::GemmPipelineAgBgCrMemAsync<PipelineProblem>;
+    using GemmPipeline = ck_tile::GemmPipelineAgBgCrMem<PipelineProblem>;
     template <typename PipelineProblem>
     using UniversalGemmPipeline = ck_tile::BaseGemmPipelineAgBgCrMem<PipelineProblem>;
 };
