@@ -142,6 +142,7 @@ template <ck::index_t NDimSpatial,
           typename OutElementwiseOperation,
           ConvolutionBackwardWeightSpecialization ConvBackwardWeightSpecialization,
           ck::index_t NumGemmKPrefetchStage,
+          ck::index_t TileIndexThreadGroupSize,
           ck::index_t TileLoadThreadGroupSize,
           ck::index_t TileMathThreadGroupSize,
           ck::index_t MPerBlock,
@@ -199,18 +200,27 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
     static_assert(BBlockTransferThreadClusterLengths_K0_N_K1::At(0) <= AK0PerBlock,
                   "B transfer K0 cluster dim exceeds AK0PerBlock (= K0PerBlock / K1)");
 
-    // Transfer cluster product must equal TileLoadThreadGroupSize (each load thread gets
-    // exactly one slot in the cluster partitioning).
+    // Transfer cluster product must match the thread group that owns the cluster:
+    //   2-way (TileIndex=0): cluster = TileLoadThreadGroupSize
+    //   3-way (TileIndex>0): cluster = TileIndexThreadGroupSize = TileLoadThreadGroupSize
+    static constexpr index_t TransferClusterSize =
+        TileIndexThreadGroupSize > 0 ? TileIndexThreadGroupSize : TileLoadThreadGroupSize;
+
     static_assert(ABlockTransferThreadClusterLengths_K0_M_K1::At(0) *
                           ABlockTransferThreadClusterLengths_K0_M_K1::At(1) *
                           ABlockTransferThreadClusterLengths_K0_M_K1::At(2) ==
-                      TileLoadThreadGroupSize,
-                  "A transfer cluster size must equal TileLoadThreadGroupSize");
+                      TransferClusterSize,
+                  "A transfer cluster size must match thread group size");
     static_assert(BBlockTransferThreadClusterLengths_K0_N_K1::At(0) *
                           BBlockTransferThreadClusterLengths_K0_N_K1::At(1) *
                           BBlockTransferThreadClusterLengths_K0_N_K1::At(2) ==
-                      TileLoadThreadGroupSize,
-                  "B transfer cluster size must equal TileLoadThreadGroupSize");
+                      TransferClusterSize,
+                  "B transfer cluster size must match thread group size");
+
+    // 3-way requires equal index and load groups (same cluster for offset compute and load)
+    static_assert(TileIndexThreadGroupSize == 0 ||
+                      TileIndexThreadGroupSize == TileLoadThreadGroupSize,
+                  "3-way mode requires TileIndexThreadGroupSize == TileLoadThreadGroupSize");
 
     using DeviceOp = DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3;
 
@@ -242,8 +252,9 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
     static constexpr GemmSpecialization GemmSpec = GemmSpecialization::Default;
     static constexpr auto K1Number               = Number<K1>{};
 
-    // Launch block size = load threads + math threads
-    static constexpr index_t LaunchBlockSize = TileLoadThreadGroupSize + TileMathThreadGroupSize;
+    // Launch block size = all thread groups
+    static constexpr index_t LaunchBlockSize =
+        TileIndexThreadGroupSize + TileLoadThreadGroupSize + TileMathThreadGroupSize;
 
     static constexpr auto conv_to_gemm_transformer =
         TransformConvBwdWeightToGemmV2<NDimSpatial,
@@ -349,6 +360,7 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
         BElementwiseOperation,
         CElementwiseOperation,
         NumGemmKPrefetchStage,
+        TileIndexThreadGroupSize,
         TileLoadThreadGroupSize,
         TileMathThreadGroupSize,
         MPerBlock,

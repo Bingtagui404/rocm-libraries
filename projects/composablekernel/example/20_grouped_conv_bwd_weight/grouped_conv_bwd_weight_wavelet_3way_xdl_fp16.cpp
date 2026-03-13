@@ -14,6 +14,9 @@ using InElementOp  = PassThrough;
 using WeiElementOp = PassThrough;
 using OutElementOp = PassThrough;
 
+// 3-way wavelet: Index=128, Load=128, Math=256, total=512
+// Cluster S<4,16,2>=128 (halved M dim vs 2-way S<4,32,2>=256)
+// Thread slice M doubles: SrcScalarPerVector 2→4 for M=64, stays 4 for M=128
 template <ck::index_t NDimSpatial>
 using DeviceConvBwdWeightInstance =
     ck::tensor_operation::device::DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3<
@@ -39,8 +42,8 @@ using DeviceConvBwdWeightInstance =
         OutElementOp,         // OutElementwiseOperation
         ConvBwdWeightDefault, // ConvolutionBackwardWeightSpecialization
         1,                    // NumGemmKPrefetchStage
-        0,                    // TileIndexThreadGroupSize (0 = 2-way mode)
-        256,                  // TileLoadThreadGroupSize
+        128,                  // TileIndexThreadGroupSize (3-way mode)
+        128,                  // TileLoadThreadGroupSize
         256,                  // TileMathThreadGroupSize
         64,                   // MPerBlock
         64,                   // NPerBlock
@@ -50,18 +53,18 @@ using DeviceConvBwdWeightInstance =
         32,                   // NPerXdl
         1,                    // MXdlPerWave
         1,                    // NXdlPerWave
-        S<4, 32, 2>,          // ABlockTransferThreadClusterLengths_K0_M_K1
+        S<4, 16, 2>,          // ABlockTransferThreadClusterLengths_K0_M_K1
         S<2, 0, 1>,           // ABlockTransferThreadClusterArrangeOrder
         S<1, 0, 2>,           // ABlockTransferSrcAccessOrder
         1,                    // ABlockTransferSrcVectorDim
-        2,                    // ABlockTransferSrcScalarPerVector
+        4,                    // ABlockTransferSrcScalarPerVector (doubled: thread_slice_M=4)
         4,                    // ABlockTransferDstScalarPerVector_K1
         false,                // ABlockLdsAddExtraM
-        S<4, 32, 2>,          // BBlockTransferThreadClusterLengths_K0_N_K1
+        S<4, 16, 2>,          // BBlockTransferThreadClusterLengths_K0_N_K1
         S<2, 0, 1>,           // BBlockTransferThreadClusterArrangeOrder
         S<1, 0, 2>,           // BBlockTransferSrcAccessOrder
         1,                    // BBlockTransferSrcVectorDim
-        2,                    // BBlockTransferSrcScalarPerVector
+        4,                    // BBlockTransferSrcScalarPerVector (doubled: thread_slice_N=4)
         4,                    // BBlockTransferDstScalarPerVector_K1
         false,                // BBlockLdsAddExtraN
         1,                    // CShuffleMXdlPerWavePerShuffle
