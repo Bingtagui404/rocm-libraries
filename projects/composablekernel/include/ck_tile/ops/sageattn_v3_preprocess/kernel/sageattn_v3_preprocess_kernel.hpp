@@ -223,21 +223,29 @@ struct SageAttnV3PreprocessKernel
 //
 // Computes k_mean[batch, nhead, hdim] = mean over seqlen_k of K[batch, nhead, :, hdim].
 //
-// Grid:      (1, nhead, batch) -- single-pass, no atomics
+// Grid:      (num_chunks, nhead, batch)
+//   num_chunks = ceil(seqlen_k / kChunkRows), where kChunkRows is chosen so that
+//   enough CTAs are launched to saturate the GPU even at small batch*nhead counts.
+//
 // BlockSize: kWarps*64 = 256 threads (4 wavefronts)
 //
-// Algorithm (vectorized, no cross-CTA atomics):
+// Algorithm (vectorized, multi-CTA atomic reduction):
+//   Each CTA processes a contiguous chunk of kChunkRows rows (tail CTA may be smaller).
 //   Each thread handles kVec=8 consecutive columns (one uint4 load per row).
 //   Thread layout (NDimP=2: warp_id, lane_id):
 //     col_grp = warp_id * kColsPerWarp + lane_id / kRowsPerGroup
 //     row_grp = lane_id % kRowsPerGroup
 //   Inner loop: load 8 fp16 at once, accumulate 8 float partial sums.
 //   Intra-warp reduce via XOR butterfly (warp_shuffle): all lanes in a col_grp
-//   group receive the total sum -- no shared memory needed.
-//   Vectorized store of k_mean (all threads write same value; idempotent).
+//   group receive the partial column sum for the chunk.
+//   Atomic add of partial sums into a float scratch buffer (k_mean_float).
 //
-// Eliminating cross-CTA atomics (vs. the old tiled approach) removes the
-// main latency bottleneck at large batch x nhead counts.
+// A separate SageAttnV3KMeanNormalizeKernel then divides by seqlen_k and
+// stores as InputT.  The float scratch buffer is borrowed from k_prime_buf
+// (which is always large enough and not yet written by Stage 1).
+//
+// Splitting seqlen_k across multiple CTAs allows the GPU to hide memory
+// latency more effectively at small batch*nhead counts.
 // ============================================================================
 
 template <typename InputT>
@@ -250,11 +258,34 @@ struct SageAttnV3KMeanKargs
     index_t nhead_stride_k;
     index_t batch_stride_k;
 
-    InputT* k_mean_ptr; // [batch, nhead, hdim] InputT, output
+    float* k_mean_float; // [batch, nhead, hdim] float -- atomic accumulation scratch
 
     index_t nhead_stride_kmean;
     index_t batch_stride_kmean;
 
+    index_t nhead;
+    index_t batch;
+    index_t chunk_rows; // rows processed by this CTA = ceil(seqlen_k / num_chunks)
+};
+
+// ============================================================================
+// SageAttnV3KMeanNormalizeKernel
+//
+// Divides float k_mean_float[batch, nhead, hdim] by seqlen_k and stores as InputT.
+//
+// Grid:      (1, nhead, batch)
+// BlockSize: kCols threads (covers all hdim columns in one CTA)
+// ============================================================================
+
+template <typename InputT>
+struct SageAttnV3KMeanNormalizeKargs
+{
+    const float* k_mean_float; // [batch, nhead, hdim] float -- atomic accumulation result
+    InputT* k_mean_ptr;        // [batch, nhead, hdim] InputT -- final output
+    index_t hdim;
+    index_t seqlen_k;
+    index_t nhead_stride_kmean;
+    index_t batch_stride_kmean;
     index_t nhead;
     index_t batch;
 };
@@ -274,10 +305,15 @@ struct SageAttnV3KMeanKernel
     // kRowsPerGroup: lanes within one wavefront collaborating on the same col_grp.
     // kBlockSize = kWarps * 64 = 256.
     //
+    // For kCols=64:  kColGroups=8,  kWarps=4, kColsPerWarp=2, kRowsPerGroup=32.
     // For kCols=128: kColGroups=16, kWarps=4, kColsPerWarp=4, kRowsPerGroup=16.
     // For kCols=256: kColGroups=32, kWarps=4, kColsPerWarp=8, kRowsPerGroup=8.
     // kBlockSize=256 allows up to 32/4=8 CTAs per CU simultaneously on gfx950
     // (max 32 wavefronts per CU), maximising occupancy.
+    //
+    // Multi-CTA design: Grid=(num_chunks, nhead, batch) where each CTA processes
+    // chunk_rows rows of K, accumulating partial sums via float atomicAdd into a
+    // float scratch buffer.  A separate normalize kernel divides by seqlen_k.
     static constexpr index_t kVec          = 8;
     static constexpr index_t kColGroups    = kCols / kVec;
     static constexpr index_t kWarps        = 4; // wavefronts per CTA (fixed)
@@ -296,8 +332,23 @@ struct SageAttnV3KMeanKernel
 
     using Kargs = SageAttnV3KMeanKargs<InputT>;
 
-    // Grid: one CTA per (head, batch) -- processes all seqlen_k rows.
-    CK_TILE_HOST static dim3 GridSize(const Kargs& k) { return dim3(1, k.nhead, k.batch); }
+    // kChunkRows: rows per CTA chunk. Chosen as a multiple of kRowsPerGroup so that
+    // every CTA (except possibly the last) processes exactly kChunkRows rows without
+    // a partial-tile tail, keeping the inner loop simple.
+    // kChunkRows=256 gives num_chunks = ceil(seqlen_k/256), e.g. 64 chunks for seqlen=16384.
+    static constexpr index_t kChunkRows = 256;
+
+    // Compute number of chunks for a given seqlen_k.
+    CK_TILE_HOST static index_t NumChunks(index_t seqlen_k)
+    {
+        return (seqlen_k + kChunkRows - 1) / kChunkRows;
+    }
+
+    // Grid: (num_chunks, nhead, batch) -- multiple CTAs per head for better utilization.
+    CK_TILE_HOST static dim3 GridSize(const Kargs& k)
+    {
+        return dim3(NumChunks(k.seqlen_k), k.nhead, k.batch);
+    }
 
     CK_TILE_HOST static constexpr dim3 BlockSize() { return dim3(kBlockSize); }
 
@@ -306,11 +357,20 @@ struct SageAttnV3KMeanKernel
 
     CK_TILE_DEVICE void operator()(Kargs kargs) const
     {
+        const index_t chunk_idx = get_block_id(); // which chunk of seqlen_k this CTA handles
         const index_t head_idx  = blockIdx.y;
         const index_t batch_idx = blockIdx.z;
 
+        // Row range for this CTA: [row_start, row_end)
+        const index_t row_start = chunk_idx * kChunkRows;
+        const index_t row_end   = min(row_start + kChunkRows, kargs.seqlen_k);
+        const index_t num_rows  = row_end - row_start;
+
         const InputT* k_head = kargs.k_ptr + batch_idx * kargs.batch_stride_k +
                                head_idx * kargs.nhead_stride_k;
+
+        // Advance to the start row of this chunk.
+        const InputT* k_chunk = k_head + row_start * kargs.stride_k;
 
         // ----------------------------------------------------------------
         // Thread layout (block-level, NDimP=2):
@@ -358,22 +418,23 @@ struct SageAttnV3KMeanKernel
                 sequence<2>>{});
 
         // ----------------------------------------------------------------
-        // Global K view: [seqlen_k, kCols] with strides [stride_k, 1].
+        // Global K view: [num_rows, kCols] with strides [stride_k, 1].
         // Vectorized along the last dimension (kCols, stride=1), kVec per load.
+        // Use num_rows (chunk size) as the view extent so the window stays in bounds.
         const auto k_view = make_naive_tensor_view<address_space_enum::global>(
-            k_head,
-            make_tuple(kargs.seqlen_k, number<kCols>{}),
+            k_chunk,
+            make_tuple(num_rows, number<kCols>{}),
             make_tuple(kargs.stride_k, number<1>{}),
             number<kVec>{},
             number<1>{});
 
         // ----------------------------------------------------------------
-        // Accumulator: float column sums, initially zero.
+        // Accumulator: float column partial sums, initially zero.
         auto acc = make_static_distributed_tensor<float>(acc_dstr);
         clear_tile(acc);
 
         // ----------------------------------------------------------------
-        // Main loop: process full kRowsPerGroup-row chunks from K.
+        // Main loop: process full kRowsPerGroup-row tiles from the chunk.
         // Each iteration loads [kRowsPerGroup, kCols] and accumulates.
         auto k_window = make_tile_window(
             k_view,
@@ -381,9 +442,9 @@ struct SageAttnV3KMeanKernel
             {0, 0},
             k_dstr);
 
-        const index_t num_full = kargs.seqlen_k / kRowsPerGroup;
+        const index_t num_full = num_rows / kRowsPerGroup;
 
-        for(index_t chunk = 0; chunk < num_full; chunk++)
+        for(index_t tile = 0; tile < num_full; tile++)
         {
             auto k_tile = load_tile(k_window);
 
@@ -402,9 +463,9 @@ struct SageAttnV3KMeanKernel
         }
 
         // ----------------------------------------------------------------
-        // Tail rows: seqlen_k % kRowsPerGroup rows remain.
+        // Tail rows within this chunk: num_rows % kRowsPerGroup rows remain.
         // The k_dstr assigns row_grp = lane_id % kRowsPerGroup within each wavefront.
-        // For tail rows [num_full*kRowsPerGroup .. seqlen_k-1], only the thread
+        // For tail rows [num_full*kRowsPerGroup .. num_rows-1], only the thread
         // whose row_grp equals the tail-row index r should accumulate, so we use a
         // scalar conditional add over the kVec elements this thread owns.
         //
@@ -417,7 +478,7 @@ struct SageAttnV3KMeanKernel
         //   col_base    = col_grp * kVec                  first column owned by this thread
         //
         // Accumulator thread buffer slot j corresponds to column (col_base + j).
-        const index_t tail     = kargs.seqlen_k % kRowsPerGroup;
+        const index_t tail     = num_rows % kRowsPerGroup;
         const index_t lane_id  = get_lane_id();
         const index_t warp_id  = get_warp_id();
         const index_t row_grp  = lane_id % kRowsPerGroup;
@@ -432,7 +493,7 @@ struct SageAttnV3KMeanKernel
                 if(row_grp == r)
                 {
                     const index_t abs_row = num_full * kRowsPerGroup + r;
-                    const InputT* row_ptr = k_head + abs_row * kargs.stride_k + col_base;
+                    const InputT* row_ptr = k_chunk + abs_row * kargs.stride_k + col_base;
                     static_for<0, kVec, 1>{}([&](auto j) {
                         acc.get_thread_buffer()(j) += type_convert<float>(row_ptr[j.value]);
                     });
@@ -451,26 +512,68 @@ struct SageAttnV3KMeanKernel
         block_tile_reduce_xor_sync(acc, f_sum);
 
         // ----------------------------------------------------------------
-        // Compute mean (divide by seqlen_k) then store via store_tile.
-        // After block_tile_reduce_xor_sync all kRowsPerGroup threads in each
-        // col_grp hold the same reduced sum, so all threads write the same value
-        // to the same memory locations -- redundant but correct (idempotent writes).
-        tile_elementwise_inout(
-            [scale = 1.0f / static_cast<float>(kargs.seqlen_k)](float& a) { a *= scale; }, acc);
+        // Atomic accumulation: each thread atomically adds its partial sum
+        // (one element per kVec slot) to the float scratch buffer.
+        // Only one lane per col_grp needs to add (all have the same reduced value).
+        // We use row_grp == 0 as the designated writer to avoid duplicate adds.
+        float* k_mean_out = kargs.k_mean_float + batch_idx * kargs.batch_stride_kmean +
+                            head_idx * kargs.nhead_stride_kmean;
 
-        InputT* k_mean_out = kargs.k_mean_ptr + batch_idx * kargs.batch_stride_kmean +
-                             head_idx * kargs.nhead_stride_kmean;
+        if(row_grp == 0)
+        {
+            static_for<0, kVec, 1>{}([&](auto j) {
+                const float val = acc.get_thread_buffer()[j];
+                // float atomicAdd: available on all AMD GFX9/GFX950 hardware.
+                __hip_atomic_fetch_add(&k_mean_out[col_base + j],
+                                       val,
+                                       __ATOMIC_RELAXED,
+                                       __HIP_MEMORY_SCOPE_AGENT);
+            });
+        }
+    }
+};
 
-        // Write InputT k_mean using scalar indexed stores.
-        // Each thread owns kVec consecutive columns starting at col_base.
-        // acc thread-buffer slot j corresponds to column (col_base + j).
-        // Scalar stores avoid make_naive_tensor_view<global, constant<kCols>> which
-        // would trigger buffer_view<global, T, constant<kCols>> and the constexpr
-        // aggregate-initializer excess-elements error on the divide-by-PackedSize path.
-        static_for<0, kVec, 1>{}([&](auto j) {
-            const float val          = acc.get_thread_buffer()[j];
-            k_mean_out[col_base + j] = type_convert<InputT>(val);
-        });
+// ============================================================================
+// SageAttnV3KMeanNormalizeKernel
+//
+// Divides float k_mean_float[batch, nhead, hdim] by seqlen_k and stores as InputT.
+//
+// Grid:      (1, nhead, batch)
+// BlockSize: kCols threads
+// ============================================================================
+
+template <typename InputT_, index_t kCols_>
+struct SageAttnV3KMeanNormalizeKernel
+{
+    using InputT                    = InputT_;
+    static constexpr index_t kCols  = kCols_;
+    static constexpr index_t kBlockSize = kCols; // one thread per column
+
+    using Kargs = SageAttnV3KMeanNormalizeKargs<InputT>;
+
+    CK_TILE_HOST static dim3 GridSize(const Kargs& k) { return dim3(1, k.nhead, k.batch); }
+
+    CK_TILE_HOST static constexpr dim3 BlockSize() { return dim3(kBlockSize); }
+
+    CK_TILE_HOST_DEVICE static constexpr index_t GetSmemSize() { return 0; }
+
+    CK_TILE_DEVICE void operator()(Kargs kargs) const
+    {
+        const index_t head_idx  = blockIdx.y;
+        const index_t batch_idx = blockIdx.z;
+        const index_t col       = get_thread_id(); // one thread per column
+
+        if(col >= kargs.hdim)
+            return;
+
+        const float* src = kargs.k_mean_float + batch_idx * kargs.batch_stride_kmean +
+                           head_idx * kargs.nhead_stride_kmean;
+        InputT* dst = kargs.k_mean_ptr + batch_idx * kargs.batch_stride_kmean +
+                      head_idx * kargs.nhead_stride_kmean;
+
+        const float sum  = src[col];
+        const float mean = sum / static_cast<float>(kargs.seqlen_k);
+        dst[col]         = type_convert<InputT>(mean);
     }
 };
 

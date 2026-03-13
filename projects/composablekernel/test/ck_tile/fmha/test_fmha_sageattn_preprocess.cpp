@@ -63,12 +63,14 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     // Use get_buffer_sizes to get padded dimensions and required buffer sizes.
     // Dispatch on hdim to select the right kCols instantiation.
     ck_tile::SageAttnV3PreprocessBufferSizes bsz{};
-    if(hd == 128)
+    if(hd == 64)
+        bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 64>::get_buffer_sizes(b, h, sq, sk, hd);
+    else if(hd == 128)
         bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::get_buffer_sizes(b, h, sq, sk, hd);
     else if(hd == 256)
         bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::get_buffer_sizes(b, h, sq, sk, hd);
     else
-        FAIL() << "Unsupported hdim (must be 128 or 256)";
+        FAIL() << "Unsupported hdim (must be 64, 128, or 256)";
 
     const int sq_pad      = static_cast<int>(bsz.seqlen_q_padded);
     const int sk_pad      = static_cast<int>(bsz.seqlen_k_padded);
@@ -204,7 +206,14 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     hargs.nhead  = h;
 
     // ---- Launch ----
-    if(hd == 128)
+    if(hd == 64)
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 64>::run(
+            hargs,
+            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
+            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
+            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
+            /*stream=*/nullptr);
+    else if(hd == 128)
         ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::run(
             hargs,
             static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
@@ -397,12 +406,15 @@ TEST_P(SageAttnV3PreprocessTest, Float32Input) { RunGPUTest<float>(); }
 
 // ---------------------------------------------------------------------------
 // Test instantiation: (B, H, seqlen_q, seqlen_k, hdim, unused_flag)
-// hdim must be 128 or 256; seqlen_k must be divisible by 32 (V quantization group).
+// hdim must be 64, 128, or 256; seqlen_k must be divisible by 32 (V quantization group).
 // ---------------------------------------------------------------------------
 INSTANTIATE_TEST_SUITE_P(
     Shapes,
     SageAttnV3PreprocessTest,
     ::testing::Values(
+        // --- hdim=64 ---
+        std::make_tuple(1, 1, 128, 128, 64, true),
+        std::make_tuple(1, 1, 65, 96, 64, true),    // misaligned seqlen with hdim=64
         // --- aligned cases (seqlen multiples of kRows=128) ---
         std::make_tuple(1, 1, 256, 128, 128, true),
         std::make_tuple(2, 4, 128, 128, 128, true),

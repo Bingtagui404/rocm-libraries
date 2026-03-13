@@ -10,6 +10,7 @@
 #include "ck_tile/ops/epilogue.hpp"
 #include "ck_tile/ops/common/tensor_layout.hpp"
 #include "ck_tile/host/kernel_launch.hpp"
+#include "ck_tile/host/hip_check_error.hpp"
 
 namespace ck_tile {
 
@@ -225,12 +226,28 @@ struct SageAttnV3Preprocess
         const index_t num_k_tiles = bsz.num_k_tiles;
 
         // ------------------------------------------------------------------ //
-        // Launch 0: k_mean kernel
+        // Launch 0: k_mean kernel (multi-CTA with float atomicAdd)
+        //
+        // Float scratch buffer: borrow the first batch*nhead*hdim*sizeof(float) bytes
+        // of k_prime_buf (which is not used until Stage 1 / Launch 1).  This avoids
+        // adding an extra scratch buffer to the API.
+        //
+        // Step 0a: hipMemsetAsync zeros the float scratch so CTAs can atomicAdd.
+        // Step 0b: SageAttnV3KMeanKernel writes partial column sums via atomicAdd.
+        // Step 0c: SageAttnV3KMeanNormalizeKernel divides by seqlen_k, stores InputT.
         // ------------------------------------------------------------------ //
         if(stages & kSA3StageKMean)
         {
             using KMeanKernel = SageAttnV3KMeanKernel<InputT, kRows, kCols>;
             using KMeanKargs  = typename KMeanKernel::Kargs;
+            using NormKernel  = SageAttnV3KMeanNormalizeKernel<InputT, kCols>;
+            using NormKargs   = typename NormKernel::Kargs;
+
+            // Float scratch: borrowed from k_prime_buf (always large enough).
+            float* k_mean_float = reinterpret_cast<float*>(k_prime_buf);
+            const std::size_t k_mean_float_bytes =
+                static_cast<std::size_t>(batch * nhead * hdim) * sizeof(float);
+            HIP_CHECK_ERROR(hipMemsetAsync(k_mean_float, 0, k_mean_float_bytes, stream));
 
             KMeanKargs kargs{};
             kargs.k_ptr              = args.k_ptr;
@@ -239,18 +256,39 @@ struct SageAttnV3Preprocess
             kargs.stride_k           = args.stride_k;
             kargs.nhead_stride_k     = args.nhead_stride_k;
             kargs.batch_stride_k     = args.batch_stride_k;
-            kargs.k_mean_ptr         = k_mean_buf;
+            kargs.k_mean_float       = k_mean_float;
             kargs.nhead_stride_kmean = hdim;
             kargs.batch_stride_kmean = nhead * hdim;
             kargs.nhead              = nhead;
             kargs.batch              = batch;
+            kargs.chunk_rows         = KMeanKernel::kChunkRows;
 
-            const dim3 grids   = KMeanKernel::GridSize(kargs);
-            const dim3 blocks  = KMeanKernel::BlockSize();
-            const index_t smem = KMeanKernel::GetSmemSize();
+            {
+                const dim3 grids   = KMeanKernel::GridSize(kargs);
+                const dim3 blocks  = KMeanKernel::BlockSize();
+                const index_t smem = KMeanKernel::GetSmemSize();
+                stream_config sc{stream};
+                launch_and_check(sc, make_kernel(KMeanKernel{}, grids, blocks, smem, kargs));
+            }
 
-            stream_config sc{stream};
-            launch_and_check(sc, make_kernel(KMeanKernel{}, grids, blocks, smem, kargs));
+            // Normalize: divide float sums by seqlen_k and store as InputT k_mean_buf.
+            NormKargs nkargs{};
+            nkargs.k_mean_float       = k_mean_float;
+            nkargs.k_mean_ptr         = k_mean_buf;
+            nkargs.hdim               = hdim;
+            nkargs.seqlen_k           = seqlen_k;
+            nkargs.nhead_stride_kmean = hdim;
+            nkargs.batch_stride_kmean = nhead * hdim;
+            nkargs.nhead              = nhead;
+            nkargs.batch              = batch;
+
+            {
+                const dim3 grids   = NormKernel::GridSize(nkargs);
+                const dim3 blocks  = NormKernel::BlockSize();
+                const index_t smem = NormKernel::GetSmemSize();
+                stream_config sc{stream};
+                launch_and_check(sc, make_kernel(NormKernel{}, grids, blocks, smem, nkargs));
+            }
         } // end if(stages & kSA3StageKMean)
 
         // ------------------------------------------------------------------ //

@@ -83,18 +83,17 @@ struct RunShape
 // ---------------------------------------------------------------------------
 
 template <typename InputT>
-static ck_tile::SageAttnV3PreprocessArgs<InputT>
-make_hargs(const RunShape& s,
-           void* q_ptr,
-           void* k_ptr,
-           void* v_ptr,
-           void* q_hat_ptr,
-           void* q_scale_ptr,
-           void* q_mean_ptr,
-           void* k_hat_ptr,
-           void* k_scale_ptr,
-           void* v_hat_ptr,
-           void* v_scale_ptr)
+static ck_tile::SageAttnV3PreprocessArgs<InputT> make_hargs(const RunShape& s,
+                                                            void* q_ptr,
+                                                            void* k_ptr,
+                                                            void* v_ptr,
+                                                            void* q_hat_ptr,
+                                                            void* q_scale_ptr,
+                                                            void* q_mean_ptr,
+                                                            void* k_hat_ptr,
+                                                            void* k_scale_ptr,
+                                                            void* v_hat_ptr,
+                                                            void* v_scale_ptr)
 {
     const int b = s.batch, h = s.nhead, sq = s.seqlen_q, sk = s.seqlen_k, hd = s.hdim;
 
@@ -391,49 +390,49 @@ bool run_verify(const RunShape& s)
 
     // delta_s: GPU [b*h*num_q_tiles, sk_pad], valid: sk columns per row.
     chk(ck_tile::check_err(delta_s_gpu.data(),
-                            sk_pad,
-                            delta_s_ref.data(),
-                            b * h * num_q_tiles,
-                            sk,
-                            "delta_s",
-                            0.0,
-                            delta_s_tol),
+                           sk_pad,
+                           delta_s_ref.data(),
+                           b * h * num_q_tiles,
+                           sk,
+                           "delta_s",
+                           0.0,
+                           delta_s_tol),
         "delta_s");
 
     // Q/K scale: GPU [b*h, seq_pad*(hd/kG)], valid: seq*(hd/kG) per outer row.
     chk(ck_tile::check_err(q_scale_gpu.data(),
-                            sq_pad * (hd / kG),
-                            q_scale_ref.data(),
-                            b * h,
-                            sq * (hd / kG),
-                            "q_scale",
-                            0.0,
-                            scl_atol),
+                           sq_pad * (hd / kG),
+                           q_scale_ref.data(),
+                           b * h,
+                           sq * (hd / kG),
+                           "q_scale",
+                           0.0,
+                           scl_atol),
         "q_scale");
     chk(ck_tile::check_err(k_scale_gpu.data(),
-                            sk_pad * (hd / kG),
-                            k_scale_ref.data(),
-                            b * h,
-                            sk * (hd / kG),
-                            "k_scale",
-                            0.0,
-                            scl_atol),
+                           sk_pad * (hd / kG),
+                           k_scale_ref.data(),
+                           b * h,
+                           sk * (hd / kG),
+                           "k_scale",
+                           0.0,
+                           scl_atol),
         "k_scale");
 
     // V scale: GPU [b*h*hd, sk_pad/kG], valid: sk/kG per outer row.
     chk(ck_tile::check_err(v_scale_gpu.data(),
-                            sk_pad / kG,
-                            v_scale_ref.data(),
-                            b * h * hd,
-                            sk / kG,
-                            "v_scale",
-                            0.0,
-                            scl_atol),
+                           sk_pad / kG,
+                           v_scale_ref.data(),
+                           b * h * hd,
+                           sk / kG,
+                           "v_scale",
+                           0.0,
+                           scl_atol),
         "v_scale");
 
     // Q hat dequant: compact hat+scale, dequantize, compare vs Q_smooth reference.
     {
-        const auto q_hat_c   = compact_u8(q_hat_gpu,   b * h, sq_pad * (hd / 2),  sq * (hd / 2));
+        const auto q_hat_c   = compact_u8(q_hat_gpu, b * h, sq_pad * (hd / 2), sq * (hd / 2));
         const auto q_scale_c = compact_u8(q_scale_gpu, b * h, sq_pad * (hd / kG), sq * (hd / kG));
         std::vector<float> q_dequant(std::size_t(b) * h * sq * hd);
         ck_tile::reference::reference_dequant_mxfp4(
@@ -448,15 +447,16 @@ bool run_verify(const RunShape& s)
                         for(int d = 0; d < hd; d++)
                             q_smooth[bi * h * sq * hd + hi * sq * hd + n * hd + d] =
                                 Q_f32[bi * h * sq * hd + hi * sq * hd + n * hd + d] -
-                                q_mean_rt[bi * h * num_q_tiles * hd +
-                                          hi * num_q_tiles * hd + qi * hd + d];
+                                q_mean_rt[bi * h * num_q_tiles * hd + hi * num_q_tiles * hd +
+                                          qi * hd + d];
                 }
-        chk(ck_tile::check_err(q_dequant, q_smooth, "q_hat (dequant)", 0.0, 1.0), "q_hat (dequant)");
+        chk(ck_tile::check_err(q_dequant, q_smooth, "q_hat (dequant)", 0.0, 1.0),
+            "q_hat (dequant)");
     }
 
     // K hat dequant.
     {
-        const auto k_hat_c   = compact_u8(k_hat_gpu,   b * h, sk_pad * (hd / 2),  sk * (hd / 2));
+        const auto k_hat_c   = compact_u8(k_hat_gpu, b * h, sk_pad * (hd / 2), sk * (hd / 2));
         const auto k_scale_c = compact_u8(k_scale_gpu, b * h, sk_pad * (hd / kG), sk * (hd / kG));
         std::vector<float> k_dequant(std::size_t(b) * h * sk * hd);
         ck_tile::reference::reference_dequant_mxfp4(
@@ -469,12 +469,13 @@ bool run_verify(const RunShape& s)
                         k_smooth[bi * h * sk * hd + hi * sk * hd + n * hd + d] =
                             K_f32[bi * h * sk * hd + hi * sk * hd + n * hd + d] -
                             k_mean_rt[bi * h * hd + hi * hd + d];
-        chk(ck_tile::check_err(k_dequant, k_smooth, "k_hat (dequant)", 0.0, 1.0), "k_hat (dequant)");
+        chk(ck_tile::check_err(k_dequant, k_smooth, "k_hat (dequant)", 0.0, 1.0),
+            "k_hat (dequant)");
     }
 
     // V hat dequant: GPU [b*h*hd, sk_pad/2], valid: sk/2 per outer row.
     {
-        const auto v_hat_c   = compact_u8(v_hat_gpu,   b * h * hd, sk_pad / 2,  sk / 2);
+        const auto v_hat_c   = compact_u8(v_hat_gpu, b * h * hd, sk_pad / 2, sk / 2);
         const auto v_scale_c = compact_u8(v_scale_gpu, b * h * hd, sk_pad / kG, sk / kG);
         std::vector<float> v_dequant(std::size_t(b) * h * hd * sk);
         ck_tile::reference::reference_dequant_mxfp4(
@@ -497,10 +498,8 @@ bool run_verify(const RunShape& s)
 // Print benchmark result with per-kernel bandwidth breakdown
 // ---------------------------------------------------------------------------
 
-static void print_result(const RunShape& s,
-                         const std::string& dtype,
-                         const BenchResult& res,
-                         bool csv_mode)
+static void
+print_result(const RunShape& s, const std::string& dtype, const BenchResult& res, bool csv_mode)
 {
     const int b = s.batch, h = s.nhead, sq = s.seqlen_q, sk = s.seqlen_k, hd = s.hdim;
     constexpr int kG      = 32;
@@ -509,8 +508,8 @@ static void print_result(const RunShape& s,
 
     const std::size_t elem_bytes = (dtype == "fp16") ? sizeof(ck_tile::fp16_t) : sizeof(float);
 
-    const std::size_t bytes_kmean = std::size_t(b) * h * sk * hd * elem_bytes
-                                    + std::size_t(b) * h * hd * elem_bytes;
+    const std::size_t bytes_kmean =
+        std::size_t(b) * h * sk * hd * elem_bytes + std::size_t(b) * h * hd * elem_bytes;
 
     const std::size_t write_q_mean  = std::size_t(b) * h * num_q_tiles * hd * elem_bytes;
     const std::size_t write_k_prime = std::size_t(b) * h * sk * hd * elem_bytes;
@@ -518,24 +517,22 @@ static void print_result(const RunShape& s,
         std::size_t(b) * h * sq * hd * elem_bytes   // read Q
         + std::size_t(b) * h * sk * hd * elem_bytes // read K (second pass)
         + std::size_t(b) * h * hd * elem_bytes      // read k_mean
-        + write_q_mean                               // write q_mean
+        + write_q_mean                              // write q_mean
         + std::size_t(b) * h * sq * (hd / 2)        // write q_hat
         + std::size_t(b) * h * sq * (hd / kG)       // write q_scale
-        + write_k_prime                              // write K'
+        + write_k_prime                             // write K'
         + std::size_t(b) * h * sk * (hd / 2)        // write k_hat
         + std::size_t(b) * h * sk * (hd / kG);      // write k_scale
 
-    const std::size_t bytes_v =
-        std::size_t(b) * h * sk * hd * elem_bytes // read V
-        + std::size_t(b) * h * hd * (sk / 2)      // write v_hat
-        + std::size_t(b) * h * hd * (sk / kG);    // write v_scale
+    const std::size_t bytes_v = std::size_t(b) * h * sk * hd * elem_bytes // read V
+                                + std::size_t(b) * h * hd * (sk / 2)      // write v_hat
+                                + std::size_t(b) * h * hd * (sk / kG);    // write v_scale
 
     const std::size_t bytes_delta_s =
-        write_q_mean + write_k_prime
-        + std::size_t(b) * h * num_q_tiles * sk * sizeof(float); // write delta_s
+        write_q_mean + write_k_prime +
+        std::size_t(b) * h * num_q_tiles * sk * sizeof(float); // write delta_s
 
-    const std::size_t bytes_total =
-        bytes_kmean + bytes_preprocess + bytes_v + bytes_delta_s;
+    const std::size_t bytes_total = bytes_kmean + bytes_preprocess + bytes_v + bytes_delta_s;
 
     auto gbs = [](std::size_t bytes, float ms) -> double {
         return static_cast<double>(bytes) / 1.0e6 / static_cast<double>(ms);
@@ -544,15 +541,15 @@ static void print_result(const RunShape& s,
     if(csv_mode)
     {
         auto row = [&](const char* kernel, float ms, std::size_t bytes) {
-            std::cout << dtype << "," << b << "," << h << "," << sq << "," << sk << "," << hd
-                      << "," << kernel << "," << std::fixed << std::setprecision(3) << ms << ","
+            std::cout << dtype << "," << b << "," << h << "," << sq << "," << sk << "," << hd << ","
+                      << kernel << "," << std::fixed << std::setprecision(3) << ms << ","
                       << std::setprecision(1) << gbs(bytes, ms) << "\n";
         };
-        row("kmean",        res.kmean_ms,        bytes_kmean);
-        row("preprocess",   res.preprocess_ms,   bytes_preprocess);
+        row("kmean", res.kmean_ms, bytes_kmean);
+        row("preprocess", res.preprocess_ms, bytes_preprocess);
         row("v_preprocess", res.v_preprocess_ms, bytes_v);
-        row("delta_s_gemm", res.delta_s_ms,      bytes_delta_s);
-        row("total",        res.total_ms,        bytes_total);
+        row("delta_s_gemm", res.delta_s_ms, bytes_delta_s);
+        row("total", res.total_ms, bytes_total);
     }
     else
     {
@@ -564,12 +561,12 @@ static void print_result(const RunShape& s,
                       << "  " << std::setprecision(1) << std::setw(8) << gbs(bytes, ms) << " GB/s"
                       << "  (" << std::setprecision(0) << bytes / 1.0e6 << " MB)\n";
         };
-        line("[0] KMean",        res.kmean_ms,        bytes_kmean);
-        line("[1] Prep Q/K",     res.preprocess_ms,   bytes_preprocess);
-        line("[1b] Prep V",      res.v_preprocess_ms, bytes_v);
-        line("[2] delta_s GEMM", res.delta_s_ms,      bytes_delta_s);
+        line("[0] KMean", res.kmean_ms, bytes_kmean);
+        line("[1] Prep Q/K", res.preprocess_ms, bytes_preprocess);
+        line("[1b] Prep V", res.v_preprocess_ms, bytes_v);
+        line("[2] delta_s GEMM", res.delta_s_ms, bytes_delta_s);
         std::cout << "  " << std::string(50, '-') << "\n";
-        line("Total",            res.total_ms,        bytes_total);
+        line("Total", res.total_ms, bytes_total);
     }
 }
 
@@ -581,6 +578,8 @@ static BenchResult dispatch_bench(const RunShape& s, const std::string& dtype)
 {
     if(dtype == "fp16")
     {
+        if(s.hdim == 64)
+            return run_benchmark<ck_tile::fp16_t, 128, 64>(s);
         if(s.hdim == 128)
             return run_benchmark<ck_tile::fp16_t, 128, 128>(s);
         if(s.hdim == 256)
@@ -588,6 +587,8 @@ static BenchResult dispatch_bench(const RunShape& s, const std::string& dtype)
     }
     else if(dtype == "fp32")
     {
+        if(s.hdim == 64)
+            return run_benchmark<float, 128, 64>(s);
         if(s.hdim == 128)
             return run_benchmark<float, 128, 128>(s);
         if(s.hdim == 256)
@@ -600,6 +601,8 @@ static bool dispatch_verify(const RunShape& s, const std::string& dtype)
 {
     if(dtype == "fp16")
     {
+        if(s.hdim == 64)
+            return run_verify<ck_tile::fp16_t, 128, 64>(s);
         if(s.hdim == 128)
             return run_verify<ck_tile::fp16_t, 128, 128>(s);
         if(s.hdim == 256)
@@ -607,6 +610,8 @@ static bool dispatch_verify(const RunShape& s, const std::string& dtype)
     }
     else if(dtype == "fp32")
     {
+        if(s.hdim == 64)
+            return run_verify<float, 128, 64>(s);
         if(s.hdim == 128)
             return run_verify<float, 128, 128>(s);
         if(s.hdim == 256)
@@ -621,25 +626,23 @@ static bool dispatch_verify(const RunShape& s, const std::string& dtype)
 
 static const std::vector<std::tuple<int, int, int, int, int>> kShapes = {
     // {batch, nhead, seqlen_q, seqlen_k, hdim}
-    {1, 32, 1, 4096, 128},
-    {1, 32, 1, 4096, 256},
-    {1, 32, 1, 8192, 128},
-    {1, 32, 1, 8192, 256},
-    {1, 32, 1024, 1024, 128},
-    {1, 32, 1024, 4096, 128},
-    {1, 32, 4096, 4096, 128},
-    {1, 32, 4096, 4096, 256},
-    {4, 16, 1024, 4096, 128},
-    {4, 16, 4096, 4096, 128},
-    {8, 8, 2048, 2048, 128},
-    {16, 32, 512, 4096, 128},
-    {16, 32, 1024, 4096, 128},
+    {2, 32, 4096, 4096, 64},
+    {2, 32, 4096, 4096, 128},
+    {2, 32, 4096, 4096, 256},
+    {2, 32, 8192, 8192, 64},
+    {2, 32, 8192, 8192, 128},
+    {2, 32, 8192, 8192, 256},
+    {2, 32, 16384, 16384, 64},
+    {2, 32, 16384, 16384, 128},
+    {2, 32, 16384, 16384, 256},
+
 };
 
 static const std::vector<std::tuple<int, int, int, int, int>> kVerifyShapes = {
     {1, 1, 128, 128, 128},
     {1, 2, 256, 256, 128},
     {1, 1, 128, 128, 256},
+    {1, 1, 128, 128, 64},
     {1, 1, 65, 96, 128},
     {1, 1, 127, 96, 128},
     {2, 4, 300, 192, 128},
