@@ -647,42 +647,40 @@ struct SageAttnV3VPreprocessKernel
     // Phase 4 tile distribution: write-back V hat [kVHdimTile, kVGroupsPerBlock]
     // from LDS smem_fp4 to global v_hat.
     //
-    // Each thread copies kHatElemsPerThread = kVGroup/2 = 16 bytes.
+    // Each thread copies kHatElemsPerThread = kVGroup/2 = 16 bytes = 4 uint32.
     // Thread layout:
     //   write_d_idx = tid / kVGroupsPerBlock = warp_id*kDPerWarp + lane_id/kVGroupsPerBlock
     //   write_g_idx = tid % kVGroupsPerBlock = lane_id % kVGroupsPerBlock
     //
-    // Distribution encoding for [kVHdimTile=32, kVGroupsPerBlock=4] with Y=[16]:
+    // Distribution encoding for [kVHdimTile=32, kVGroupsPerBlock=4]:
     //   kVWarps = kBlockSize / 64 = 2
     //   kDPerWarp = kVHdimTile / kVWarps = 16
-    //   kHatElemsPerThread = kVGroup / 2 = 16
     //
-    //   H[X=0] = [kVWarps, kDPerWarp]            (d_idx dimension)
-    //   H[X=1] = [kVGroupsPerBlock, kHatElemsPerThread]  (g_idx dimension with Y)
+    // MakeHatDstrU32: Y dimension = kHatElemsPerThread_u32 = kVGroup/8 = 4 (uint32 units)
+    //   -> 4 VGPRs per thread; LDS ds_read_b128 + global buffer_store_dwordx4.
     //
-    //   P[0]=warp_id  -> H[X=0][0]=kVWarps                    (rh_major=1, rh_minor=0)
-    //   P[1]=lane_id  -> H[X=0][1]=kDPerWarp    (slow)        (rh_major=1, rh_minor=1)
-    //                 -> H[X=1][0]=kVGroupsPerBlock (fast)    (rh_major=2, rh_minor=0)
-    //     lane_id = d_local * kVGroupsPerBlock + write_g_idx
-    //   Y[0]          -> H[X=1][1]=kHatElemsPerThread         (rh_major=2, rh_minor=1)
+    //   P[0]=warp_id  -> H[X=0][0]=kVWarps
+    //   P[1]=lane_id  -> H[X=0][1]=kDPerWarp (slow) / H[X=1][0]=kVGroupsPerBlock (fast)
+    //   Y[0]          -> H[X=1][1]=kHatElemsPerThread_u32
     //
     // Ps2RHssMajor = tuple<sequence<1>, sequence<1, 2>>
     // Ps2RHssMinor = tuple<sequence<0>, sequence<1, 0>>
     // Ys2RHsMajor = sequence<2>, Ys2RHsMinor = sequence<1>
     // -------------------------------------------------------------------------
-    CK_TILE_HOST_DEVICE static constexpr auto MakeHatDstr()
+    CK_TILE_HOST_DEVICE static constexpr auto MakeHatDstrU32()
     {
-        constexpr index_t kVWarps            = kBlockSize / 64;
-        constexpr index_t kDPerWarp          = kVHdimTile / kVWarps;
-        constexpr index_t kHatElemsPerThread = kVGroup / 2;
+        constexpr index_t kVWarps               = kBlockSize / 64;
+        constexpr index_t kDPerWarp             = kVHdimTile / kVWarps;
+        constexpr index_t kHatElemsPerThread_u32 = kVGroup / 8; // 16 bytes / 4 = 4 int32
 
         static_assert(kVHdimTile % kVWarps == 0, "kVHdimTile must be divisible by kVWarps");
+        static_assert(kVGroup % 8 == 0, "kVGroup must be divisible by 8 for uint32 packing");
 
         return make_static_tile_distribution(
             tile_distribution_encoding<
                 sequence<>,
                 tuple<sequence<kVWarps, kDPerWarp>,
-                      sequence<kVGroupsPerBlock, kHatElemsPerThread>>,
+                      sequence<kVGroupsPerBlock, kHatElemsPerThread_u32>>,
                 tuple<sequence<1>, sequence<1, 2>>,
                 tuple<sequence<0>, sequence<1, 0>>,
                 sequence<2>,
@@ -728,34 +726,61 @@ struct SageAttnV3VPreprocessKernel
         //   load_d_pack = tid / kVGroup  = warp_id*kDPacksPerWarp + lane_id/kVGroup
         constexpr auto v_load_dstr = MakeVLoadDstr();
 
-        // Phase 4 distribution for hat write-back [kVHdimTile, kVGroupsPerBlock*kHatElems].
-        constexpr index_t kHatElemsPerThread = kVGroup / 2;
-        constexpr auto hat_dstr              = MakeHatDstr();
+        // Phase 4 distribution for hat write-back.
+        // Use uint32_t tiles (4 per thread) to match the old uint4 copy pattern:
+        // 1x ds_read_b128 + 1x buffer_store_dwordx4 -> 4 VGPRs instead of 16.
+        constexpr index_t kHatElemsPerThread     = kVGroup / 2; // bytes
+        constexpr index_t kHatElemsPerThread_u32 = kVGroup / 8; // uint32 count
+        constexpr auto hat_dstr_u32              = MakeHatDstrU32();
+
+        // Hoist view/window creation outside the loop: these objects are invariant across
+        // all grp_iter iterations.  Re-creating them each iteration added overhead from
+        // repeated thread-partition coordinate recomputation (the primary cause of the
+        // 4T+ -> 3T regression observed after the CK_TILE rewrite).
+
+        // LDS smem_v view: [kVGroup, kVHdimTile] float, padded row stride.
+        // Invariant: smem_raw base and dimensions never change across iterations.
+        auto smem_v_view = make_naive_tensor_view<address_space_enum::lds>(
+            reinterpret_cast<float*>(smem_raw),
+            make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
+            make_tuple(number<kVHdimTile + kLDSPad>{}, number<1>{}),
+            number<kVec>{},
+            number<1>{});
+        auto smem_v_win = make_tile_window(
+            smem_v_view,
+            make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
+            {0, 0},
+            v_load_dstr);
+
+        // Global V view: full [seqlen_k, kVHdimTile] tensor (col_start baked into base pointer).
+        // Using the full seqlen_k as the first dimension prevents AMD buffer out-of-bounds
+        // returns when move_tile_window advances the window beyond a single kVGroup-row slice.
+        // The window is placed at {g_abs_base * kVGroup, 0} and advanced by {kVGroup, 0}
+        // each iteration via move_tile_window -- avoids re-creating the view/window per iteration.
+        const InputT* v_col_ptr = v_base + col_start;
+        const auto v_global_view = make_naive_tensor_view<address_space_enum::global>(
+            v_col_ptr,
+            make_tuple(kargs.seqlen_k, number<kVHdimTile>{}),
+            make_tuple(kargs.hdim, number<1>{}),
+            number<kVec>{},
+            number<1>{});
+        auto v_global_win = make_tile_window(
+            v_global_view,
+            make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
+            {g_abs_base * kVGroup, 0},
+            v_load_dstr);
+
+        // sk_base tracks the current group's absolute seqlen_k start position.
+        // load_row = tid % kVGroup is invariant -- reuse row_local computed above.
+        index_t sk_base = g_abs_base * kVGroup;
 
         // Loop over groups: smem_v (4224 bytes) reused each iteration.
         // => 10 CTAs/CU vs. 3 previously (3.3x more occupancy).
         for(index_t grp_iter = 0; grp_iter < kVGroupsPerBlock; grp_iter++)
         {
             // ---- Phase 1: All 128 threads load one group's V tile -> smem_v ----
-            // Uses load_tile with v_load_dstr for [kVGroup, kVHdimTile] tile.
+            // load_tile uses the pre-created global window (advanced each iteration).
             // Each thread loads kVec=8 InputT elements, converts to float, stores to LDS.
-            //
-            // Global V view for this group: [kVGroup, kVHdimTile] InputT
-            // Row stride = kargs.hdim (full head dimension).
-            const index_t sk_base = (g_abs_base + grp_iter) * kVGroup;
-            const InputT* v_grp_ptr = v_base + sk_base * kargs.hdim + col_start;
-
-            const auto v_global_view = make_naive_tensor_view<address_space_enum::global>(
-                v_grp_ptr,
-                make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
-                make_tuple(kargs.hdim, number<1>{}),
-                number<kVec>{},
-                number<1>{});
-            auto v_global_win = make_tile_window(
-                v_global_view,
-                make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
-                {0, 0},
-                v_load_dstr);
 
             // Load InputT tile from global.
             const auto v_tile = load_tile(v_global_win);
@@ -764,29 +789,13 @@ struct SageAttnV3VPreprocessKernel
             auto v_float_tile = tile_elementwise_in(type_convert<float, InputT>, v_tile);
 
             // Zero out this thread's elements if its sk_row is out of bounds.
-            // load_row = lane_id % kVGroup (same as tid % kVGroup).
-            // (All kVec elements for this thread share the same load_row.)
-            const index_t load_row = tid % kVGroup;
-            if(sk_base + load_row >= kargs.seqlen_k_real)
+            // row_local = tid % kVGroup (all kVec elements share the same row).
+            if(sk_base + row_local >= kargs.seqlen_k_real)
             {
                 tile_elementwise_inout([](float& v) { v = 0.0f; }, v_float_tile);
             }
 
-            // LDS smem_v view: [kVGroup, kVHdimTile] float with padded row stride.
-            // Row stride = kVHdimTile + kLDSPad = 33 floats (bank-conflict-free).
-            auto smem_v_view = make_naive_tensor_view<address_space_enum::lds>(
-                reinterpret_cast<float*>(smem_raw),
-                make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
-                make_tuple(number<kVHdimTile + kLDSPad>{}, number<1>{}),
-                number<kVec>{},
-                number<1>{});
-            auto smem_v_win = make_tile_window(
-                smem_v_view,
-                make_tuple(number<kVGroup>{}, number<kVHdimTile>{}),
-                {0, 0},
-                v_load_dstr);
-
-            // Store float tile into LDS smem_v.
+            // Store float tile into LDS smem_v (same window each iteration).
             store_tile(smem_v_win, v_float_tile);
             block_sync_lds();
 
@@ -817,6 +826,10 @@ struct SageAttnV3VPreprocessKernel
                 PackFP4Group<kVGroup>(group_data, smem_fp4 + stage_idx * (kVGroup / 2), scale);
             }
             block_sync_lds();
+
+            // Advance global window and sk_base for the next group.
+            sk_base += kVGroup;
+            move_tile_window(v_global_win, {kVGroup, 0});
         }
 
         // ---- Phase 3: barrier (all groups staged) ----
@@ -840,46 +853,46 @@ struct SageAttnV3VPreprocessKernel
         v_scale_base[write_d_global * kargs.stride_v_scale + write_g_abs] =
             smem_scale[stage_idx];
 
-        // Hat write: load kHatElemsPerThread=16 uint8 from LDS smem_fp4, store to global.
-        // smem_fp4 layout: [kVHdimTile * kVGroupsPerBlock, kHatElemsPerThread] uint8
-        //   = [kVHdimTile, kVGroupsPerBlock, kHatElemsPerThread] linearized.
-        // Global v_hat layout: [hdim, seqlen_k/kVGroup * kHatElemsPerThread] uint8
-        //   stride_v_hat: stride between hdim rows.
+        // Hat write: load kHatElemsPerThread=16 bytes from LDS smem_fp4, store to global.
+        // smem_fp4 layout: [kVHdimTile, kVGroupsPerBlock, kHatElemsPerThread] bytes.
+        // Global v_hat layout: [hdim, seqlen_k/kVGroup * kHatElemsPerThread] bytes,
+        //   stride_v_hat: stride between hdim rows (in bytes).
         //
-        // LDS smem_fp4 view: [kVHdimTile, kVGroupsPerBlock * kHatElemsPerThread] uint8
-        // (linearized to 2D for the hat distribution)
-        constexpr index_t kHatColsPerRow = kVGroupsPerBlock * kHatElemsPerThread;
-        auto fp4_lds_view = make_naive_tensor_view<address_space_enum::lds>(
-            smem_fp4,
-            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow>{}),
-            make_tuple(number<kHatColsPerRow>{}, number<1>{}),
-            number<kHatElemsPerThread>{},
+        // Use uint32_t views (4 uint32 per thread = 16 bytes) to generate a single
+        // ds_read_b128 from LDS and a single buffer_store_dwordx4 to global.
+        // This matches the old uint4 copy pattern and avoids LLVM emitting 16 separate
+        // byte-sized stores when working with a uint8_t[16] thread buffer.
+        constexpr index_t kHatColsPerRow_u32 = kVGroupsPerBlock * kHatElemsPerThread_u32;
+        auto fp4_lds_view_u32 = make_naive_tensor_view<address_space_enum::lds>(
+            reinterpret_cast<int32_t*>(smem_fp4),
+            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow_u32>{}),
+            make_tuple(number<kHatColsPerRow_u32>{}, number<1>{}),
+            number<kHatElemsPerThread_u32>{},
             number<1>{});
-        auto fp4_lds_win = make_tile_window(
-            fp4_lds_view,
-            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow>{}),
+        auto fp4_lds_win_u32 = make_tile_window(
+            fp4_lds_view_u32,
+            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow_u32>{}),
             {0, 0},
-            hat_dstr);
-        const auto hat_tile = load_tile(fp4_lds_win);
+            hat_dstr_u32);
+        const auto hat_tile_u32 = load_tile(fp4_lds_win_u32);
 
-        // Global v_hat view: [kVHdimTile, kVGroupsPerBlock * kHatElemsPerThread] uint8.
-        // Advance the pointer to this CTA's tile start so the buffer resource covers
-        // exactly the tile -- ensuring all writes are within the AMD buffer bounds.
-        // Row stride = kargs.stride_v_hat (runtime, stride between consecutive hdim rows).
+        // Global v_hat view reinterpreted as int32_t* (4-byte loads/stores).
+        // Base pointer: v_hat_base (uint8_t*) + row offset + col offset, then cast to int32_t*.
+        // Row stride in int32 units = kargs.stride_v_hat / 4.
         uint8_t* v_hat_tile_ptr = v_hat_base + col_start * kargs.stride_v_hat +
                                   g_abs_base * kHatElemsPerThread;
-        auto fp4_global_view = make_naive_tensor_view<address_space_enum::global>(
-            v_hat_tile_ptr,
-            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow>{}),
-            make_tuple(kargs.stride_v_hat, number<1>{}),
-            number<kHatElemsPerThread>{},
+        auto fp4_global_view_u32 = make_naive_tensor_view<address_space_enum::global>(
+            reinterpret_cast<int32_t*>(v_hat_tile_ptr),
+            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow_u32>{}),
+            make_tuple(kargs.stride_v_hat / 4, number<1>{}),
+            number<kHatElemsPerThread_u32>{},
             number<1>{});
-        auto fp4_global_win = make_tile_window(
-            fp4_global_view,
-            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow>{}),
+        auto fp4_global_win_u32 = make_tile_window(
+            fp4_global_view_u32,
+            make_tuple(number<kVHdimTile>{}, number<kHatColsPerRow_u32>{}),
             {0, 0},
-            hat_dstr);
-        store_tile(fp4_global_win, hat_tile);
+            hat_dstr_u32);
+        store_tile(fp4_global_win_u32, hat_tile_u32);
     }
 };
 
