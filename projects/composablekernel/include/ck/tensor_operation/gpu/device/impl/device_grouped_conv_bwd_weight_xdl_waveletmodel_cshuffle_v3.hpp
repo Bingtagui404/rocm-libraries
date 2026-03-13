@@ -874,6 +874,21 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
             return false;
         }
 
+        // 3-way pipeline prologue processes 2 steps (offsets for step 0 and 1),
+        // then the main loop starts with GEMM(0). Needs num_loop >= 3.
+        if constexpr(TileIndexThreadGroupSize > 0)
+        {
+            const index_t GemmK =
+                arg.a_grid_desc_k0_m_k1_.GetLength(I0) * arg.a_grid_desc_k0_m_k1_.GetLength(I2);
+            const index_t k_grain  = arg.k_batch_ * K0PerBlock;
+            const index_t K_split  = (GemmK + k_grain - 1) / k_grain * K0PerBlock;
+            const index_t num_loop = K_split / K0PerBlock;
+            if(num_loop < 3)
+            {
+                return false;
+            }
+        }
+
         constexpr long_index_t TwoGB = (long_index_t{1} << 31);
         const bool a_small_enough    = arg.a_grid_desc_k0_m_k1_.GetElementSpaceSize() /
                                         (arg.split_k_offset_hack_ ? arg.k_batch_ : 1) *
@@ -986,8 +1001,10 @@ struct DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3
 
         // clang-format off
         str << "DeviceGroupedConvBwdWeight_Xdl_WaveletModel_CShuffleV3"
-            << "<"
-            << TileLoadThreadGroupSize << "+" << TileMathThreadGroupSize << ", "
+            << "<";
+        if constexpr(TileIndexThreadGroupSize > 0)
+            str << TileIndexThreadGroupSize << "i+";
+        str << TileLoadThreadGroupSize << "l+" << TileMathThreadGroupSize << "m, "
             << MPerBlock << ", "
             << NPerBlock << ", "
             << K0PerBlock << ", "
