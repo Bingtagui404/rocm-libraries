@@ -13,6 +13,50 @@
 
 namespace ck_tile {
 
+// User-facing args for SageAttnV3Preprocess::run().
+// Fill only input strides and output pointers; all output strides and
+// padded dimensions are derived internally from (seqlen_q, seqlen_k, hdim).
+template <typename InputT>
+struct SageAttnV3PreprocessArgs
+{
+    // --- Q: [batch, nhead, seqlen_q, hdim] InputT ---
+    const InputT* q_ptr;
+    index_t seqlen_q;
+    index_t hdim;
+    index_t stride_q;         // = hdim (row-major Q)
+    index_t nhead_stride_q;   // = seqlen_q * hdim
+    index_t batch_stride_q;   // = nhead * seqlen_q * hdim
+
+    // Q outputs (pointers only; strides derived from padded dims)
+    uint8_t* q_hat_ptr;   // [batch, nhead, seqlen_q_padded, hdim/2] uint8
+    uint8_t* q_scale_ptr; // [batch, nhead, seqlen_q_padded, hdim/32] uint8
+    InputT*  q_mean_ptr;  // [batch, nhead, num_q_tiles, hdim] InputT
+
+    // --- K: [batch, nhead, seqlen_k, hdim] InputT ---
+    const InputT* k_ptr;
+    index_t seqlen_k;
+    index_t stride_k;         // = hdim (row-major K)
+    index_t nhead_stride_k;   // = seqlen_k * hdim
+    index_t batch_stride_k;   // = nhead * seqlen_k * hdim
+
+    // K outputs (pointers only)
+    uint8_t* k_hat_ptr;   // [batch, nhead, seqlen_k_padded, hdim/2] uint8
+    uint8_t* k_scale_ptr; // [batch, nhead, seqlen_k_padded, hdim/32] uint8
+
+    // --- V: [batch, nhead, seqlen_k, hdim] InputT ---
+    const InputT* v_ptr;
+    index_t nhead_stride_v;  // = seqlen_k * hdim
+    index_t batch_stride_v;  // = nhead * seqlen_k * hdim
+
+    // V outputs (pointers only; transposed layout [batch, nhead, hdim, seqlen_k_padded/...])
+    uint8_t* v_hat_ptr;   // [batch, nhead, hdim, seqlen_k_padded/2] uint8
+    uint8_t* v_scale_ptr; // [batch, nhead, hdim, seqlen_k_padded/32] uint8
+
+    // --- Common dimensions ---
+    index_t batch;
+    index_t nhead;
+};
+
 // Stage bitmask for sageattn_v3_preprocess_run.
 // Each bit enables one kernel launch; default (kSA3StageAll) runs all four.
 static constexpr uint32_t kSA3StageKMean       = 1u << 0; // Launch 0: k_mean kernel
@@ -29,9 +73,7 @@ static constexpr uint32_t kSA3StageAll         = 0xFu;    // All stages
 //
 //   Launch 0: SageAttnV3KMeanKernel
 //     Computes k_mean[b, h, d] = mean_n(K[b,h,n,d]), stored as InputT.
-//     Grid: (num_k_tiles, nhead, batch), BlockSize: kCols.
-//     Requires k_mean_partial_buf (float) and counter_buf (int32) to be
-//     zero-initialised before launch (done here via hipMemsetAsync).
+//     Grid: (1, nhead, batch) -- single-pass, no atomics.
 //
 //   Launch 1: SageAttnV3PreprocessKernel
 //     Q: mean → quantize (MXFP4, stores q_mean as InputT)
@@ -59,10 +101,8 @@ static constexpr uint32_t kSA3StageAll         = 0xFu;    // All stages
 // delta_s strides are derived from M=num_q_tiles, N=seqlen_k (no stride params needed).
 //
 // Caller-allocated device buffers (all on the same device as Q/K/V):
-//   k_mean_buf:         InputT [batch, nhead, hdim]
-//   k_prime_buf:        InputT [batch, nhead, seqlen_k, hdim]
-//   k_mean_partial_buf: float  [batch, nhead, hdim]   (scratch, not consumed after run)
-//   counter_buf:        int32  [batch, nhead]          (scratch, not consumed after run)
+//   k_mean_buf:  InputT [batch, nhead, hdim]
+//   k_prime_buf: InputT [batch, nhead, seqlen_k, hdim]
 // ============================================================================
 
 // Buffer size descriptor returned by get_buffer_sizes.
@@ -80,9 +120,7 @@ struct SageAttnV3PreprocessBufferSizes
     size_t v_hat_bytes;   // uint8  [B, H, hdim, seqlen_k_padded/2]
     size_t v_scale_bytes; // uint8  [B, H, hdim, seqlen_k_padded/32]
     // ---- caller-allocated scratch (unchanged by padding) ----
-    size_t k_mean_bytes;         // InputT [B, H, hdim]
-    size_t k_mean_partial_bytes; // float  [B, H, hdim]
-    size_t counter_bytes;        // int32  [B, H]
+    size_t k_mean_bytes; // InputT [B, H, hdim]
     // ---- padded dims ----
     index_t seqlen_q_padded;
     index_t seqlen_k_padded;
@@ -117,8 +155,7 @@ using DeltaSV3GemmShape = std::conditional_t<
 // Example usage:
 //   using SA3 = ck_tile::SageAttnV3Preprocess<fp16_t, 128, 128>;
 //   auto bsz  = SA3::get_buffer_sizes(batch, nhead, seqlen_q, seqlen_k, hdim);
-//   SA3::run(prep_args, delta_s_ptr, k_mean_buf, k_prime_buf,
-//            k_mean_partial_buf, counter_buf, stream);
+//   SA3::run(prep_args, delta_s_ptr, k_mean_buf, k_prime_buf, stream);
 // ============================================================================
 template <typename InputT, index_t kRows, index_t kCols>
 struct SageAttnV3Preprocess
@@ -157,76 +194,63 @@ struct SageAttnV3Preprocess
         s.k_scale_bytes = static_cast<size_t>(batch * nhead * sk_pad * (hdim / kG));
         s.v_hat_bytes   = static_cast<size_t>(batch * nhead * hdim * (sk_pad / 2));
         s.v_scale_bytes = static_cast<size_t>(batch * nhead * hdim * (sk_pad / kG));
-        s.k_mean_bytes  = static_cast<size_t>(batch * nhead * hdim) * sizeof(InputT);
-        s.k_mean_partial_bytes = static_cast<size_t>(batch * nhead * hdim) * sizeof(float);
-        s.counter_bytes        = static_cast<size_t>(batch * nhead) * sizeof(int32_t);
+        s.k_mean_bytes = static_cast<size_t>(batch * nhead * hdim) * sizeof(InputT);
         return s;
     }
 
     static void run( // InputT: fp16_t, bf16_t, or float.
                      // ---- preprocess args ----
-        const SageAttnV3PreprocessArgs<InputT>& prep_args,
+        const SageAttnV3PreprocessArgs<InputT>& args,
         // ---- delta_s output ----
         float* delta_s_ptr, // [batch, nhead, num_q_tiles, seqlen_k]
         // ---- caller-allocated scratch / output buffers ----
-        InputT* k_mean_buf,        // [batch, nhead, hdim]          InputT
-        InputT* k_prime_buf,       // [batch, nhead, seqlen_k, hdim] InputT
-        float* k_mean_partial_buf, // [batch, nhead, hdim]          float  (scratch)
-        int32_t* counter_buf,      // [batch, nhead]                int32  (scratch)
+        InputT* k_mean_buf,  // [batch, nhead, hdim]          InputT
+        InputT* k_prime_buf, // [batch, nhead, seqlen_k, hdim] InputT
         // ---- stream ----
         hipStream_t stream,
         // ---- optional: select which kernel stages to launch ----
         uint32_t stages = kSA3StageAll)
     {
-        const index_t batch    = prep_args.batch;
-        const index_t nhead    = prep_args.nhead;
-        const index_t hdim     = prep_args.hdim;
-        const index_t seqlen_q = prep_args.seqlen_q;
-        const index_t seqlen_k = prep_args.seqlen_k;
+        const index_t batch    = args.batch;
+        const index_t nhead    = args.nhead;
+        const index_t hdim     = args.hdim;
+        const index_t seqlen_q = args.seqlen_q;
+        const index_t seqlen_k = args.seqlen_k;
+        constexpr index_t kG   = 32; // MXFP4 scale granularity
 
-        // Compute padded dimensions.
-        const auto bsz                = get_buffer_sizes(batch, nhead, seqlen_q, seqlen_k, hdim);
-        const index_t seqlen_q_padded = bsz.seqlen_q_padded;
-        const index_t seqlen_k_padded = bsz.seqlen_k_padded;
-        const index_t num_q_tiles     = bsz.num_q_tiles;
-        const index_t num_k_tiles     = bsz.num_k_tiles;
+        const auto bsz            = get_buffer_sizes(batch, nhead, seqlen_q, seqlen_k, hdim);
+        const index_t sq_pad      = bsz.seqlen_q_padded;
+        const index_t sk_pad      = bsz.seqlen_k_padded;
+        const index_t num_q_tiles = bsz.num_q_tiles;
+        const index_t num_k_tiles = bsz.num_k_tiles;
 
         // ------------------------------------------------------------------ //
         // Launch 0: k_mean kernel
         // ------------------------------------------------------------------ //
         if(stages & kSA3StageKMean)
         {
-            (void)hipMemsetAsync(
-                k_mean_partial_buf, 0, batch * nhead * hdim * sizeof(float), stream);
-            (void)hipMemsetAsync(counter_buf, 0, batch * nhead * sizeof(int32_t), stream);
+            using KMeanKernel = SageAttnV3KMeanKernel<InputT, kRows, kCols>;
+            using KMeanKargs  = typename KMeanKernel::Kargs;
 
-            {
-                using KMeanKernel = SageAttnV3KMeanKernel<InputT, kRows, kCols>;
-                using KMeanKargs  = typename KMeanKernel::Kargs;
+            KMeanKargs kargs{};
+            kargs.k_ptr              = args.k_ptr;
+            kargs.seqlen_k           = seqlen_k;
+            kargs.hdim               = hdim;
+            kargs.stride_k           = args.stride_k;
+            kargs.nhead_stride_k     = args.nhead_stride_k;
+            kargs.batch_stride_k     = args.batch_stride_k;
+            kargs.k_mean_ptr         = k_mean_buf;
+            kargs.nhead_stride_kmean = hdim;
+            kargs.batch_stride_kmean = nhead * hdim;
+            kargs.nhead              = nhead;
+            kargs.batch              = batch;
 
-                KMeanKargs kargs{};
-                kargs.k_ptr              = prep_args.k_ptr;
-                kargs.seqlen_k           = seqlen_k;
-                kargs.hdim               = hdim;
-                kargs.stride_k           = prep_args.stride_k;
-                kargs.nhead_stride_k     = prep_args.nhead_stride_k;
-                kargs.batch_stride_k     = prep_args.batch_stride_k;
-                kargs.k_mean_partial_ptr = k_mean_partial_buf;
-                kargs.k_mean_ptr         = k_mean_buf;
-                kargs.counter_ptr        = counter_buf;
-                kargs.nhead_stride_kmean = hdim;
-                kargs.batch_stride_kmean = nhead * hdim;
-                kargs.num_k_tiles        = num_k_tiles;
-                kargs.nhead              = nhead;
-                kargs.batch              = batch;
+            const dim3 grids   = KMeanKernel::GridSize(kargs);
+            const dim3 blocks  = KMeanKernel::BlockSize();
+            const index_t smem = KMeanKernel::GetSmemSize();
 
-                const dim3 grids   = KMeanKernel::GridSize(kargs);
-                const dim3 blocks  = KMeanKernel::BlockSize();
-                const index_t smem = KMeanKernel::GetSmemSize();
-
-                stream_config sc{stream};
-                launch_and_check(sc, make_kernel(KMeanKernel{}, grids, blocks, smem, kargs));
-            }
+            stream_config sc{stream};
+            launch_and_check(sc, make_kernel(KMeanKernel{}, grids, blocks, smem, kargs));
         } // end if(stages & kSA3StageKMean)
 
         // ------------------------------------------------------------------ //
@@ -238,57 +262,45 @@ struct SageAttnV3Preprocess
             using PrepKargs  = typename PrepKernel::Kargs;
 
             PrepKargs kargs{};
-            kargs.q_ptr          = prep_args.q_ptr;
-            kargs.seqlen_q       = seqlen_q;
-            kargs.hdim           = hdim;
-            kargs.stride_q       = prep_args.stride_q;
-            kargs.nhead_stride_q = prep_args.nhead_stride_q;
-            kargs.batch_stride_q = prep_args.batch_stride_q;
-            kargs.q_hat_ptr      = prep_args.q_hat_ptr;
-            kargs.stride_q_hat   = prep_args.stride_q_hat;
-            // Override nhead/batch strides to use padded seqlen for output layout.
-            kargs.nhead_stride_q_hat   = seqlen_q_padded * (hdim / 2);
-            kargs.batch_stride_q_hat   = nhead * seqlen_q_padded * (hdim / 2);
-            kargs.q_scale_ptr          = prep_args.q_scale_ptr;
-            kargs.stride_q_scale       = prep_args.stride_q_scale;
-            kargs.nhead_stride_q_scale = seqlen_q_padded * (hdim / 32);
-            kargs.batch_stride_q_scale = nhead * seqlen_q_padded * (hdim / 32);
-            kargs.q_mean_ptr           = prep_args.q_mean_ptr;
-            kargs.q_tile_size          = prep_args.q_tile_size;
-            kargs.stride_q_mean        = prep_args.stride_q_mean;
+            kargs.q_ptr                = args.q_ptr;
+            kargs.seqlen_q             = seqlen_q;
+            kargs.hdim                 = hdim;
+            kargs.stride_q             = args.stride_q;
+            kargs.nhead_stride_q       = args.nhead_stride_q;
+            kargs.batch_stride_q       = args.batch_stride_q;
+            kargs.q_hat_ptr            = args.q_hat_ptr;
+            kargs.stride_q_hat         = hdim / 2;
+            kargs.nhead_stride_q_hat   = sq_pad * (hdim / 2);
+            kargs.batch_stride_q_hat   = nhead * sq_pad * (hdim / 2);
+            kargs.q_scale_ptr          = args.q_scale_ptr;
+            kargs.stride_q_scale       = hdim / kG;
+            kargs.nhead_stride_q_scale = sq_pad * (hdim / kG);
+            kargs.batch_stride_q_scale = nhead * sq_pad * (hdim / kG);
+            kargs.q_mean_ptr           = args.q_mean_ptr;
+            kargs.q_tile_size          = kRows;
+            kargs.stride_q_mean        = hdim;
             kargs.nhead_stride_q_mean  = num_q_tiles * hdim;
             kargs.batch_stride_q_mean  = nhead * num_q_tiles * hdim;
-            kargs.k_ptr                = prep_args.k_ptr;
+            kargs.k_ptr                = args.k_ptr;
             kargs.seqlen_k             = seqlen_k;
-            kargs.stride_k             = prep_args.stride_k;
-            kargs.nhead_stride_k       = prep_args.nhead_stride_k;
-            kargs.batch_stride_k       = prep_args.batch_stride_k;
-            kargs.k_hat_ptr            = prep_args.k_hat_ptr;
-            kargs.stride_k_hat         = prep_args.stride_k_hat;
-            kargs.nhead_stride_k_hat   = seqlen_k_padded * (hdim / 2);
-            kargs.batch_stride_k_hat   = nhead * seqlen_k_padded * (hdim / 2);
-            kargs.k_scale_ptr          = prep_args.k_scale_ptr;
-            kargs.stride_k_scale       = prep_args.stride_k_scale;
-            kargs.nhead_stride_k_scale = seqlen_k_padded * (hdim / 32);
-            kargs.batch_stride_k_scale = nhead * seqlen_k_padded * (hdim / 32);
+            kargs.stride_k             = args.stride_k;
+            kargs.nhead_stride_k       = args.nhead_stride_k;
+            kargs.batch_stride_k       = args.batch_stride_k;
+            kargs.k_hat_ptr            = args.k_hat_ptr;
+            kargs.stride_k_hat         = hdim / 2;
+            kargs.nhead_stride_k_hat   = sk_pad * (hdim / 2);
+            kargs.batch_stride_k_hat   = nhead * sk_pad * (hdim / 2);
+            kargs.k_scale_ptr          = args.k_scale_ptr;
+            kargs.stride_k_scale       = hdim / kG;
+            kargs.nhead_stride_k_scale = sk_pad * (hdim / kG);
+            kargs.batch_stride_k_scale = nhead * sk_pad * (hdim / kG);
             kargs.k_mean_ptr           = k_mean_buf;
-            kargs.nhead_stride_k_mean  = hdim; // k_mean layout: [batch, nhead, hdim]
+            kargs.nhead_stride_k_mean  = hdim;
             kargs.batch_stride_k_mean  = nhead * hdim;
             kargs.k_prime_ptr          = k_prime_buf;
             kargs.stride_k_prime       = hdim;
-            kargs.nhead_stride_k_prime = seqlen_k_padded * hdim;
-            kargs.batch_stride_k_prime = nhead * seqlen_k_padded * hdim;
-            kargs.v_ptr                = prep_args.v_ptr;
-            kargs.nhead_stride_v       = prep_args.nhead_stride_v;
-            kargs.batch_stride_v       = prep_args.batch_stride_v;
-            kargs.v_hat_ptr            = prep_args.v_hat_ptr;
-            kargs.stride_v_hat         = prep_args.stride_v_hat;
-            kargs.nhead_stride_v_hat   = prep_args.nhead_stride_v_hat;
-            kargs.batch_stride_v_hat   = prep_args.batch_stride_v_hat;
-            kargs.v_scale_ptr          = prep_args.v_scale_ptr;
-            kargs.stride_v_scale       = prep_args.stride_v_scale;
-            kargs.nhead_stride_v_scale = prep_args.nhead_stride_v_scale;
-            kargs.batch_stride_v_scale = prep_args.batch_stride_v_scale;
+            kargs.nhead_stride_k_prime = sk_pad * hdim;
+            kargs.batch_stride_k_prime = nhead * sk_pad * hdim;
             kargs.batch                = batch;
             kargs.nhead                = nhead;
             kargs.num_q_tiles          = num_q_tiles;
@@ -303,7 +315,7 @@ struct SageAttnV3Preprocess
         } // end if(stages & kSA3StagePreprocess)
 
         // ------------------------------------------------------------------ //
-        // Launch 1b: V preprocess — LDS-based tile transpose + MXFP4 quantize
+        // Launch 1b: V preprocess -- LDS-based tile transpose + MXFP4 quantize
         // ------------------------------------------------------------------ //
         if(stages & kSA3StageVPreprocess)
         {
@@ -311,20 +323,20 @@ struct SageAttnV3Preprocess
             using VKargs  = typename VKernel::Kargs;
 
             VKargs kargs{};
-            kargs.v_ptr                = prep_args.v_ptr;
-            kargs.seqlen_k             = seqlen_k_padded; // used for GridSize
-            kargs.seqlen_k_real        = seqlen_k;        // used for input bounds check
+            kargs.v_ptr                = args.v_ptr;
+            kargs.seqlen_k             = sk_pad;   // used for GridSize (must be padded)
+            kargs.seqlen_k_real        = seqlen_k; // used for input bounds check
             kargs.hdim                 = hdim;
-            kargs.nhead_stride_v       = prep_args.nhead_stride_v;
-            kargs.batch_stride_v       = prep_args.batch_stride_v;
-            kargs.v_hat_ptr            = prep_args.v_hat_ptr;
-            kargs.stride_v_hat         = seqlen_k_padded / 2;
-            kargs.nhead_stride_v_hat   = hdim * (seqlen_k_padded / 2);
-            kargs.batch_stride_v_hat   = nhead * hdim * (seqlen_k_padded / 2);
-            kargs.v_scale_ptr          = prep_args.v_scale_ptr;
-            kargs.stride_v_scale       = seqlen_k_padded / 32;
-            kargs.nhead_stride_v_scale = hdim * (seqlen_k_padded / 32);
-            kargs.batch_stride_v_scale = nhead * hdim * (seqlen_k_padded / 32);
+            kargs.nhead_stride_v       = args.nhead_stride_v;
+            kargs.batch_stride_v       = args.batch_stride_v;
+            kargs.v_hat_ptr            = args.v_hat_ptr;
+            kargs.stride_v_hat         = sk_pad / 2;
+            kargs.nhead_stride_v_hat   = hdim * (sk_pad / 2);
+            kargs.batch_stride_v_hat   = nhead * hdim * (sk_pad / 2);
+            kargs.v_scale_ptr          = args.v_scale_ptr;
+            kargs.stride_v_scale       = sk_pad / kG;
+            kargs.nhead_stride_v_scale = hdim * (sk_pad / kG);
+            kargs.batch_stride_v_scale = nhead * hdim * (sk_pad / kG);
             kargs.nhead                = nhead;
             kargs.batch                = batch;
 
@@ -342,7 +354,7 @@ struct SageAttnV3Preprocess
         if(stages & kSA3StageDeltaS)
         {
             using ALayout = tensor_layout::gemm::RowMajor;
-            // K' stored naturally as [seqlen_k=N, hdim=K] row-major → ColMajor B[K, N] → K'^T ✓
+            // K' stored naturally as [seqlen_k=N, hdim=K] row-major -> ColMajor B[K, N] -> K'^T
             using BLayout = tensor_layout::gemm::ColumnMajor;
             using CLayout = tensor_layout::gemm::RowMajor;
 
@@ -395,30 +407,29 @@ struct SageAttnV3Preprocess
                                                                           /*M01=*/4>;
             using GemmKernel = BatchedGemmKernel<GemmTilePartitioner, GemmPipeline, GemmEpilogue>;
 
-            // M = num_q_tiles, N = seqlen_k_padded, K = hdim, batch_count = batch * nhead
+            // M = num_q_tiles, N = sk_pad, K = hdim, batch_count = batch * nhead
             const index_t M           = num_q_tiles;
-            const index_t N           = seqlen_k_padded;
+            const index_t N           = sk_pad;
             const index_t K           = hdim;
             const index_t batch_count = batch * nhead;
 
             // A: q_mean  [batch*nhead, num_q_tiles, hdim]  row-major, stride=hdim
-            // B: K'      [batch*nhead, seqlen_k_padded, hdim]  col-major (leading dim = hdim = K)
-            //   ColMajor B[K,N] where K'[n,k] = B[k,n] → GEMM computes q_mean @ K'^T ✓
-            // C: delta_s [batch*nhead, num_q_tiles, seqlen_k_padded]  row-major
-            BatchedGemmHostArgs gemm_hargs(prep_args.q_mean_ptr, // A ptr
-                                           k_prime_buf,          // B ptr (K')
-                                           delta_s_ptr,          // C ptr
+            // B: K'      [batch*nhead, sk_pad, hdim]  col-major (leading dim = hdim = K)
+            //   ColMajor B[K,N] where K'[n,k] = B[k,n] -> GEMM computes q_mean @ K'^T
+            // C: delta_s [batch*nhead, num_q_tiles, sk_pad]  row-major
+            BatchedGemmHostArgs gemm_hargs(args.q_mean_ptr, // A ptr
+                                           k_prime_buf,     // B ptr (K')
+                                           delta_s_ptr,     // C ptr
                                            /*k_batch=*/1,
                                            M,
                                            N,
                                            K,
                                            /*stride_A=*/K, // q_mean row stride = hdim
                                            /*stride_B=*/K, // ColMajor leading dim = hdim (= K)
-                                           /*stride_C=*/N, // delta_s row stride = seqlen_k_padded
+                                           /*stride_C=*/N, // delta_s row stride = sk_pad
                                            /*batch_stride_A=*/M * K, // num_q_tiles * hdim
-                                           /*batch_stride_B=*/N * K, // seqlen_k_padded * hdim
-                                           /*batch_stride_C=*/M *
-                                               N, // num_q_tiles * seqlen_k_padded
+                                           /*batch_stride_B=*/N * K, // sk_pad * hdim
+                                           /*batch_stride_C=*/M * N, // num_q_tiles * sk_pad
                                            batch_count);
 
             auto kargs        = GemmKernel::MakeKernelArgs(gemm_hargs);

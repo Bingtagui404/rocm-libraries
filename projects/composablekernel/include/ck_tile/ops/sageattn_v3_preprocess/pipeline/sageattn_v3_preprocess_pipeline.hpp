@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ck_tile/core.hpp"
+#include "ck_tile/ops/reduce/block/block_reduce.hpp"
 #include "ck_tile/ops/sageattn_v3_preprocess/sageattn_v3_mxfp4_pack.hpp"
 
 namespace ck_tile {
@@ -18,22 +19,64 @@ namespace ck_tile {
 //      Enabled only when the Q tile fits in LDS (kQTileBytes <= kMaxSmemForLdsQ).
 //      For fp16/bf16 with kCols<=256: enabled. For float with kCols=256: disabled.
 //
-//   2. Vectorized fp16 load/store: uint4 (128-bit = 8 x fp16) throughout.
-//      load_vec8 / store_vec8 reduce instruction count 8x vs scalar 2-byte.
+//   2. Thread tile distribution: one thread per (row, MXFP4-group) pair.
+//      kBlockSize = kRows * (kCols / kScaleGranularity) threads.
+//      Each thread owns one contiguous kG=kScaleGranularity-element group in its row.
+//      The Y dimension has kG elements; thread buffer slots 0..kG-1 give compile-time
+//      indices for the MXFP4 quantize inner loop.
 //
-//   3. Parallel RunQMean: all kBlockSize threads compute the column mean
-//      (kThreadsPerCol threads per column), eliminating idle threads.
+//   3. Global I/O via CK_TILE tile APIs: make_naive_tensor_view + make_tile_window +
+//      load_tile / store_tile for all global and LDS memory operations.
 //
-//   4. RunKSmoothAndQuantize: vectorized load + store for K and k_mean.
+//   4. RunKSmoothAndQuantize: vectorized global load/store via load_tile / store_tile.
+//
+// Thread tile distribution for Q/K tiles [kRows, kCols] (MakeQKTileDstr):
+//   kGroups = kCols / kScaleGranularity  (number of MXFP4 groups per row)
+//   kG = kScaleGranularity = 32          (elements per MXFP4 group; Y dimension)
+//   kWarps = kBlockSize / 64             (number of warps per CTA)
+//   kRowsPerWarp = 64 / kGroups          (row slots per warp)
+//   Thread assignment: tid = warp_id * 64 + lane_id
+//     row_idx = warp_id * kRowsPerWarp + lane_id / kGroups
+//     grp_idx = lane_id % kGroups
+//   Each thread owns Q[row_idx, grp_idx*kG .. (grp_idx+1)*kG - 1] (kG elements in Y)
+//
+//   tile_distribution_encoding<                         // NDimP=2
+//       sequence<>,                                     // no R dims
+//       tuple<sequence<kWarps, kRowsPerWarp>,           // H[X=0]: row dim (2 factors)
+//             sequence<kGroups, kG>>,                   // H[X=1]: col dim (2 factors)
+//       tuple<sequence<1>, sequence<1, 2>>,             // P[0]=warp_id->H[X=0][0];
+//                                                       // P[1]=lane_id->H[X=0][1]+H[X=1][0]
+//       tuple<sequence<0>, sequence<1, 0>>,
+//       sequence<2>,                                    // Y[0] -> H[X=1][1]=kG (registers/thread)
+//       sequence<1>>
+//
+// Thread tile distribution for column-mean reduction (MakeMeanReduceTileDstr):
+//   1D tile of shape [kCols].  Each column is handled by kThreadsPerCol threads
+//   all within the SAME warp, enabling pure warp-shuffle reduction (no cross-warp smem).
+//   kColsPerWarp = kCols / kWarps  (columns per warp)
+//   Thread assignment: warp_id = tid / 64,  lane_id = tid % 64
+//     col_idx = warp_id * kColsPerWarp + lane_id / kThreadsPerCol
+//     r_id    = lane_id % kThreadsPerCol   (row group; 0 = leader)
+//   Invariant: kColsPerWarp * kThreadsPerCol == 64  (always holds for
+//              kBlockSize = kRows * kCols / kScaleGranularity).
+//   After block_tile_reduce_xor_sync, all kThreadsPerCol threads in a column
+//   group hold the column sum; the leader (r_id==0) writes the mean.
+//
+//   tile_distribution_encoding<
+//       sequence<kThreadsPerCol>,              // R[0]: intra-warp replication
+//       tuple<sequence<kWarps, kColsPerWarp>>, // H[X=0]: column dim
+//       tuple<sequence<1>, sequence<1, 0>>,    // P[0]=warp_id->H[X=0][0];
+//                                              // P[1]=lane_id->H[X=0][1](slow)+R[0](fast)
+//       tuple<sequence<0>, sequence<1, 0>>,
+//       sequence<>,                            // no Y
+//       sequence<>>
 //
 // Smem layout when kUseLdsQ=true (bytes):
-//   [0 .. kQTileBytes):                 Q tile as InputT (kRows x kCols)
-//   [kQTileBytes .. +kSmemMeanBytes):   column means as float32 (kCols)
-//   [kQTileBytes+kSmemMeanBytes .. +kSmemPartialBytes): partial sums (kBlockSize)
+//   [0 .. kQTileBytes):               Q tile as InputT (kRows x kCols)
+//   [kQTileBytes .. +kSmemMeanBytes): column means as float32 (kCols)
 //
 // Smem layout when kUseLdsQ=false (bytes):
-//   [0 .. kSmemMeanBytes):              column means as float32 (kCols)
-//   [kSmemMeanBytes .. +kSmemPartialBytes): partial sums (kBlockSize)
+//   [0 .. kSmemMeanBytes):            column means as float32 (kCols)
 //
 // The K step (RunKSmoothAndQuantize) reuses smem[0..kCols*4] for the k_mean
 // cache after the Q steps are done (Q tile bytes are no longer needed).
@@ -44,68 +87,6 @@ namespace ck_tile {
 //   kCols_:            tile cols (hdim)
 //   kScaleGranularity: MXFP4 group size (must be 32)
 //   kBlockSize_:       threads per CTA; default = kRows * (kCols / kScaleGranularity)
-
-// ---------------------------------------------------------------------------
-// Vectorized load/store helpers: 8 x fp16 per 128-bit instruction.
-// ---------------------------------------------------------------------------
-
-template <typename InputT>
-CK_TILE_DEVICE void load_vec8(const InputT* __restrict__ ptr, float (&out)[8])
-{
-    for(int i = 0; i < 8; i++)
-        out[i] = static_cast<float>(ptr[i]);
-}
-
-template <>
-CK_TILE_DEVICE void load_vec8<fp16_t>(const fp16_t* __restrict__ ptr, float (&out)[8])
-{
-    using vec_t       = uint4;
-    const auto raw    = *reinterpret_cast<const vec_t*>(ptr);
-    const uint16_t* h = reinterpret_cast<const uint16_t*>(&raw);
-    for(int i = 0; i < 8; i++)
-        out[i] = static_cast<float>(bit_cast<fp16_t>(h[i]));
-}
-
-template <>
-CK_TILE_DEVICE void load_vec8<float>(const float* __restrict__ ptr, float (&out)[8])
-{
-    using vec_t     = uint4;
-    const auto* vp  = reinterpret_cast<const vec_t*>(ptr);
-    const float* f0 = reinterpret_cast<const float*>(&vp[0]);
-    const float* f1 = reinterpret_cast<const float*>(&vp[1]);
-    for(int i = 0; i < 4; i++)
-    {
-        out[i]     = f0[i];
-        out[i + 4] = f1[i];
-    }
-}
-
-template <typename InputT>
-CK_TILE_DEVICE void store_vec8(InputT* __restrict__ ptr, const float (&in)[8])
-{
-    for(int i = 0; i < 8; i++)
-        ptr[i] = static_cast<InputT>(in[i]);
-}
-
-template <>
-CK_TILE_DEVICE void store_vec8<fp16_t>(fp16_t* __restrict__ ptr, const float (&in)[8])
-{
-    uint4 raw;
-    uint16_t* h = reinterpret_cast<uint16_t*>(&raw);
-    for(int i = 0; i < 8; i++)
-        h[i] = bit_cast<uint16_t>(static_cast<fp16_t>(in[i]));
-    *reinterpret_cast<uint4*>(ptr) = raw;
-}
-
-template <>
-CK_TILE_DEVICE void store_vec8<float>(float* __restrict__ ptr, const float (&in)[8])
-{
-    uint4* vp = reinterpret_cast<uint4*>(ptr);
-    vp[0]     = *reinterpret_cast<const uint4*>(&in[0]);
-    vp[1]     = *reinterpret_cast<const uint4*>(&in[4]);
-}
-
-// ---------------------------------------------------------------------------
 
 template <typename InputT_,
           index_t kRows_,
@@ -124,8 +105,16 @@ struct SageAttnV3PreprocessPipeline
     static_assert(kScaleGranularity == 32, "MXFP4 scale granularity must be 32");
     static_assert(kCols % kScaleGranularity == 0,
                   "kCols must be divisible by kScaleGranularity for MXFP4");
+    static_assert(kBlockSize == kRows * (kCols / kScaleGranularity),
+                  "kBlockSize must equal kRows * kGroups for full QK tile coverage");
 
-    // kThreadsPerCol: threads collaborating on a single column mean.
+    // kGroups: MXFP4 groups per row; kG: elements per group (= kScaleGranularity).
+    static constexpr index_t kGroups = kCols / kScaleGranularity;
+    static constexpr index_t kG      = kScaleGranularity;
+
+    // kThreadsPerCol: threads collaborating on a single column mean (for mean reduction).
+    // With MakeMeanReduceTileDstr all kThreadsPerCol threads for a column fall within
+    // ONE warp, so block_tile_reduce_xor_sync handles the reduction without smem.
     static constexpr index_t kThreadsPerCol = kBlockSize / kCols;
     static_assert(kBlockSize % kCols == 0,
                   "kBlockSize must be divisible by kCols for parallel mean reduction");
@@ -139,31 +128,107 @@ struct SageAttnV3PreprocessPipeline
         kQTileWords * static_cast<index_t>(sizeof(InputT));
 
     // Enable LDS Q caching only when the Q tile fits comfortably.
-    // Reserve 16 KB headroom for k_mean cache (kCols*4) + mean/partial buffers.
+    // Reserve headroom for k_mean cache (kCols*4) and mean buffer (kCols*4).
     static constexpr index_t kMaxSmemForLdsQ = 49152; // 48 KB
     static constexpr bool kUseLdsQ           = (kQTileBytes <= kMaxSmemForLdsQ);
 
     // Slot: column means (float32, kCols).
-    // Slot: partial sums (float32, kBlockSize) -- only when kThreadsPerCol > 1.
-    static constexpr index_t kSmemMeanWords    = kCols;
-    static constexpr index_t kSmemPartialWords = (kThreadsPerCol > 1) ? kBlockSize : 0;
+    // No smem_partial needed: block_tile_reduce_xor_sync uses warp shuffles only.
+    static constexpr index_t kSmemMeanWords = kCols;
 
     // Byte offsets within smem.
-    // When kUseLdsQ: Q tile occupies smem[0..kQTileBytes), then mean, then partial.
-    // When !kUseLdsQ: mean starts at 0, partial follows.
-    static constexpr index_t kSmemMeanOffset =
-        kUseLdsQ ? kQTileBytes : 0;
-    static constexpr index_t kSmemPartialOffset = kSmemMeanOffset + kSmemMeanWords * 4;
+    // When kUseLdsQ: Q tile occupies smem[0..kQTileBytes), then mean follows.
+    // When !kUseLdsQ: mean starts at 0.
+    static constexpr index_t kSmemMeanOffset = kUseLdsQ ? kQTileBytes : 0;
 
     CK_TILE_HOST_DEVICE static constexpr index_t GetSmemSize()
     {
-        return kSmemPartialOffset + kSmemPartialWords * 4;
+        return kSmemMeanOffset + kSmemMeanWords * 4;
+    }
+
+    // -------------------------------------------------------------------------
+    // MakeQKTileDstr: tile distribution for Q/K tiles [kRows, kCols].
+    //
+    // Thread mapping: tid = warp_id * 64 + lane_id
+    //   row_idx = warp_id * kRowsPerWarp + lane_id / kGroups
+    //   grp_idx = lane_id % kGroups
+    // Thread buffer: kG=32 consecutive elements at (row_idx, grp_idx*kG).
+    //
+    // NDimP=2: P[0]=warp_id, P[1]=lane_id (required for kBlockSize > 64).
+    //
+    // H[X=0] = [kWarps, kRowsPerWarp]   (row dimension decomposed)
+    // H[X=1] = [kGroups, kG]            (col dimension decomposed)
+    //
+    // P[0]=warp_id  -> H[X=0][0]=kWarps         (rh_major=1, rh_minor=0)
+    // P[1]=lane_id  -> H[X=0][1]=kRowsPerWarp   (rh_major=1, rh_minor=1)
+    //               -> H[X=1][0]=kGroups         (rh_major=2, rh_minor=0)
+    //               (lane_id = row_in_warp * kGroups + grp_idx, grp is fast axis)
+    // Y[0]          -> H[X=1][1]=kG             (rh_major=2, rh_minor=1)
+    // -------------------------------------------------------------------------
+    CK_TILE_HOST_DEVICE static constexpr auto MakeQKTileDstr()
+    {
+        constexpr index_t kWarps       = kBlockSize / 64;
+        constexpr index_t kRowsPerWarp = 64 / kGroups;
+        static_assert(kBlockSize % 64 == 0, "kBlockSize must be a multiple of 64 (warp size)");
+        static_assert(64 % kGroups == 0, "kGroups must divide 64 (warp size)");
+        return make_static_tile_distribution(
+            tile_distribution_encoding<
+                sequence<>,
+                tuple<sequence<kWarps, kRowsPerWarp>, sequence<kGroups, kG>>,
+                tuple<sequence<1>, sequence<1, 2>>,
+                tuple<sequence<0>, sequence<1, 0>>,
+                sequence<2>,
+                sequence<1>>{});
+    }
+
+    // -------------------------------------------------------------------------
+    // MakeMeanReduceTileDstr: 1D tile distribution for column-mean reduction.
+    //
+    // Assigns columns to warps so that all kThreadsPerCol threads for one column
+    // are within the SAME warp. Enables block_tile_reduce_xor_sync without smem.
+    //
+    // kColsPerWarp = kCols / kWarps = kScaleGranularity * 64 / kBlockSize
+    // Invariant: kColsPerWarp * kThreadsPerCol == 64 (warp size). This holds for
+    // the standard kBlockSize = kRows * (kCols / kScaleGranularity).
+    //
+    // Thread assignment: warp_id = tid / 64, lane_id = tid % 64
+    //   col_idx = warp_id * kColsPerWarp + lane_id / kThreadsPerCol
+    //   r_id    = lane_id % kThreadsPerCol  (0 = leader)
+    //
+    // H[X=0] = [kWarps, kColsPerWarp, 1]  (size-1 tail factor hosts Y[0])
+    // R[0]   = kThreadsPerCol (intra-warp replication; reduces via XOR shuffle)
+    // P[0]=warp_id  -> H[X=0][0]=kWarps
+    // P[1]=lane_id  -> H[X=0][1]=kColsPerWarp (slower) + R[0]=kThreadsPerCol (faster)
+    //   lid = col_in_warp * kThreadsPerCol + r_id
+    //   ps_over_rs_derivative_[1][0] = 1  (r_id is the fast axis of lane_id)
+    // Y[0]          -> H[X=0][2]=1          (size-1; gives thread_buffer_size=1)
+    // -------------------------------------------------------------------------
+    CK_TILE_HOST_DEVICE static constexpr auto MakeMeanReduceTileDstr()
+    {
+        constexpr index_t kWarps_      = kBlockSize / 64;
+        constexpr index_t kColsPerWarp = kCols / kWarps_;
+        static_assert(kBlockSize % 64 == 0, "kBlockSize must be a multiple of 64");
+        static_assert(kCols % kWarps_ == 0, "kCols must be divisible by kWarps");
+        // All kThreadsPerCol threads for one column fall within a single warp.
+        static_assert(kColsPerWarp * kThreadsPerCol == 64,
+                      "kColsPerWarp * kThreadsPerCol must equal warp size (64)");
+        // H[X=0] has 3 factors: [kWarps, kColsPerWarp, 1].
+        // The size-1 tail factor is assigned to Y[0] so that the thread buffer has 1 slot,
+        // which is required by make_static_tile_distribution (NDimY >= 1).
+        return make_static_tile_distribution(
+            tile_distribution_encoding<
+                sequence<kThreadsPerCol>,                   // R[0]: intra-warp replication
+                tuple<sequence<kWarps_, kColsPerWarp, 1>>,  // H[X=0]: [kWarps,kColsPerWarp,1]
+                tuple<sequence<1>, sequence<1, 0>>,         // P[0]->H[X=0][0]; P[1]->H[X=0][1]+R[0]
+                tuple<sequence<0>, sequence<1, 0>>,         // minor indices
+                sequence<1>,                                // Y[0] -> H[X=0][2]=1
+                sequence<2>>{});                            // Y[0] minor index = 2
     }
 
     // -------------------------------------------------------------------------
     // Step 0 (kUseLdsQ only): Load Q tile from global into LDS.
-    //   Vectorized 128-bit reads, all kBlockSize threads participate.
-    //   Bounds-checked: padded rows (row >= n_rows_valid) are zeroed.
+    //   Uses make_naive_tensor_view + load_tile / store_tile with the Q tile
+    //   distribution. Padded rows (row >= n_rows_valid) are zeroed before storing.
     //   Caller must issue block_sync_lds() before RunQMean reads LDS.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunLoadQTile(const InputT* __restrict__ src_ptr,
@@ -171,32 +236,54 @@ struct SageAttnV3PreprocessPipeline
                                      index_t n_rows_valid) const
     {
         static_assert(kUseLdsQ, "RunLoadQTile requires kUseLdsQ=true");
-        InputT* smem_q         = reinterpret_cast<InputT*>(smem);
-        const index_t tid      = get_thread_id();
-        constexpr index_t kVec = 8;
-        static_assert(kQTileWords % kVec == 0, "Q tile must be divisible by kVec");
+        InputT* smem_q = reinterpret_cast<InputT*>(smem);
 
-        for(index_t base = tid * kVec; base < kQTileWords; base += kBlockSize * kVec)
+        constexpr auto dstr = MakeQKTileDstr();
+
+        // Global view: [kRows, kCols] row-major, vectorized with vec=8 (safe for all types).
+        // Use runtime kRows to keep BufferSizeType = index_t, avoiding constant<N> issues.
+        const auto src_view = make_naive_tensor_view<address_space_enum::global>(
+            src_ptr,
+            make_tuple(static_cast<index_t>(kRows), number<kCols>{}),
+            make_tuple(number<kCols>{}, number<1>{}),
+            number<8>{},
+            number<1>{});
+
+        // LDS view: [kRows, kCols] row-major (packed), vectorized with vec=8.
+        auto dst_view = make_naive_tensor_view<address_space_enum::lds>(
+            smem_q,
+            make_tuple(static_cast<index_t>(kRows), number<kCols>{}),
+            make_tuple(number<kCols>{}, number<1>{}),
+            number<8>{},
+            number<1>{});
+
+        auto src_win = make_tile_window(
+            src_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+        auto dst_win = make_tile_window(
+            dst_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+
+        // Load Q tile from global into registers.
+        auto q_tile = load_tile(src_win);
+
+        // Zero out this thread's elements if its row is out of bounds.
+        const index_t tid     = get_thread_id();
+        const index_t row_idx = tid / kGroups;
+        if(row_idx >= n_rows_valid)
         {
-            const index_t row = base / kCols;
-            if(row < n_rows_valid)
-            {
-                float tmp[kVec];
-                load_vec8(src_ptr + base, tmp);
-                store_vec8(smem_q + base, tmp);
-            }
-            else
-            {
-                float zeros[kVec] = {};
-                store_vec8(smem_q + base, zeros);
-            }
+            tile_elementwise_inout([](auto& v) { v = InputT{0}; }, q_tile);
         }
+
+        // Store (padded) Q tile from registers into LDS.
+        store_tile(dst_win, q_tile);
     }
 
     // -------------------------------------------------------------------------
     // Step 1a: Compute column mean from LDS Q tile (kUseLdsQ=true path).
-    //   Reads smem_q loaded by RunLoadQTile. No HBM traffic.
-    //   Leader stores mean to smem_mean and q_mean_ptr.
+    //   Uses MakeMeanReduceTileDstr: each column is assigned to kThreadsPerCol
+    //   threads all within one warp. Accumulates LDS rows in a scalar acc, stores
+    //   into a 1D reduce tile, then block_tile_reduce_xor_sync reduces across the
+    //   kThreadsPerCol R-dimension via warp XOR butterfly (no smem needed).
+    //   Leader (r_id==0) stores mean to smem_mean and q_mean_ptr.
     //   Caller issues block_sync_lds() before RunQQuantize.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunQMean(const void* smem,
@@ -208,28 +295,37 @@ struct SageAttnV3PreprocessPipeline
         float* smem_mean =
             reinterpret_cast<float*>(reinterpret_cast<char*>(const_cast<void*>(smem)) +
                                      kSmemMeanOffset);
-        float* smem_partial = smem_mean + kSmemMeanWords;
 
-        const index_t tid        = get_thread_id();
-        const index_t col_idx    = tid % kCols;
-        const index_t grp_in_col = tid / kCols;
+        // Column assignment via MakeMeanReduceTileDstr:
+        //   col_idx = warp_id * kColsPerWarp + lane_id / kThreadsPerCol
+        //   r_id    = lane_id % kThreadsPerCol   (row group; 0 = leader)
+        constexpr index_t kWarps_      = kBlockSize / 64;
+        constexpr index_t kColsPerWarp = kCols / kWarps_;
+        const index_t tid              = get_thread_id();
+        const index_t warp_id          = tid / 64;
+        const index_t lane_id          = tid % 64;
+        const index_t col_idx          = warp_id * kColsPerWarp + lane_id / kThreadsPerCol;
+        const index_t r_id             = lane_id % kThreadsPerCol;
 
+        // Each thread accumulates LDS rows r_id, r_id+kThreadsPerCol, ... for col_idx.
         float acc = 0.0f;
-        for(index_t r = grp_in_col; r < n_rows_valid; r += kThreadsPerCol)
+        for(index_t r = r_id; r < n_rows_valid; r += kThreadsPerCol)
             acc += static_cast<float>(smem_q[r * kCols + col_idx]);
 
-        if constexpr(kThreadsPerCol > 1)
-        {
-            smem_partial[tid] = acc;
-            block_sync_lds();
-            if(grp_in_col == 0)
-                for(index_t g = 1; g < kThreadsPerCol; g++)
-                    acc += smem_partial[g * kCols + col_idx];
-        }
+        // Reduce across kThreadsPerCol within the same warp using XOR butterfly.
+        // block_tile_reduce_xor_sync uses warp_shuffle (does_p_own_r_[1][0]=true,
+        // lid_over_rid_derivative=1). No cross-warp smem is needed because all
+        // kThreadsPerCol threads for col_idx are in the same warp.
+        auto acc_tile = make_static_distributed_tensor<float>(MakeMeanReduceTileDstr());
+        acc_tile.get_thread_buffer()(number<0>{}) = acc;
+        block_tile_reduce_xor_sync(acc_tile, [](float a, float b) { return a + b; });
 
-        if(grp_in_col == 0)
+        // After XOR reduce, all kThreadsPerCol threads hold the column sum.
+        // Leader (r_id==0) writes the mean.
+        if(r_id == 0)
         {
-            const float mean    = acc / static_cast<float>(n_rows_valid);
+            const float mean    = acc_tile.get_thread_buffer()[number<0>{}] /
+                                  static_cast<float>(n_rows_valid);
             smem_mean[col_idx]  = mean;
             q_mean_ptr[col_idx] = static_cast<InputT>(mean);
         }
@@ -238,6 +334,7 @@ struct SageAttnV3PreprocessPipeline
     // -------------------------------------------------------------------------
     // Step 1b: Compute column mean from global Q tile (kUseLdsQ=false path).
     //   Reads Q from global memory. Stores mean to smem_mean and q_mean_ptr.
+    //   Uses the same MakeMeanReduceTileDstr + block_tile_reduce_xor_sync approach.
     //   Caller issues block_sync_lds() before RunQQuantizeGlobal.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunQMeanGlobal(const InputT* __restrict__ q_ptr,
@@ -248,42 +345,38 @@ struct SageAttnV3PreprocessPipeline
         static_assert(!kUseLdsQ, "RunQMeanGlobal requires kUseLdsQ=false");
         float* smem_mean =
             reinterpret_cast<float*>(reinterpret_cast<char*>(smem) + kSmemMeanOffset);
-        float* smem_partial = smem_mean + kSmemMeanWords;
 
-        const index_t tid        = get_thread_id();
-        const index_t col_idx    = tid % kCols;
-        const index_t grp_in_col = tid / kCols;
+        constexpr index_t kWarps_      = kBlockSize / 64;
+        constexpr index_t kColsPerWarp = kCols / kWarps_;
+        const index_t tid              = get_thread_id();
+        const index_t warp_id          = tid / 64;
+        const index_t lane_id          = tid % 64;
+        const index_t col_idx          = warp_id * kColsPerWarp + lane_id / kThreadsPerCol;
+        const index_t r_id             = lane_id % kThreadsPerCol;
 
-        constexpr index_t kVec = 8;
         float acc = 0.0f;
-        // Strided load: each thread group handles its row subset.
-        for(index_t r = grp_in_col; r < n_rows_valid; r += kThreadsPerCol)
-        {
-            // Scalar load per element (global path, any alignment).
+        for(index_t r = r_id; r < n_rows_valid; r += kThreadsPerCol)
             acc += static_cast<float>(q_ptr[r * kCols + col_idx]);
-        }
 
-        if constexpr(kThreadsPerCol > 1)
-        {
-            smem_partial[tid] = acc;
-            block_sync_lds();
-            if(grp_in_col == 0)
-                for(index_t g = 1; g < kThreadsPerCol; g++)
-                    acc += smem_partial[g * kCols + col_idx];
-        }
+        auto acc_tile = make_static_distributed_tensor<float>(MakeMeanReduceTileDstr());
+        acc_tile.get_thread_buffer()(number<0>{}) = acc;
+        block_tile_reduce_xor_sync(acc_tile, [](float a, float b) { return a + b; });
 
-        if(grp_in_col == 0)
+        if(r_id == 0)
         {
-            const float mean    = acc / static_cast<float>(n_rows_valid);
+            const float mean    = acc_tile.get_thread_buffer()[number<0>{}] /
+                                  static_cast<float>(n_rows_valid);
             smem_mean[col_idx]  = mean;
             q_mean_ptr[col_idx] = static_cast<InputT>(mean);
         }
-        (void)kVec;
     }
 
     // -------------------------------------------------------------------------
     // Step 2a: Quantize Q from LDS (kUseLdsQ=true path).
-    //   Q data and mean both read from LDS. No HBM Q read.
+    //   Uses load_tile with the Q tile distribution (one thread per (row, group)).
+    //   Thread buffer slot j = Q element at column (d_start + j).
+    //   Mean is read from smem_mean[d_start + j] using compile-time j.
+    //   Produces MXFP4 hat and scale outputs.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunQQuantize(const void* smem,
                                      uint8_t* __restrict__ dst_hat_ptr,
@@ -297,7 +390,7 @@ struct SageAttnV3PreprocessPipeline
                                            kSmemMeanOffset);
 
         const index_t tid            = get_thread_id();
-        constexpr index_t kNumGroups = kCols / kScaleGranularity;
+        constexpr index_t kNumGroups = kGroups;
         const index_t row_idx        = tid / kNumGroups;
         const index_t grp_idx        = tid % kNumGroups;
         const index_t d_start        = grp_idx * kScaleGranularity;
@@ -313,24 +406,36 @@ struct SageAttnV3PreprocessPipeline
         }
 
         constexpr float rcp_dst_max = 1.0f / 6.0f;
-        const InputT* src_row       = smem_q + row_idx * kCols + d_start;
 
+        // Load this thread's kG elements from LDS via a tile window with the Q/K distribution.
+        // Each thread gets kG elements (Y dimension) at (row_idx, grp_idx*kG).
+        // Use vector size 8 (safe for all InputT: 8*sizeof(InputT) <= 16 bytes).
+        constexpr auto dstr = MakeQKTileDstr();
+        const auto q_lds_view = make_naive_tensor_view<address_space_enum::lds>(
+            smem_q,
+            make_tuple(number<kRows>{}, number<kCols>{}),
+            make_tuple(number<kCols>{}, number<1>{}),
+            number<8>{},
+            number<1>{});
+        auto q_lds_win = make_tile_window(
+            q_lds_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+        const auto q_tile = load_tile(q_lds_win);
+
+        // Iterate over the kG thread-buffer slots via sweep_tile_span on the col span
+        // (compile-time index j in 0..kG-1). For MakeQKTileDstr, X=1 carries the Y[0]
+        // dimension (kG elements); each j_idx = tile_distributed_index<j>, and j is
+        // extracted as a compile-time number<j> via impl_.at(number<0>{}).
+        constexpr auto q_spans = remove_cvref_t<decltype(q_tile)>::get_distributed_spans();
         float group_data[kScaleGranularity];
         float max_abs = 0.0f;
 
-        constexpr index_t kVec = 8;
-        static_assert(kScaleGranularity % kVec == 0, "");
-        for(index_t v = 0; v < kScaleGranularity / kVec; v++)
-        {
-            float tmp[kVec];
-            load_vec8(src_row + v * kVec, tmp);
-            for(index_t j = 0; j < kVec; j++)
-            {
-                const float val          = tmp[j] - smem_mean[d_start + v * kVec + j];
-                group_data[v * kVec + j] = val;
-                max_abs                  = max(max_abs, abs(val));
-            }
-        }
+        sweep_tile_span(q_spans[number<1>{}], [&](auto j_idx) {
+            constexpr auto j     = decltype(j_idx)::impl_.at(number<0>{}); // number<j>
+            const float mean_val = smem_mean[d_start + j];
+            const float val      = static_cast<float>(q_tile.get_thread_buffer()[j]) - mean_val;
+            group_data[j]        = val;
+            max_abs              = max(max_abs, abs(val));
+        });
 
         const float scale = bit_cast<float>(
             (bit_cast<uint32_t>(max_abs * rcp_dst_max) + numeric_traits<float>::mant_mask) &
@@ -347,7 +452,7 @@ struct SageAttnV3PreprocessPipeline
 
     // -------------------------------------------------------------------------
     // Step 2b: Quantize Q from global (kUseLdsQ=false path).
-    //   Q data read from global; mean read from smem_mean.
+    //   Q data loaded from global using load_tile; mean read from smem_mean.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunQQuantizeGlobal(const InputT* __restrict__ q_ptr,
                                            const void* smem,
@@ -361,7 +466,7 @@ struct SageAttnV3PreprocessPipeline
                                            kSmemMeanOffset);
 
         const index_t tid            = get_thread_id();
-        constexpr index_t kNumGroups = kCols / kScaleGranularity;
+        constexpr index_t kNumGroups = kGroups;
         const index_t row_idx        = tid / kNumGroups;
         const index_t grp_idx        = tid % kNumGroups;
         const index_t d_start        = grp_idx * kScaleGranularity;
@@ -376,25 +481,33 @@ struct SageAttnV3PreprocessPipeline
             return;
         }
 
-        constexpr float rcp_dst_max  = 1.0f / 6.0f;
-        const InputT* src_row        = q_ptr + row_idx * kCols + d_start;
+        constexpr float rcp_dst_max = 1.0f / 6.0f;
 
+        // Load this thread's kG elements from global using load_tile with Q/K distribution.
+        // Use vector size 8 (safe for all InputT: 8*sizeof(InputT) <= 16 bytes for fp16).
+        // Use runtime row stride to avoid buffer_view<constant<N>> instantiation issues.
+        constexpr auto dstr = MakeQKTileDstr();
+        const auto q_global_view = make_naive_tensor_view<address_space_enum::global>(
+            q_ptr,
+            make_tuple(number<kRows>{}, number<kCols>{}),
+            make_tuple(static_cast<index_t>(kCols), number<1>{}),
+            number<8>{},
+            number<1>{});
+        auto q_global_win = make_tile_window(
+            q_global_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+        const auto q_tile = load_tile(q_global_win);
+
+        constexpr auto qg_spans = remove_cvref_t<decltype(q_tile)>::get_distributed_spans();
         float group_data[kScaleGranularity];
         float max_abs = 0.0f;
 
-        constexpr index_t kVec = 8;
-        static_assert(kScaleGranularity % kVec == 0, "");
-        for(index_t v = 0; v < kScaleGranularity / kVec; v++)
-        {
-            float tmp[kVec];
-            load_vec8(src_row + v * kVec, tmp);
-            for(index_t j = 0; j < kVec; j++)
-            {
-                const float val          = tmp[j] - smem_mean[d_start + v * kVec + j];
-                group_data[v * kVec + j] = val;
-                max_abs                  = max(max_abs, abs(val));
-            }
-        }
+        sweep_tile_span(qg_spans[number<1>{}], [&](auto j_idx) {
+            constexpr auto j     = decltype(j_idx)::impl_.at(number<0>{});
+            const float mean_val = smem_mean[d_start + j];
+            const float val      = static_cast<float>(q_tile.get_thread_buffer()[j]) - mean_val;
+            group_data[j]        = val;
+            max_abs              = max(max_abs, abs(val));
+        });
 
         const float scale = bit_cast<float>(
             (bit_cast<uint32_t>(max_abs * rcp_dst_max) + numeric_traits<float>::mant_mask) &
@@ -410,11 +523,11 @@ struct SageAttnV3PreprocessPipeline
     }
 
     // -------------------------------------------------------------------------
-    // Step 3: K' = K_tile - k_mean -> k_prime_ptr (vectorized store), then
-    //   quantize K' -> MXFP4.
+    // Step 3: K' = K_tile - k_mean -> k_prime_ptr, then quantize K' -> MXFP4.
     //   k_mean is cached into smem[0..kCols*4] (reuses Q tile LDS space or
     //   the beginning of smem when kUseLdsQ=false).
-    //   Vectorized: loads and stores 8 fp16 per instruction.
+    //   Uses load_tile for K from global; sweep_tile over thread buffer for compute;
+    //   store_tile for K' to global.
     // -------------------------------------------------------------------------
     CK_TILE_DEVICE void RunKSmoothAndQuantize(const InputT* __restrict__ src_ptr,
                                               const InputT* __restrict__ k_mean_ptr,
@@ -426,33 +539,26 @@ struct SageAttnV3PreprocessPipeline
                                               index_t n_rows_valid) const
     {
         // Reuse smem[0..kCols*sizeof(float)] for the k_mean float cache.
-        // This is safe because: when kUseLdsQ=true, Q tile bytes are done;
-        // when kUseLdsQ=false, smem starts at mean offset which is 0.
+        // All kBlockSize threads cooperatively load k_mean[0..kCols) into smem as float32.
+        // Each thread strides over kCols with step kBlockSize (scalar, bounds-safe).
         float* smem_f     = reinterpret_cast<float*>(smem);
         const index_t tid = get_thread_id();
-
-        constexpr index_t kVec = 8;
-        for(index_t d = tid * kVec; d < kCols; d += kBlockSize * kVec)
-        {
-            float tmp[kVec];
-            load_vec8(k_mean_ptr + d, tmp);
-            for(index_t j = 0; j < kVec && d + j < kCols; j++)
-                smem_f[d + j] = tmp[j];
-        }
+        for(index_t d = tid; d < kCols; d += kBlockSize)
+            smem_f[d] = static_cast<float>(k_mean_ptr[d]);
         block_sync_lds();
 
-        constexpr index_t kNumGroups = kCols / kScaleGranularity;
+        // Thread layout for K quantize: tid = row_idx * kGroups + grp_idx.
+        constexpr index_t kNumGroups = kGroups;
         const index_t row_idx        = tid / kNumGroups;
         const index_t grp_idx        = tid % kNumGroups;
         const index_t d_start        = grp_idx * kScaleGranularity;
 
         if(row_idx >= n_rows_valid)
         {
-            InputT* dst_row   = k_prime_ptr + row_idx * k_prime_stride + d_start;
-            float zeros[kVec] = {};
-            static_assert(kScaleGranularity % kVec == 0, "");
-            for(index_t v = 0; v < kScaleGranularity / kVec; v++)
-                store_vec8(dst_row + v * kVec, zeros);
+            // Zero K' for out-of-bounds rows and clear scale/hat.
+            InputT* dst_row = k_prime_ptr + row_idx * k_prime_stride + d_start;
+            for(index_t j = 0; j < kScaleGranularity; j++)
+                dst_row[j] = InputT{0};
             dst_scale_ptr[row_idx * kNumGroups + grp_idx] = 0;
             uint8_t* hat_dst =
                 dst_hat_ptr + row_idx * (kCols / 2) + grp_idx * (kScaleGranularity / 2);
@@ -463,27 +569,49 @@ struct SageAttnV3PreprocessPipeline
 
         constexpr float rcp_dst_max = 1.0f / 6.0f;
 
-        const InputT* src_row = src_ptr + row_idx * kCols + d_start;
-        InputT* dst_row       = k_prime_ptr + row_idx * k_prime_stride + d_start;
+        // Load K tile for this thread's (row, group) from global using load_tile.
+        // Use vector size 8 (safe for all InputT: 8*sizeof(float) = 32 bytes <= AMD max).
+        // Use runtime row stride to avoid buffer_view<constant<N>> issues.
+        constexpr auto dstr = MakeQKTileDstr();
+        const auto k_src_view = make_naive_tensor_view<address_space_enum::global>(
+            src_ptr,
+            make_tuple(number<kRows>{}, number<kCols>{}),
+            make_tuple(static_cast<index_t>(kCols), number<1>{}),
+            number<8>{},
+            number<1>{});
+        auto k_src_win = make_tile_window(
+            k_src_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+        const auto k_tile = load_tile(k_src_win);
 
+        // Compute K' = K - k_mean using sweep_tile_span over the kG thread-buffer slots.
+        constexpr auto k_spans = remove_cvref_t<decltype(k_tile)>::get_distributed_spans();
         float group_data[kScaleGranularity];
         float max_abs = 0.0f;
+        auto kprime_tile = make_static_distributed_tensor<InputT>(dstr);
 
-        static_assert(kScaleGranularity % kVec == 0, "");
-        for(index_t v = 0; v < kScaleGranularity / kVec; v++)
-        {
-            float tmp[kVec];
-            load_vec8(src_row + v * kVec, tmp);
-            for(index_t j = 0; j < kVec; j++)
-            {
-                const float val          = tmp[j] - smem_f[d_start + v * kVec + j];
-                group_data[v * kVec + j] = val;
-                tmp[j]                   = val;
-                max_abs                  = max(max_abs, abs(val));
-            }
-            store_vec8(dst_row + v * kVec, tmp);
-        }
+        sweep_tile_span(k_spans[number<1>{}], [&](auto j_idx) {
+            constexpr auto j                   = decltype(j_idx)::impl_.at(number<0>{});
+            const float k_val                  = static_cast<float>(k_tile.get_thread_buffer()[j]);
+            const float centered               = k_val - smem_f[d_start + j];
+            group_data[j]                      = centered;
+            max_abs                            = max(max_abs, abs(centered));
+            kprime_tile.get_thread_buffer()(j) = static_cast<InputT>(centered);
+        });
 
+        // Store K' to global via store_tile.
+        // k_prime has a potentially non-unit row stride (k_prime_stride).
+        // Use vector size 8 to stay within AMD buffer instruction limits for float.
+        const auto k_dst_view = make_naive_tensor_view<address_space_enum::global>(
+            k_prime_ptr,
+            make_tuple(number<kRows>{}, number<kCols>{}),
+            make_tuple(k_prime_stride, number<1>{}),
+            number<8>{},
+            number<1>{});
+        auto k_dst_win = make_tile_window(
+            k_dst_view, make_tuple(number<kRows>{}, number<kCols>{}), {0, 0}, dstr);
+        store_tile(k_dst_win, kprime_tile);
+
+        // MXFP4 quantize K'.
         const float scale = bit_cast<float>(
             (bit_cast<uint32_t>(max_abs * rcp_dst_max) + numeric_traits<float>::mant_mask) &
             numeric_traits<float>::head_mask);
@@ -497,20 +625,6 @@ struct SageAttnV3PreprocessPipeline
                                         scale);
     }
 
-    // -------------------------------------------------------------------------
-    // RunKMeanPartial: kept for API compatibility.
-    // -------------------------------------------------------------------------
-    CK_TILE_DEVICE void RunKMeanPartial(const InputT* __restrict__ k_tile_ptr,
-                                        index_t n_rows,
-                                        index_t stride_k,
-                                        float* __restrict__ k_mean_partial) const
-    {
-        const index_t d = get_thread_id();
-        float acc       = 0.0f;
-        for(index_t r = 0; r < n_rows; r++)
-            acc += static_cast<float>(k_tile_ptr[r * stride_k + d]);
-        atomicAdd(&k_mean_partial[d], acc);
-    }
 };
 
 } // namespace ck_tile

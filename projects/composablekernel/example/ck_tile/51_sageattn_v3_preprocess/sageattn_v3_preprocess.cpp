@@ -85,10 +85,6 @@ struct RunShape
 template <typename InputT>
 static ck_tile::SageAttnV3PreprocessArgs<InputT>
 make_hargs(const RunShape& s,
-           int sq_pad,
-           int sk_pad,
-           int num_q_tiles,
-           int num_k_tiles,
            void* q_ptr,
            void* k_ptr,
            void* v_ptr,
@@ -100,58 +96,32 @@ make_hargs(const RunShape& s,
            void* v_hat_ptr,
            void* v_scale_ptr)
 {
-    constexpr int kG  = 32;
-    constexpr int kM0 = 128;
     const int b = s.batch, h = s.nhead, sq = s.seqlen_q, sk = s.seqlen_k, hd = s.hdim;
 
     ck_tile::SageAttnV3PreprocessArgs<InputT> a{};
-    a.q_ptr                = static_cast<const InputT*>(q_ptr);
-    a.seqlen_q             = sq;
-    a.hdim                 = hd;
-    a.stride_q             = hd;
-    a.nhead_stride_q       = sq * hd;
-    a.batch_stride_q       = h * sq * hd;
-    a.q_hat_ptr            = static_cast<uint8_t*>(q_hat_ptr);
-    a.stride_q_hat         = hd / 2;
-    a.nhead_stride_q_hat   = sq_pad * (hd / 2);
-    a.batch_stride_q_hat   = h * sq_pad * (hd / 2);
-    a.q_scale_ptr          = static_cast<uint8_t*>(q_scale_ptr);
-    a.stride_q_scale       = hd / kG;
-    a.nhead_stride_q_scale = sq_pad * (hd / kG);
-    a.batch_stride_q_scale = h * sq_pad * (hd / kG);
-    a.q_mean_ptr           = static_cast<InputT*>(q_mean_ptr);
-    a.q_tile_size          = kM0;
-    a.stride_q_mean        = hd;
-    a.nhead_stride_q_mean  = num_q_tiles * hd;
-    a.batch_stride_q_mean  = h * num_q_tiles * hd;
-    a.k_ptr                = static_cast<const InputT*>(k_ptr);
-    a.seqlen_k             = sk;
-    a.stride_k             = hd;
-    a.nhead_stride_k       = sk * hd;
-    a.batch_stride_k       = h * sk * hd;
-    a.k_hat_ptr            = static_cast<uint8_t*>(k_hat_ptr);
-    a.stride_k_hat         = hd / 2;
-    a.nhead_stride_k_hat   = sk_pad * (hd / 2);
-    a.batch_stride_k_hat   = h * sk_pad * (hd / 2);
-    a.k_scale_ptr          = static_cast<uint8_t*>(k_scale_ptr);
-    a.stride_k_scale       = hd / kG;
-    a.nhead_stride_k_scale = sk_pad * (hd / kG);
-    a.batch_stride_k_scale = h * sk_pad * (hd / kG);
-    a.v_ptr                = static_cast<const InputT*>(v_ptr);
-    a.nhead_stride_v       = sk * hd;
-    a.batch_stride_v       = h * sk * hd;
-    a.v_hat_ptr            = static_cast<uint8_t*>(v_hat_ptr);
-    a.stride_v_hat         = sk_pad / 2;
-    a.nhead_stride_v_hat   = hd * (sk_pad / 2);
-    a.batch_stride_v_hat   = h * hd * (sk_pad / 2);
-    a.v_scale_ptr          = static_cast<uint8_t*>(v_scale_ptr);
-    a.stride_v_scale       = sk_pad / kG;
-    a.nhead_stride_v_scale = hd * (sk_pad / kG);
-    a.batch_stride_v_scale = h * hd * (sk_pad / kG);
-    a.batch                = b;
-    a.nhead                = h;
-    a.num_q_tiles          = num_q_tiles;
-    a.num_k_tiles          = num_k_tiles;
+    a.q_ptr          = static_cast<const InputT*>(q_ptr);
+    a.seqlen_q       = sq;
+    a.hdim           = hd;
+    a.stride_q       = hd;
+    a.nhead_stride_q = sq * hd;
+    a.batch_stride_q = h * sq * hd;
+    a.q_hat_ptr      = static_cast<uint8_t*>(q_hat_ptr);
+    a.q_scale_ptr    = static_cast<uint8_t*>(q_scale_ptr);
+    a.q_mean_ptr     = static_cast<InputT*>(q_mean_ptr);
+    a.k_ptr          = static_cast<const InputT*>(k_ptr);
+    a.seqlen_k       = sk;
+    a.stride_k       = hd;
+    a.nhead_stride_k = sk * hd;
+    a.batch_stride_k = h * sk * hd;
+    a.k_hat_ptr      = static_cast<uint8_t*>(k_hat_ptr);
+    a.k_scale_ptr    = static_cast<uint8_t*>(k_scale_ptr);
+    a.v_ptr          = static_cast<const InputT*>(v_ptr);
+    a.nhead_stride_v = sk * hd;
+    a.batch_stride_v = h * sk * hd;
+    a.v_hat_ptr      = static_cast<uint8_t*>(v_hat_ptr);
+    a.v_scale_ptr    = static_cast<uint8_t*>(v_scale_ptr);
+    a.batch          = b;
+    a.nhead          = h;
     return a;
 }
 
@@ -166,11 +136,7 @@ BenchResult run_benchmark(const RunShape& s)
 
     const int b = s.batch, h = s.nhead, sq = s.seqlen_q, sk = s.seqlen_k, hd = s.hdim;
 
-    const auto bsz        = SA3::get_buffer_sizes(b, h, sq, sk, hd);
-    const int sq_pad      = static_cast<int>(bsz.seqlen_q_padded);
-    const int sk_pad      = static_cast<int>(bsz.seqlen_k_padded);
-    const int num_q_tiles = static_cast<int>(bsz.num_q_tiles);
-    const int num_k_tiles = static_cast<int>(bsz.num_k_tiles);
+    const auto bsz = SA3::get_buffer_sizes(b, h, sq, sk, hd);
 
     ck_tile::DeviceMem q_dev(std::size_t(b * h * sq * hd) * sizeof(InputT));
     ck_tile::DeviceMem k_dev(std::size_t(b * h * sk * hd) * sizeof(InputT));
@@ -185,8 +151,6 @@ BenchResult run_benchmark(const RunShape& s)
     ck_tile::DeviceMem delta_s_dev(bsz.delta_s_bytes);
     ck_tile::DeviceMem k_mean_buf(bsz.k_mean_bytes);
     ck_tile::DeviceMem k_prime_buf(bsz.k_prime_bytes);
-    ck_tile::DeviceMem k_mean_partial_buf(bsz.k_mean_partial_bytes);
-    ck_tile::DeviceMem counter_buf(bsz.counter_bytes);
 
     // Benchmark only -- inputs initialized to zero.
     q_dev.SetZero();
@@ -194,10 +158,6 @@ BenchResult run_benchmark(const RunShape& s)
     v_dev.SetZero();
 
     auto hargs = make_hargs<InputT>(s,
-                                    sq_pad,
-                                    sk_pad,
-                                    num_q_tiles,
-                                    num_k_tiles,
                                     q_dev.GetDeviceBuffer(),
                                     k_dev.GetDeviceBuffer(),
                                     v_dev.GetDeviceBuffer(),
@@ -209,11 +169,9 @@ BenchResult run_benchmark(const RunShape& s)
                                     v_hat_dev.GetDeviceBuffer(),
                                     v_scale_dev.GetDeviceBuffer());
 
-    auto* k_mean_ptr    = static_cast<InputT*>(k_mean_buf.GetDeviceBuffer());
-    auto* k_prime_ptr   = static_cast<InputT*>(k_prime_buf.GetDeviceBuffer());
-    auto* k_partial_ptr = static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer());
-    auto* counter_ptr   = static_cast<int32_t*>(counter_buf.GetDeviceBuffer());
-    auto* delta_s_ptr   = static_cast<float*>(delta_s_dev.GetDeviceBuffer());
+    auto* k_mean_ptr  = static_cast<InputT*>(k_mean_buf.GetDeviceBuffer());
+    auto* k_prime_ptr = static_cast<InputT*>(k_prime_buf.GetDeviceBuffer());
+    auto* delta_s_ptr = static_cast<float*>(delta_s_dev.GetDeviceBuffer());
 
     hipStream_t stream = nullptr;
     hipEvent_t ev_start, ev_stop;
@@ -221,8 +179,7 @@ BenchResult run_benchmark(const RunShape& s)
     HIP_CHECK_ERROR(hipEventCreate(&ev_stop));
 
     auto run_stages = [&](uint32_t stages) {
-        SA3::run(hargs, delta_s_ptr, k_mean_ptr, k_prime_ptr, k_partial_ptr, counter_ptr, stream,
-                 stages);
+        SA3::run(hargs, delta_s_ptr, k_mean_ptr, k_prime_ptr, stream, stages);
     };
 
     // Full-pipeline warmup (populates k_mean, k_prime for cache-warm per-stage timing).
@@ -271,7 +228,6 @@ bool run_verify(const RunShape& s)
     const int sq_pad      = static_cast<int>(bsz.seqlen_q_padded);
     const int sk_pad      = static_cast<int>(bsz.seqlen_k_padded);
     const int num_q_tiles = static_cast<int>(bsz.num_q_tiles);
-    const int num_k_tiles = static_cast<int>(bsz.num_k_tiles);
 
     // ---- Generate inputs ----
     ck_tile::HostTensor<InputT> q_host({b, h, sq, hd});
@@ -351,14 +307,8 @@ bool run_verify(const RunShape& s)
     ck_tile::DeviceMem delta_s_dev(bsz.delta_s_bytes);
     ck_tile::DeviceMem k_mean_buf(bsz.k_mean_bytes);
     ck_tile::DeviceMem k_prime_buf(bsz.k_prime_bytes);
-    ck_tile::DeviceMem k_mean_partial_buf(bsz.k_mean_partial_bytes);
-    ck_tile::DeviceMem counter_buf(bsz.counter_bytes);
 
     auto hargs = make_hargs<InputT>(s,
-                                    sq_pad,
-                                    sk_pad,
-                                    num_q_tiles,
-                                    num_k_tiles,
                                     q_dev.GetDeviceBuffer(),
                                     k_dev.GetDeviceBuffer(),
                                     v_dev.GetDeviceBuffer(),
@@ -374,8 +324,6 @@ bool run_verify(const RunShape& s)
              static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
              static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
              static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-             static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
-             static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
              /*stream=*/nullptr);
     HIP_CHECK_ERROR(hipDeviceSynchronize());
 

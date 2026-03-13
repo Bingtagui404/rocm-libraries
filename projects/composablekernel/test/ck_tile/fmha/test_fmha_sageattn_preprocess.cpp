@@ -73,7 +73,6 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     const int sq_pad      = static_cast<int>(bsz.seqlen_q_padded);
     const int sk_pad      = static_cast<int>(bsz.seqlen_k_padded);
     const int num_q_tiles = static_cast<int>(bsz.num_q_tiles);
-    const int num_k_tiles = static_cast<int>(bsz.num_k_tiles);
 
     // ---- Generate input data using HostTensor + FillUniformDistribution ----
     const uint32_t seed = static_cast<uint32_t>(ck_tile::EnvValue(CK_TILE_ENV(CK_TILE_TEST_SEED)));
@@ -174,61 +173,35 @@ void SageAttnV3PreprocessTest::RunGPUTest()
 
     ck_tile::DeviceMem k_mean_buf(bsz.k_mean_bytes);
     ck_tile::DeviceMem k_prime_buf(bsz.k_prime_bytes);
-    ck_tile::DeviceMem k_mean_partial_buf(bsz.k_mean_partial_bytes);
-    ck_tile::DeviceMem counter_buf(bsz.counter_bytes);
 
     // ---- Build kernel args ----
     ck_tile::SageAttnV3PreprocessArgs<InputT> hargs{};
-    hargs.q_ptr                = static_cast<const InputT*>(q_dev.GetDeviceBuffer());
-    hargs.seqlen_q             = sq;
-    hargs.hdim                 = hd;
-    hargs.stride_q             = hd;
-    hargs.nhead_stride_q       = sq * hd;
-    hargs.batch_stride_q       = h * sq * hd;
-    hargs.q_hat_ptr            = static_cast<uint8_t*>(q_hat_dev.GetDeviceBuffer());
-    hargs.stride_q_hat         = hd / 2;
-    hargs.nhead_stride_q_hat   = sq_pad * (hd / 2);
-    hargs.batch_stride_q_hat   = h * sq_pad * (hd / 2);
-    hargs.q_scale_ptr          = static_cast<uint8_t*>(q_scale_dev.GetDeviceBuffer());
-    hargs.stride_q_scale       = hd / kG;
-    hargs.nhead_stride_q_scale = sq_pad * (hd / kG);
-    hargs.batch_stride_q_scale = h * sq_pad * (hd / kG);
-    hargs.q_mean_ptr           = static_cast<InputT*>(q_mean_dev.GetDeviceBuffer());
-    hargs.q_tile_size          = kM0;
-    hargs.stride_q_mean        = hd;
-    hargs.nhead_stride_q_mean  = num_q_tiles * hd;
-    hargs.batch_stride_q_mean  = h * num_q_tiles * hd;
+    hargs.q_ptr          = static_cast<const InputT*>(q_dev.GetDeviceBuffer());
+    hargs.seqlen_q       = sq;
+    hargs.hdim           = hd;
+    hargs.stride_q       = hd;
+    hargs.nhead_stride_q = sq * hd;
+    hargs.batch_stride_q = h * sq * hd;
+    hargs.q_hat_ptr      = static_cast<uint8_t*>(q_hat_dev.GetDeviceBuffer());
+    hargs.q_scale_ptr    = static_cast<uint8_t*>(q_scale_dev.GetDeviceBuffer());
+    hargs.q_mean_ptr     = static_cast<InputT*>(q_mean_dev.GetDeviceBuffer());
 
-    hargs.k_ptr                = static_cast<const InputT*>(k_dev.GetDeviceBuffer());
-    hargs.seqlen_k             = sk;
-    hargs.stride_k             = hd;
-    hargs.nhead_stride_k       = sk * hd;
-    hargs.batch_stride_k       = h * sk * hd;
-    hargs.k_hat_ptr            = static_cast<uint8_t*>(k_hat_dev.GetDeviceBuffer());
-    hargs.stride_k_hat         = hd / 2;
-    hargs.nhead_stride_k_hat   = sk_pad * (hd / 2);
-    hargs.batch_stride_k_hat   = h * sk_pad * (hd / 2);
-    hargs.k_scale_ptr          = static_cast<uint8_t*>(k_scale_dev.GetDeviceBuffer());
-    hargs.stride_k_scale       = hd / kG;
-    hargs.nhead_stride_k_scale = sk_pad * (hd / kG);
-    hargs.batch_stride_k_scale = h * sk_pad * (hd / kG);
+    hargs.k_ptr          = static_cast<const InputT*>(k_dev.GetDeviceBuffer());
+    hargs.seqlen_k       = sk;
+    hargs.stride_k       = hd;
+    hargs.nhead_stride_k = sk * hd;
+    hargs.batch_stride_k = h * sk * hd;
+    hargs.k_hat_ptr      = static_cast<uint8_t*>(k_hat_dev.GetDeviceBuffer());
+    hargs.k_scale_ptr    = static_cast<uint8_t*>(k_scale_dev.GetDeviceBuffer());
 
-    hargs.v_ptr                = static_cast<const InputT*>(v_dev.GetDeviceBuffer());
-    hargs.nhead_stride_v       = sk * hd;
-    hargs.batch_stride_v       = h * sk * hd;
-    hargs.v_hat_ptr            = static_cast<uint8_t*>(v_hat_dev.GetDeviceBuffer());
-    hargs.stride_v_hat         = sk_pad / 2;
-    hargs.nhead_stride_v_hat   = hd * (sk_pad / 2);
-    hargs.batch_stride_v_hat   = h * hd * (sk_pad / 2);
-    hargs.v_scale_ptr          = static_cast<uint8_t*>(v_scale_dev.GetDeviceBuffer());
-    hargs.stride_v_scale       = sk_pad / kG;
-    hargs.nhead_stride_v_scale = hd * (sk_pad / kG);
-    hargs.batch_stride_v_scale = h * hd * (sk_pad / kG);
+    hargs.v_ptr          = static_cast<const InputT*>(v_dev.GetDeviceBuffer());
+    hargs.nhead_stride_v = sk * hd;
+    hargs.batch_stride_v = h * sk * hd;
+    hargs.v_hat_ptr      = static_cast<uint8_t*>(v_hat_dev.GetDeviceBuffer());
+    hargs.v_scale_ptr    = static_cast<uint8_t*>(v_scale_dev.GetDeviceBuffer());
 
-    hargs.batch       = b;
-    hargs.nhead       = h;
-    hargs.num_q_tiles = num_q_tiles;
-    hargs.num_k_tiles = num_k_tiles;
+    hargs.batch  = b;
+    hargs.nhead  = h;
 
     // ---- Launch ----
     if(hd == 128)
@@ -237,8 +210,6 @@ void SageAttnV3PreprocessTest::RunGPUTest()
             static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
             static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
             static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-            static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
-            static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
             /*stream=*/nullptr);
     else
         ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::run(
@@ -246,8 +217,6 @@ void SageAttnV3PreprocessTest::RunGPUTest()
             static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
             static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
             static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-            static_cast<float*>(k_mean_partial_buf.GetDeviceBuffer()),
-            static_cast<int32_t*>(counter_buf.GetDeviceBuffer()),
             /*stream=*/nullptr);
 
     HIP_CHECK_ERROR(hipDeviceSynchronize());
