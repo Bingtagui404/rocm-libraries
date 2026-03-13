@@ -82,11 +82,11 @@ static constexpr uint32_t kSA3StageAll         = 0xFu;    // All stages
 //     Grid: (max(num_q_tiles, num_k_tiles), nhead, batch).
 //
 //   Launch 1b: SageAttnV3VPreprocessKernel
-//     V: LDS-based 2-D tile transpose + quantize → MXFP4.
-//     Grid: (seqlen_k/32, hdim/32, batch*nhead), BlockSize: 32.
-//     Each CTA loads a [32, 32] tile of V coalesced into float32 LDS with
-//     1 float32 padding per row (bank-conflict-free for ds_read_b32 on
-//     gfx950 where effective bank count = 32), then quantizes column-wise.
+//     V: LDS-based 2-D tile transpose + quantize -> MXFP4.
+//     Grid: (seqlen_k/128, hdim/32, batch*nhead), BlockSize: 128.
+//     Each CTA loads [32, 32] tiles of V (one group at a time) into float32 LDS with
+//     1 float32 padding per row (bank-conflict-free), then quantizes column-wise.
+//     kVHdimTile=32 gives ~10 CTAs/CU occupancy (LDS-limited: 65536/6400=10).
 //
 //   Launch 2: BatchedGemmKernel
 //     delta_s = q_mean @ K'^T

@@ -583,8 +583,11 @@ struct SageAttnV3KMeanNormalizeKernel
 // Quantises V (transposed layout) using an LDS-based 2-D tile transpose with
 // a coalesced write-back path.
 //
+// Default: kVGroup=32, kVHdimTile=64
+//
 // Grid:      (seqlen_k / (kVGroup * kVGroupsPerBlock), hdim / kVHdimTile, batch * nhead)
-// BlockSize: kVGroup * kVGroupsPerBlock = 128 threads = 2 WAVE64 wavefronts
+//   kVGroupsPerBlock = kVGroup / kVec = 4  (derived; number of V-groups per CTA iteration)
+// BlockSize: kVHdimTile * kVGroupsPerBlock = 256 threads = 4 WAVE64 wavefronts
 //
 // Four-phase pipeline (looped single-group smem_v for high occupancy):
 //   Loop over grp_iter = 0 .. kVGroupsPerBlock - 1:
@@ -593,24 +596,29 @@ struct SageAttnV3KMeanNormalizeKernel
 //     Phase 2: Quantize from smem_v -> stage into smem_fp4[grp_iter][...] /
 //              smem_scale[grp_iter][...].  No sync needed after stage since each
 //              thread writes its own exclusive slot.
+//              With kVHdimTile=64 > kVGroup=32: each thread handles 2 d_local values
+//              (d_local = row_local, row_local+32) -> 100% thread utilization in Phase 2
+//              (vs 25% with the old kVHdimTile=32 design where only thread 0..31 were active).
 //   After loop:
 //   Phase 3: barrier (all groups staged).
 //   Phase 4: Write-out with thread remapping (coalesced):
 //            tid -> (write_d_idx = tid/kVGroupsPerBlock, write_g_idx = tid%kVGroupsPerBlock)
 //            Consecutive threads share d_idx, differ in g_idx -> 16-byte stride writes.
 //
-// LDS layout (bytes, kVGroupsPerBlock=4, kVHdimTile=32):
-//   smem_v:     1 * 32 * 33 * 4 = 4224  (float32, 1 group at a time, +1 pad/row)
-//   smem_fp4:  32 *  4 * 16     = 2048  (all groups staged)
-//   smem_scale: 32 *  4          =  128  (all groups staged)
-//   Total: 6400 bytes  (vs. 19072 previously)
-//   gfx950 LDS = 160 KiB/CU -> LDS allows floor(163840/6400) = 25 CTAs/CU.
-//   Wavefront limit = 32 wavefronts / 2 per CTA = 16 CTAs/CU (binding constraint).
-//   -> 16 CTAs per CU (wavefront-limited) vs. 3 previously => 5.3x occupancy improvement.
+// LDS layout (bytes, kVGroupsPerBlock=4, kVHdimTile=64):
+//   smem_v:      32 * 65 * 4 = 8320  (float32, 1 group at a time, +1 pad/row)
+//   smem_fp4:   64 *  4 * 16 = 4096  (all groups staged)
+//   smem_scale: 64 *  4      =  256  (all groups staged)
+//   Total: 12672 bytes
+//   gfx950 LDS = 160 KiB/CU -> LDS allows floor(163840/12672) = 12 CTAs/CU.
+//   Wavefront limit = 32 wavefronts / 4 per CTA = 8 CTAs/CU (binding constraint).
+//   -> 8 CTAs per CU (wavefront-limited).
+//   Total active threads per CU: 8 * 256 = 2048 (same as previous 16 * 128 = 2048).
+//   Phase 2 efficiency improves 4x => net throughput increase expected.
 //
 // smem_v bank conflict analysis (gfx950, 32 banks x 4 bytes):
-//   Row stride = kVHdimTile + 1 = 33 floats.
-//   Column access (fixed d, j=0..31): bank = (j*33+d) % 32 = (j+d) % 32
+//   Row stride = kVHdimTile + 1 = 65 floats.
+//   Column access (fixed d, j=0..31): bank = (j*65+d) % 32 = (j+d) % 32
 //   -> 32 distinct banks, zero conflicts.
 // ============================================================================
 
@@ -639,25 +647,29 @@ struct SageAttnV3VPreprocessKargs
 };
 
 template <typename InputT_,
-          index_t kVGroup_          = 32,
-          index_t kVHdimTile_       = 32,
-          index_t kVGroupsPerBlock_ = 4>
+          index_t kVGroup_    = 32,
+          index_t kVHdimTile_ = 32>
 struct SageAttnV3VPreprocessKernel
 {
     using InputT = InputT_;
 
     static constexpr index_t kVGroup          = kVGroup_;
     static constexpr index_t kVHdimTile       = kVHdimTile_;
-    static constexpr index_t kVGroupsPerBlock = kVGroupsPerBlock_;
     static constexpr index_t kScaleGranularity = 32;
-    static constexpr index_t kBlockSize        = kVGroup * kVGroupsPerBlock;
-    static constexpr index_t kLDSPad          = 1;
+    static constexpr index_t kVec             = 8; // fp16 elements per load instruction
+
+    // kVGroupsPerBlock is derived from Phase 1 + Phase 4 consistency constraints:
+    //   Phase 1: kBlockSize = kVGroup * kVHdimTile / kVec
+    //   Phase 4: kBlockSize = kVHdimTile * kVGroupsPerBlock
+    //   => kVGroupsPerBlock = kVGroup / kVec
+    static constexpr index_t kVGroupsPerBlock = kVGroup / kVec;
+    static constexpr index_t kBlockSize       = kVHdimTile * kVGroupsPerBlock;
+    static constexpr index_t kLDSPad         = 1;
 
     static_assert(kVGroup == kScaleGranularity,
                   "kVGroup must equal kScaleGranularity (32) for MXFP4");
-    static_assert(kVHdimTile % kVGroup == 0 || kVGroup % kVHdimTile == 0,
-                  "kVHdimTile and kVGroup must be multiples of each other");
-    static_assert(kVGroupsPerBlock >= 1, "kVGroupsPerBlock must be at least 1");
+    static_assert(kVHdimTile % kVGroup == 0, "kVHdimTile must be a multiple of kVGroup");
+    static_assert(kVGroup % kVec == 0, "kVGroup must be divisible by kVec=8");
 
     using Kargs = SageAttnV3VPreprocessKargs<InputT>;
 
@@ -667,19 +679,25 @@ struct SageAttnV3VPreprocessKernel
             k.seqlen_k / (kVGroup * kVGroupsPerBlock), k.hdim / kVHdimTile, k.batch * k.nhead);
     }
 
-    static_assert(kBlockSize == kVHdimTile * kVGroupsPerBlock,
-                  "kBlockSize (kVGroup*kVGroupsPerBlock) must equal kVHdimTile*kVGroupsPerBlock "
-                  "for Phase 3 write-out coverage; requires kVGroup == kVHdimTile");
+    static_assert(kBlockSize == kVGroup * kVHdimTile / kVec,
+                  "kBlockSize must satisfy both Phase 1 and Phase 4 constraints");
 
     CK_TILE_HOST static constexpr dim3 BlockSize() { return dim3(kBlockSize); }
 
-    // LDS: smem_v (1 group at a time, reused) + smem_fp4/scale staging (all groups).
-    //   smem_v:     1 * kVGroup * (kVHdimTile + kLDSPad) * 4 bytes  [reused per iteration]
-    //   smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup / 2) bytes  [all groups]
-    //   smem_scale: kVHdimTile * kVGroupsPerBlock bytes                   [all groups]
+    // LDS layout (bytes):
+    //   smem_v:     kVGroup * (kVHdimTile + kLDSPad) * 4  [1 group at a time, reused]
+    //   smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup/2)  [all groups staged]
+    //   smem_scale: kVHdimTile * kVGroupsPerBlock               [all groups staged]
+    //
+    // For kVGroup=32, kVHdimTile=32, kVGroupsPerBlock=4:
+    //   smem_v:      32 * 33 * 4 = 4224 bytes
+    //   smem_fp4:   32 *  4 * 16 = 2048 bytes
+    //   smem_scale: 32 *  4      =  128 bytes
+    //   Total: 6400 bytes  -> 16 CTAs/CU (wavefront-limited: 64/2=32, LDS-limited: 65536/6400=10)
+    //   => occupancy-limited to 10 CTAs/CU.
     static constexpr index_t kSmemVBytes =
         kVGroup * (kVHdimTile + kLDSPad) * static_cast<index_t>(sizeof(float));
-    static constexpr index_t kSmemFp4Bytes  = kVHdimTile * kVGroupsPerBlock * (kVGroup / 2);
+    static constexpr index_t kSmemFp4Bytes   = kVHdimTile * kVGroupsPerBlock * (kVGroup / 2);
     static constexpr index_t kSmemScaleBytes = kVHdimTile * kVGroupsPerBlock;
 
     CK_TILE_HOST_DEVICE static constexpr index_t GetSmemSize()
@@ -690,15 +708,16 @@ struct SageAttnV3VPreprocessKernel
     // -------------------------------------------------------------------------
     // Phase 1 tile distribution: load V [kVGroup, kVHdimTile] from global -> LDS.
     //
-    // kBlockSize = kVGroup * kVGroupsPerBlock = 128 threads = 2 warps.
-    // kVec = 8 elements per thread (vectorized load).
+    // kBlockSize = kVHdimTile * kVGroupsPerBlock = kVGroup * kVHdimTile / kVec threads.
+    // For kVGroup=32, kVHdimTile=32, kVec=8: kBlockSize=128 = 2 warps.
     // kDPacks = kVHdimTile / kVec = 4 (D-column packs per row).
     // kVWarps = kBlockSize / 64 = 2.
     // kDPacksPerWarp = kDPacks / kVWarps = 2.
     //
     // Thread layout:
-    //   load_row    = tid % kVGroup  = lane_id % kVGroup             (0..31, FAST axis)
-    //   load_d_pack = tid / kVGroup  = warp_id*kDPacksPerWarp + lane_id/kVGroup (SLOW axis)
+    //   load_row    = tid % kVGroup  (0..kVGroup-1, FAST axis within warp)
+    //   load_d_pack = tid / kVGroup  (SLOW axis; spans warp_id * kDPacksPerWarp + d_pack_local)
+    //     tid = (warp_id * kDPacksPerWarp + d_pack_local) * kVGroup + load_row
     //
     // Distribution encoding [kVGroup=32, kVHdimTile=32]:
     //   H[X=0] = [kVGroup]                        (row dimension, single factor)
@@ -711,18 +730,11 @@ struct SageAttnV3VPreprocessKernel
     //   Y[0]          -> H[X=1][2]=kVec (rh_major=2, rh_minor=2)
     //
     // Ps2RHssMajor = tuple<sequence<2>, sequence<2, 1>>
-    //   P[0] major = {2}    (one factor: H[X=1][0]=kVWarps)
-    //   P[1] major = {2, 1} (two factors, listed outer-to-inner:
-    //                         H[X=1][1]=kDPacksPerWarp slow, H[X=0][0]=kVGroup fast)
     // Ps2RHssMinor = tuple<sequence<0>, sequence<1, 0>>
-    //   P[0] minor = {0}
-    //   P[1] minor = {1, 0}  (H[X=1] minor=1 = kDPacksPerWarp slow;
-    //                          H[X=0] minor=0 = kVGroup fast)
     // Ys2RHsMajor = sequence<2>, Ys2RHsMinor = sequence<2>
     // -------------------------------------------------------------------------
     CK_TILE_HOST_DEVICE static constexpr auto MakeVLoadDstr()
     {
-        constexpr index_t kVec           = 8;
         constexpr index_t kDPacks        = kVHdimTile / kVec;
         constexpr index_t kVWarps        = kBlockSize / 64;
         constexpr index_t kDPacksPerWarp = kDPacks / kVWarps;
@@ -750,16 +762,16 @@ struct SageAttnV3VPreprocessKernel
     // Phase 4 tile distribution: write-back V hat [kVHdimTile, kVGroupsPerBlock]
     // from LDS smem_fp4 to global v_hat.
     //
-    // Each thread copies kHatElemsPerThread = kVGroup/2 = 16 bytes = 4 uint32.
+    // Each thread copies kHatElemsPerThread = kVGroup/2 = 16 bytes = 4 int32.
     // Thread layout:
-    //   write_d_idx = tid / kVGroupsPerBlock = warp_id*kDPerWarp + lane_id/kVGroupsPerBlock
-    //   write_g_idx = tid % kVGroupsPerBlock = lane_id % kVGroupsPerBlock
+    //   write_d_idx = tid / kVGroupsPerBlock (D-column index within CTA tile)
+    //   write_g_idx = tid % kVGroupsPerBlock (V-group index within CTA tile)
     //
-    // Distribution encoding for [kVHdimTile=32, kVGroupsPerBlock=4]:
-    //   kVWarps = kBlockSize / 64 = 2
+    // Distribution encoding for [kVHdimTile=64, kVGroupsPerBlock=4]:
+    //   kVWarps = kBlockSize / 64 = 4
     //   kDPerWarp = kVHdimTile / kVWarps = 16
     //
-    // MakeHatDstrU32: Y dimension = kHatElemsPerThread_u32 = kVGroup/8 = 4 (uint32 units)
+    // MakeHatDstrU32: Y dimension = kHatElemsPerThread_u32 = kVGroup/8 = 4 (int32 units)
     //   -> 4 VGPRs per thread; LDS ds_read_b128 + global buffer_store_dwordx4.
     //
     //   P[0]=warp_id  -> H[X=0][0]=kVWarps
@@ -806,10 +818,10 @@ struct SageAttnV3VPreprocessKernel
         const index_t col_start = d_idx * kVHdimTile;
 
         // Smem layout: [smem_v (1 group, reused) | smem_fp4 (all groups) | smem_scale (all)]
-        // smem_v:     kVGroup * (kVHdimTile + kLDSPad) * 4 = 4224 bytes
-        // smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup/2) = 2048 bytes
-        // smem_scale: kVHdimTile * kVGroupsPerBlock = 128 bytes
-        // Total: 6400 bytes -> 16 CTAs/CU (wavefront-limited) vs 3 CTAs/CU (19072 bytes) before.
+        // smem_v:     kVGroup * (kVHdimTile + kLDSPad) * 4 = 32 * 65 * 4 = 8320 bytes
+        // smem_fp4:   kVHdimTile * kVGroupsPerBlock * (kVGroup/2) = 64 * 4 * 16 = 4096 bytes
+        // smem_scale: kVHdimTile * kVGroupsPerBlock = 64 * 4 = 256 bytes
+        // Total: 12672 bytes -> 8 CTAs/CU (wavefront-limited, 4 wavefronts per CTA).
         __shared__ char smem_raw[GetSmemSize()];
         auto* smem_v =
             reinterpret_cast<float (*)[kVGroup][kVHdimTile + kLDSPad]>(smem_raw);
@@ -819,8 +831,7 @@ struct SageAttnV3VPreprocessKernel
         const InputT* v_base =
             kargs.v_ptr + batch_idx * kargs.batch_stride_v + head_idx * kargs.nhead_stride_v;
 
-        constexpr float rcp_dst_max  = 1.0f / 6.0f;
-        constexpr index_t kVec       = 8;
+        constexpr float rcp_dst_max = 1.0f / 6.0f;
         static_assert(kVHdimTile % kVec == 0, "kVHdimTile must be divisible by 8");
 
         // Phase 1 distribution for [kVGroup, kVHdimTile] V tile load.

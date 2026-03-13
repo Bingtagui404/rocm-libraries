@@ -582,8 +582,10 @@ static BenchResult dispatch_bench(const RunShape& s, const std::string& dtype)
             return run_benchmark<ck_tile::fp16_t, 128, 64>(s);
         if(s.hdim == 128)
             return run_benchmark<ck_tile::fp16_t, 128, 128>(s);
+        // fp16 + hdim=256: use kRows=64 so Q tile (64*256*2=32KB) fits in LDS (kUseLdsQ=true),
+        // eliminating the second HBM Q read and improving bandwidth utilization.
         if(s.hdim == 256)
-            return run_benchmark<ck_tile::fp16_t, 128, 256>(s);
+            return run_benchmark<ck_tile::fp16_t, 64, 256>(s);
     }
     else if(dtype == "fp32")
     {
@@ -606,7 +608,7 @@ static bool dispatch_verify(const RunShape& s, const std::string& dtype)
         if(s.hdim == 128)
             return run_verify<ck_tile::fp16_t, 128, 128>(s);
         if(s.hdim == 256)
-            return run_verify<ck_tile::fp16_t, 128, 256>(s);
+            return run_verify<ck_tile::fp16_t, 64, 256>(s);
     }
     else if(dtype == "fp32")
     {

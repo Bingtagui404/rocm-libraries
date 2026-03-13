@@ -47,8 +47,7 @@ class SageAttnV3PreprocessTest
     int hdim() const { return std::get<4>(GetParam()); }
     bool use_fp16() const { return std::get<5>(GetParam()); }
 
-    static constexpr int kM0 = 128; // Q/K tile rows (padding granularity)
-    static constexpr int kG  = 32;  // MXFP4 scale granularity
+    static constexpr int kG = 32; // MXFP4 scale granularity
 
     template <typename InputT>
     void RunGPUTest();
@@ -60,13 +59,20 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     const int b = B(), h = H(), sq = seqlen_q(), sk = seqlen_k(), hd = hdim();
     ASSERT_EQ(hd % kG, 0) << "hdim must be divisible by 32";
 
+    // fp16 + hdim=256 uses kRows=64 so the Q tile fits in LDS (kUseLdsQ=true).
+    // All other combinations use kRows=128.
+    const bool fp16_d256 = std::is_same_v<InputT, ck_tile::fp16_t> && (hd == 256);
+    const int kM0 = fp16_d256 ? 64 : 128; // Q/K tile rows (padding granularity)
+
     // Use get_buffer_sizes to get padded dimensions and required buffer sizes.
-    // Dispatch on hdim to select the right kCols instantiation.
+    // Dispatch on hdim (and input type) to select the right instantiation.
     ck_tile::SageAttnV3PreprocessBufferSizes bsz{};
     if(hd == 64)
         bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 64>::get_buffer_sizes(b, h, sq, sk, hd);
     else if(hd == 128)
         bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::get_buffer_sizes(b, h, sq, sk, hd);
+    else if(hd == 256 && fp16_d256)
+        bsz = ck_tile::SageAttnV3Preprocess<InputT, 64, 256>::get_buffer_sizes(b, h, sq, sk, hd);
     else if(hd == 256)
         bsz = ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::get_buffer_sizes(b, h, sq, sk, hd);
     else
@@ -206,27 +212,21 @@ void SageAttnV3PreprocessTest::RunGPUTest()
     hargs.nhead  = h;
 
     // ---- Launch ----
+    auto* ds_ptr    = static_cast<float*>(delta_s_dev.GetDeviceBuffer());
+    auto* kmean_ptr = static_cast<InputT*>(k_mean_buf.GetDeviceBuffer());
+    auto* kprime_ptr = static_cast<InputT*>(k_prime_buf.GetDeviceBuffer());
     if(hd == 64)
-        ck_tile::SageAttnV3Preprocess<InputT, 128, 64>::run(
-            hargs,
-            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
-            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
-            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-            /*stream=*/nullptr);
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 64>::run(hargs, ds_ptr, kmean_ptr, kprime_ptr,
+                                                             /*stream=*/nullptr);
     else if(hd == 128)
-        ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::run(
-            hargs,
-            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
-            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
-            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-            /*stream=*/nullptr);
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 128>::run(hargs, ds_ptr, kmean_ptr, kprime_ptr,
+                                                              /*stream=*/nullptr);
+    else if(fp16_d256)
+        ck_tile::SageAttnV3Preprocess<InputT, 64, 256>::run(hargs, ds_ptr, kmean_ptr, kprime_ptr,
+                                                             /*stream=*/nullptr);
     else
-        ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::run(
-            hargs,
-            static_cast<float*>(delta_s_dev.GetDeviceBuffer()),
-            static_cast<InputT*>(k_mean_buf.GetDeviceBuffer()),
-            static_cast<InputT*>(k_prime_buf.GetDeviceBuffer()),
-            /*stream=*/nullptr);
+        ck_tile::SageAttnV3Preprocess<InputT, 128, 256>::run(hargs, ds_ptr, kmean_ptr, kprime_ptr,
+                                                              /*stream=*/nullptr);
 
     HIP_CHECK_ERROR(hipDeviceSynchronize());
 
