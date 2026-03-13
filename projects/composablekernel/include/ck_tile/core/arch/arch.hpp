@@ -426,6 +426,24 @@ using enable_if_target_family_gfx9_t =
     enable_if_target_family_id_t<CompilerTarget, amdgcn_target_family_id::GFX9>;
 
 /**
+ * @brief SFINAE enabler for CDNA2 or higher targets (GFX90A, GFX942, GFX950)
+ * @tparam CompilerTarget The compiler target to check
+ */
+template <typename CompilerTarget>
+using enable_if_target_cdna2_or_higher_t = enable_if_target_id_t<CompilerTarget,
+                                                                 amdgcn_target_id::GFX90A,
+                                                                 amdgcn_target_id::GFX942,
+                                                                 amdgcn_target_id::GFX950>;
+
+/**
+ * @brief SFINAE enabler for CDNA3 or higher targets (GFX942, GFX950)
+ * @tparam CompilerTarget The compiler target to check
+ */
+template <typename CompilerTarget>
+using enable_if_target_cdna3_or_higher_t =
+    enable_if_target_id_t<CompilerTarget, amdgcn_target_id::GFX942, amdgcn_target_id::GFX950>;
+
+/**
  * @brief SFINAE enabler for GFX10.3 family targets
  * @tparam CompilerTarget The compiler target to check
  */
@@ -764,6 +782,24 @@ using enable_if_target_wave_size_id_t =
 template <amdgcn_target CompilerTarget>
 using enable_if_target_family_gfx9_t =
     enable_if_target_family_id_t<CompilerTarget, amdgcn_target_family_id::GFX9>;
+
+/**
+ * @brief SFINAE enabler for CDNA2 or higher targets (GFX90A, GFX942, GFX950)
+ * @tparam CompilerTarget The compiler target to check
+ */
+template <amdgcn_target CompilerTarget>
+using enable_if_target_cdna2_or_higher_t = enable_if_target_id_t<CompilerTarget,
+                                                                 amdgcn_target_id::GFX90A,
+                                                                 amdgcn_target_id::GFX942,
+                                                                 amdgcn_target_id::GFX950>;
+
+/**
+ * @brief SFINAE enabler for CDNA3 or higher targets (GFX942, GFX950)
+ * @tparam CompilerTarget The compiler target to check
+ */
+template <amdgcn_target CompilerTarget>
+using enable_if_target_cdna3_or_higher_t =
+    enable_if_target_id_t<CompilerTarget, amdgcn_target_id::GFX942, amdgcn_target_id::GFX950>;
 
 /**
  * @brief SFINAE enabler for GFX10.3 family targets
