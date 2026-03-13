@@ -172,15 +172,6 @@ if(NOT (MIOPEN_TEST_GFX900 OR MIOPEN_TEST_GFX906 OR MIOPEN_TEST_GFX908 OR MIOPEN
     endif()
 endif()
 
-set(MIOPEN_LIBMLIR_SUPPORTS_GFX103X_DEFAULT FALSE)
-if(MIOPEN_USE_MLIR)
-    set_var_to_condition(MIOPEN_LIBMLIR_SUPPORTS_GFX103X_DEFAULT (${rocMLIR_VERSION} VERSION_GREATER_EQUAL 1))
-endif()
-option( MIOPEN_LIBMLIR_SUPPORTS_GFX103X "libMLIR capability to support GFX10. Enables MLIR tests on GFX103X." ${MIOPEN_LIBMLIR_SUPPORTS_GFX103X_DEFAULT})
-
-set_var_to_condition(MIOPEN_TEST_MLIR_DEFAULT ${MIOPEN_USE_MLIR} AND NOT (${MIOPEN_TEST_GFX103X} AND NOT ${MIOPEN_LIBMLIR_SUPPORTS_GFX103X}))
-option( MIOPEN_TEST_MLIR "Test for MLIR compilation backend" ${MIOPEN_TEST_MLIR_DEFAULT} )
-
 if((NOT MIOPEN_ENABLE_SQLITE) OR (NOT MIOPEN_EMBED_DB STREQUAL ""))
     set(MIOPEN_TEST_ENABLE_TEST_SQLITE_PERFDB OFF)
 endif()
@@ -199,7 +190,6 @@ message(STATUS "MIOPEN_TEST_GFX120X ${MIOPEN_TEST_GFX120X}")
 message(STATUS "MIOPEN_TEST_GPU_XNACK_ENABLED ${MIOPEN_TEST_GPU_XNACK_ENABLED}")
 message(STATUS "MIOPEN_TEST_GPU_DETECTION_FAILED ${MIOPEN_TEST_GPU_DETECTION_FAILED}")
 message(STATUS "MIOPEN_TEST_WITH_MIOPENDRIVER ${MIOPEN_TEST_WITH_MIOPENDRIVER}")
-message(STATUS "MIOPEN_TEST_MLIR ${MIOPEN_TEST_MLIR}")
 message(STATUS "MIOPEN_TEST_CONV ${MIOPEN_TEST_CONV}")
 message(STATUS "MIOPEN_TEST_DEEPBENCH ${MIOPEN_TEST_DEEPBENCH}")
 message(STATUS "MIOPEN_TEST_DRIVER_ITER_MODE ${MIOPEN_TEST_DRIVER_ITER_MODE}")
@@ -215,7 +205,8 @@ else()
     add_definitions(-DMIOPEN_TEST_DRIVER_MODE=1)
 endif()
 
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --verbose -C ${CMAKE_CFG_INTDIR})
+# Exclude *_suite tests added as part of test filter standardization(#3513) from check target to avoid running them during build.
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --verbose -C ${CMAKE_CFG_INTDIR} --exclude-regex ".*_suite")
 add_custom_target(tests)
 
 if(MIOPEN_TEST_GPU_DETECTION_FAILED AND NOT (MIOPEN_NO_GPU))
@@ -299,7 +290,7 @@ elseif(MIOPEN_TEST_BFLOAT16)
               test_deepbench_conv test_conv_igemm_dynamic_xdlops_nhwc_wrw_bf16
               test_conv_igemm_dynamic_xdlops_nhwc_fwd_bf16
               test_conv_igemm_dynamic_xdlops_nhwc_bwd_bf16
-              test_pooling2d_bfp16 test_pooling3d_bfp16)
+              test_pooling2d test_pooling3d)
 endif()
 
 if(MIOPEN_NO_GPU)
@@ -322,9 +313,6 @@ if (MIOPEN_TEST_GFX115X)
     list(APPEND SKIP_TESTS test_ctc)
 endif()
 
-if(NOT MIOPEN_TEST_BFLOAT16)
-    list(APPEND SKIP_TESTS test_pooling2d_bfp16 test_pooling3d_bfp16)
-endif()
 
 # The usage is non-trivial, see function add_test_command.
 if(SKIP_TESTS)
@@ -464,9 +452,7 @@ set(LONG_TESTS
     test_conv3d_extra
     test_conv_3d
     test_pooling2d
-    test_pooling2d_bfp16
     test_pooling3d
-    test_pooling3d_bfp16
     test_conv_ck_igemm_fwd_v6r1_dlops_nchw
     )
 
@@ -587,7 +573,6 @@ endfunction()
 #   TEST_PERF_DB_RECORD_NOT_FOUND - Test should fail if output contains: "Perf Db: record not found".
 #   TEST_TUNING - In addition to the standard checks, the test should fail if output contains "Error" or "failed".
 #   SKIP_XNACK_ON - Do not run the test if XNACK mode is enabled (xnack+) on the GPU.
-#   SKIP_UNLESS_MLIR - The test should be only run if MIOPEN_TEST_MLIR=TRUE.
 #   SKIP_UNLESS_COMPOSABLEKERNEL - The test should be only run if MIOPEN_TEST_COMPOSABLEKERNEL=TRUE.
 #
 # Backend: HIP HIP_NOGPU
@@ -599,7 +584,7 @@ function(add_custom_test NAME)
         BF16_ENABLED BF16_DISABLED HALF_ENABLED HALF_DISABLED INT8_ENABLED INT8_DISABLED TF32_ENABLED TF32_DISABLED FLOAT_ENABLED FLOAT_DISABLED
         GFX900_ENABLED GFX900_DISABLED GFX906_ENABLED GFX906_DISABLED GFX908_ENABLED GFX908_DISABLED
         GFX103X_ENABLED GFX103X_DISABLED GFX110X_ENABLED GFX110X_DISABLED GFX90A_ENABLED GFX90A_DISABLED GFX94X_ENABLED GFX94X_DISABLED
-        SKIP_UNLESS_MLIR SKIP_UNLESS_COMPOSABLEKERNEL SKIP_UNLESS_ALL TEST_PERF_DB_RECORD_NOT_FOUND TEST_TUNING SKIP_XNACK_ON
+        SKIP_UNLESS_COMPOSABLEKERNEL SKIP_UNLESS_ALL TEST_PERF_DB_RECORD_NOT_FOUND TEST_TUNING SKIP_XNACK_ON
         HIP_ENABLED HIP_DISABLED HIP_NOGPU_ENABLED HIP_NOGPU_DISABLED
     )
     set(oneValueArgs)
@@ -628,9 +613,6 @@ function(add_custom_test NAME)
     set(FLOAT_TEST_DEFAULT TRUE)
     option_support_check(${PARSE_FLOAT_ENABLED} ${PARSE_FLOAT_DISABLED} ${FLOAT_TEST_DEFAULT} is_float_check)
     bool_and_f(${MIOPEN_TEST_FLOAT} ${is_float_check} is_float_check)
-
-    bool_not_f(${PARSE_SKIP_UNLESS_MLIR} is_mlir_check)
-    bool_or_f(${is_mlir_check} ${MIOPEN_TEST_MLIR} is_mlir_check)
 
     bool_not_f(${PARSE_SKIP_UNLESS_COMPOSABLEKERNEL} is_composablekernel_check)
     bool_or_f(${is_composablekernel_check} ${MIOPEN_TEST_COMPOSABLEKERNEL} is_composablekernel_check)
@@ -710,7 +692,6 @@ function(add_custom_test NAME)
     if(  (is_gfx900_check OR is_gfx906_check OR is_gfx908_check OR is_gfx103x_check OR is_gfx110x_check OR is_gfx90a_check OR is_gfx94x_check OR is_gfx95x_check)
      AND is_full_check
      AND is_xnack_on_check
-     AND is_mlir_check
      AND is_composablekernel_check
      AND (is_half_check OR is_bfloat16_check OR is_int8_check OR is_tf32_check OR is_float_check)
      AND (is_hip_check AND is_hip_nogpu_check)
@@ -738,18 +719,9 @@ function(add_custom_test NAME)
     endif()
 endfunction()
 
-set(IMPLICITGEMM_MLIR_ENV_BASE MIOPEN_FIND_MODE=normal)
-set(IMPLICITGEMM_MLIR_ENV_F ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmFwd)
-set(IMPLICITGEMM_MLIR_ENV_B ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmBwd)
-set(IMPLICITGEMM_MLIR_ENV_W ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmWrW)
-
 set(TEST_CONV_VERBOSE_F ${MIOPEN_TEST_FLOAT_ARG} --verbose --disable-backward-data --disable-backward-weights)
 set(TEST_CONV_VERBOSE_B ${MIOPEN_TEST_FLOAT_ARG} --verbose --disable-forward --disable-backward-weights)
 set(TEST_CONV_VERBOSE_W ${MIOPEN_TEST_FLOAT_ARG} --verbose --disable-forward --disable-backward-data)
-
-set(IMPLICITGEMM_MLIR_ENV_F_XDLOPS ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmFwdXdlops)
-set(IMPLICITGEMM_MLIR_ENV_B_XDLOPS ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmBwdXdlops)
-set(IMPLICITGEMM_MLIR_ENV_W_XDLOPS ${IMPLICITGEMM_MLIR_ENV_BASE} MIOPEN_DEBUG_FIND_ONLY_SOLVER=ConvMlirIgemmWrWXdlops)
 
 set(IMPLICITGEMM_TESTING_ENV
  MIOPEN_DEBUG_CONV_WINOGRAD=0
@@ -834,21 +806,6 @@ set(CONV_CK_IGEMM_FWD_V6R1_DLOPS_NCHW_ENV
 # * Use TEST_TUNING. This flag leads to test failure in case of any "Error"
 #   message output to the log, which happens if something is broken in the tuning machinery.
 # * Use MIOPEN_DEBUG_TUNING_ITERATIONS_MAX to save testing time.
-
-add_custom_test(smoke_solver_ConvMlirIgemm_F GFX900_DISABLED GFX908_DISABLED GFX90A_DISABLED GFX103X_ENABLED HALF_ENABLED SKIP_UNLESS_MLIR TEST_TUNING
-    ENVIRONMENT MIOPEN_FIND_ENFORCE=SEARCH_DB_UPDATE MIOPEN_DEBUG_TUNING_ITERATIONS_MAX=5 ${IMPLICITGEMM_MLIR_ENV_F}
-    COMMAND $<TARGET_FILE:test_conv2d> ${TEST_CONV_VERBOSE_F} --input 64 128 14 14 --weights 128 128 1 1 --pads_strides_dilations 0 0 2 2 1 1 --in_layout NHWC --fil_layout NHWC --out_layout NHWC ${MIOPEN_TEST_FLAGS_ARGS}
-)
-
-add_custom_test(smoke_solver_ConvMlirIgemm_B GFX900_DISABLED GFX908_DISABLED GFX90A_DISABLED GFX103X_ENABLED HALF_ENABLED SKIP_UNLESS_MLIR TEST_TUNING
-    ENVIRONMENT MIOPEN_FIND_ENFORCE=SEARCH_DB_UPDATE MIOPEN_DEBUG_TUNING_ITERATIONS_MAX=5 ${IMPLICITGEMM_MLIR_ENV_B}
-    COMMAND $<TARGET_FILE:test_conv2d> ${TEST_CONV_VERBOSE_B} --input 64 256 28 28 --weights 64  64  1 1 --pads_strides_dilations 0 0 1 1 1 1 --group-count 4 ${MIOPEN_TEST_FLAGS_ARGS}
-)
-
-add_custom_test(smoke_solver_ConvMlirIgemm_W GFX900_DISABLED GFX908_DISABLED GFX90A_DISABLED GFX103X_ENABLED HALF_ENABLED SKIP_UNLESS_MLIR TEST_TUNING
-    ENVIRONMENT MIOPEN_FIND_ENFORCE=SEARCH_DB_UPDATE MIOPEN_DEBUG_TUNING_ITERATIONS_MAX=5 ${IMPLICITGEMM_MLIR_ENV_W}
-    COMMAND $<TARGET_FILE:test_conv2d> ${TEST_CONV_VERBOSE_W} --input 64 64  28 28 --weights 64  64  1 1 --pads_strides_dilations 0 0 1 1 1 1 ${MIOPEN_TEST_FLAGS_ARGS}
-)
 
 add_custom_test(conv_transposed_fwd
     COMMAND $<TARGET_FILE:test_conv2d> ${TEST_CONV_VERBOSE_F} --input 1 16 24 24 --weights 16 16 7 7 --pads_strides_dilations 3 3 1 1 1 1 --cmode transpose ${MIOPEN_TEST_FLAGS_ARGS}

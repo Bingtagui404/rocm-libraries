@@ -1,6 +1,8 @@
 // Copyright © Advanced Micro Devices, Inc., or its affiliates.
 // SPDX-License-Identifier:  MIT
 
+#ifndef HIPDNN_FRONTEND_SKIP_JSON_LIB
+
 #include <gtest/gtest.h>
 #include <hipdnn_data_sdk/data_objects/graph_generated.h>
 #include <hipdnn_data_sdk/utilities/ShapeUtilities.hpp>
@@ -1518,6 +1520,151 @@ TEST_P(TestGraphSerializationRoundTrip, BatchnormInference)
     roundTripAndCompare(graph);
 }
 
+TEST_P(TestGraphSerializationRoundTrip, LayernormNodeInference)
+{
+    Graph graph;
+    graph.set_name("layernorm_inference_test");
+    graph.set_compute_data_type(DataType::FLOAT);
+    graph.set_io_data_type(DataType::FLOAT);
+    graph.set_intermediate_data_type(DataType::FLOAT);
+
+    auto x = createTensor("x", {2, 64, 32, 32}, DataType::FLOAT, 1);
+    auto scale = createTensor("scale", {1, 64, 32, 32}, DataType::FLOAT, 2);
+    auto bias = createTensor("bias", {1, 64, 32, 32}, DataType::FLOAT, 3);
+    auto epsilon = std::make_shared<TensorAttributes>(1e-5f);
+    epsilon->set_uid(4);
+
+    LayernormAttributes lnAttrs;
+    lnAttrs.set_epsilon(epsilon);
+    lnAttrs.set_forward_phase(NormFwdPhase::INFERENCE);
+
+    auto [y, mean, invVariance] = graph.layernorm(x, scale, bias, lnAttrs);
+
+    // In inference mode, mean and inv_variance should be nullptr
+    EXPECT_EQ(mean, nullptr);
+    EXPECT_EQ(invVariance, nullptr);
+
+    // Only verify counts for JSON format
+    if(GetParam() == SerializationFormat::JSON)
+    {
+        auto json = graph.toJson();
+        EXPECT_EQ(json["nodes"].size(), 1);
+        EXPECT_EQ(json["tensors"].size(), 5); // x, scale, bias, epsilon, y
+    }
+
+    roundTripAndCompare(graph);
+}
+
+TEST_P(TestGraphSerializationRoundTrip, LayernormNodeTraining)
+{
+    Graph graph;
+    graph.set_name("layernorm_training_test");
+    graph.set_compute_data_type(DataType::FLOAT);
+    graph.set_io_data_type(DataType::FLOAT);
+    graph.set_intermediate_data_type(DataType::FLOAT);
+
+    auto x = createTensor("x", {2, 64, 32, 32}, DataType::FLOAT, 1);
+    auto scale = createTensor("scale", {1, 64, 32, 32}, DataType::FLOAT, 2);
+    auto bias = createTensor("bias", {1, 64, 32, 32}, DataType::FLOAT, 3);
+    auto epsilon = std::make_shared<TensorAttributes>(1e-5f);
+    epsilon->set_uid(4);
+
+    LayernormAttributes lnAttrs;
+    lnAttrs.set_epsilon(epsilon);
+    lnAttrs.set_forward_phase(NormFwdPhase::TRAINING);
+
+    auto [y, mean, invVariance] = graph.layernorm(x, scale, bias, lnAttrs);
+
+    // In training mode, mean and inv_variance should be set
+    ASSERT_NE(mean, nullptr);
+    ASSERT_NE(invVariance, nullptr);
+
+    // Only verify counts for JSON format
+    if(GetParam() == SerializationFormat::JSON)
+    {
+        auto json = graph.toJson();
+        EXPECT_EQ(json["nodes"].size(), 1);
+        EXPECT_EQ(json["tensors"].size(), 7); // x, scale, bias, epsilon, y, mean, inv_variance
+    }
+
+    roundTripAndCompare(graph);
+}
+
+TEST_P(TestGraphSerializationRoundTrip, RMSNormNode)
+{
+    Graph graph;
+    graph.set_name("rmsnorm_test");
+    graph.set_compute_data_type(DataType::FLOAT);
+    graph.set_io_data_type(DataType::FLOAT);
+
+    auto x = createTensor("x", {1, 64, 32, 32}, DataType::FLOAT, 1);
+    auto scale = createTensor1D("scale", 64, DataType::FLOAT, 2);
+    auto epsilon = std::make_shared<TensorAttributes>(1e-5f);
+    epsilon->set_uid(3);
+
+    RMSNormAttributes rmsnormAttrs;
+    rmsnormAttrs.set_epsilon(epsilon);
+    rmsnormAttrs.set_forward_phase(NormFwdPhase::TRAINING);
+
+    auto [y, invRms] = graph.rmsnorm(x, scale, rmsnormAttrs);
+    y->set_output(true);
+
+    if(GetParam() == SerializationFormat::JSON)
+    {
+        auto json = graph.toJson();
+        EXPECT_EQ(json["nodes"].size(), 1);
+        EXPECT_EQ(json["tensors"].size(), 5); // x, scale, epsilon, y, inv_rms
+    }
+
+    roundTripAndCompare(graph);
+}
+
+TEST_P(TestGraphSerializationRoundTrip, RMSNormNodeWithBias)
+{
+    Graph graph;
+    graph.set_name("rmsnorm_bias_test");
+    graph.set_compute_data_type(DataType::FLOAT);
+    graph.set_io_data_type(DataType::FLOAT);
+
+    auto x = createTensor("x", {1, 64, 32, 32}, DataType::FLOAT, 1);
+    auto scale = createTensor1D("scale", 64, DataType::FLOAT, 2);
+    auto epsilon = std::make_shared<TensorAttributes>(1e-5f);
+    epsilon->set_uid(3);
+    auto bias = createTensor1D("bias", 64, DataType::FLOAT, 4);
+
+    RMSNormAttributes rmsnormAttrs;
+    rmsnormAttrs.set_epsilon(epsilon);
+    rmsnormAttrs.set_bias(bias);
+    rmsnormAttrs.set_forward_phase(NormFwdPhase::TRAINING);
+
+    auto [y, invRms] = graph.rmsnorm(x, scale, rmsnormAttrs);
+    y->set_output(true);
+
+    roundTripAndCompare(graph);
+}
+
+TEST_P(TestGraphSerializationRoundTrip, CustomOpNode)
+{
+    Graph graph;
+    graph.set_name("custom_op_test");
+    graph.set_compute_data_type(DataType::FLOAT);
+    graph.set_io_data_type(DataType::FLOAT);
+
+    auto inputA = createTensor("input_a", {2, 3}, DataType::FLOAT, 1);
+    auto inputB = createTensor("input_b", {2, 3}, DataType::FLOAT, 2);
+
+    std::vector<uint8_t> opaquePayload = {0xDE, 0xAD, 0xBE, 0xEF};
+
+    CustomOpAttributes customAttrs;
+    customAttrs.set_name("my_custom_op").set_custom_op_id("example.my_add").set_data(opaquePayload);
+
+    auto outputs = graph.custom_op({inputA, inputB}, 1, customAttrs);
+    ASSERT_EQ(outputs.size(), 1u);
+    outputs[0]->set_output(true).set_dim({2, 3}).set_stride({3, 1}).set_data_type(DataType::FLOAT);
+
+    roundTripAndCompare(graph);
+}
+
 //==============================================================================
 // Test Suite Instantiation
 //==============================================================================
@@ -1529,3 +1676,5 @@ INSTANTIATE_TEST_SUITE_P(AllFormats,
                                            SerializationFormat::FLATBUFFER_DETACHED,
                                            SerializationFormat::FLATBUFFER_OBJECT),
                          serializationFormatToString);
+
+#endif // HIPDNN_FRONTEND_SKIP_JSON_LIB
