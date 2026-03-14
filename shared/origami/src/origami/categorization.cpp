@@ -31,10 +31,6 @@ k_range_t classify_k(std::size_t dim) noexcept {
   return k_range_t::long_k;
 }
 
-batch_class_t classify_batch(std::size_t batch) noexcept {
-  return batch <= 1 ? batch_class_t::single : batch_class_t::batched;
-}
-
 // ============================================================================
 // Categorization
 // ============================================================================
@@ -43,11 +39,11 @@ gemm_category_t categorize(const problem_t& problem) noexcept {
   return {classify_mn(problem.size.m),
           classify_mn(problem.size.n),
           classify_k(problem.size.k),
-          classify_batch(problem.batch)};
+          problem.batch > 1};
 }
 
 gemm_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noexcept {
-  return {classify_mn(m), classify_mn(n), classify_k(k), batch_class_t::single};
+  return {classify_mn(m), classify_mn(n), classify_k(k), false};
 }
 
 gemm_category_t category_from_id(std::size_t id) {
@@ -57,19 +53,17 @@ gemm_category_t category_from_id(std::size_t id) {
                             std::to_string(NUM_GEMM_CATEGORIES) + ")");
   }
 
-  const auto batch_count = static_cast<std::size_t>(batch_class_t::count);
-  const auto k_count     = static_cast<std::size_t>(k_range_t::count);
-  const auto n_count     = static_cast<std::size_t>(mn_range_t::count);
+  const auto k_count = static_cast<std::size_t>(k_range_t::count);
+  const auto n_count = static_cast<std::size_t>(mn_range_t::count);
 
-  auto batch_idx = id % batch_count;
-  auto k_idx     = (id / batch_count) % k_count;
-  auto n_idx     = (id / (batch_count * k_count)) % n_count;
-  auto m_idx     = id / (batch_count * k_count * n_count);
+  auto k_idx = id % k_count;
+  auto n_idx = (id / k_count) % n_count;
+  auto m_idx = id / (k_count * n_count);
 
   return {static_cast<mn_range_t>(m_idx),
           static_cast<mn_range_t>(n_idx),
           static_cast<k_range_t>(k_idx),
-          static_cast<batch_class_t>(batch_idx)};
+          false};
 }
 
 // ============================================================================
@@ -77,14 +71,12 @@ gemm_category_t category_from_id(std::size_t id) {
 // ============================================================================
 
 std::size_t gemm_category_t::id() const noexcept {
-  const auto batch_count = static_cast<std::size_t>(batch_class_t::count);
-  const auto k_count     = static_cast<std::size_t>(k_range_t::count);
-  const auto n_count     = static_cast<std::size_t>(mn_range_t::count);
+  const auto k_count = static_cast<std::size_t>(k_range_t::count);
+  const auto n_count = static_cast<std::size_t>(mn_range_t::count);
 
-  return static_cast<std::size_t>(m_range) * n_count * k_count * batch_count +
-         static_cast<std::size_t>(n_range) * k_count * batch_count +
-         static_cast<std::size_t>(k_range) * batch_count +
-         static_cast<std::size_t>(batch);
+  return static_cast<std::size_t>(m_range) * n_count * k_count +
+         static_cast<std::size_t>(n_range) * k_count +
+         static_cast<std::size_t>(k_range);
 }
 
 static std::size_t mn_lower_bound(mn_range_t r) noexcept {
@@ -120,17 +112,16 @@ std::string gemm_category_t::to_string() const {
   auto fmt = [](std::size_t v) -> std::string {
     return v == SIZE_MAX ? "inf" : std::to_string(v);
   };
-  auto pad = [](std::size_t id) -> std::string {
-    if (id < 10)  return "00" + std::to_string(id);
-    if (id < 100) return "0"  + std::to_string(id);
-    return std::to_string(id);
+  auto pad = [](std::size_t val) -> std::string {
+    if (val < 10) return "0" + std::to_string(val);
+    return std::to_string(val);
   };
 
   return "cat" + pad(id()) +
          "_M[" + std::to_string(m_lower()) + "-" + fmt(m_upper()) + "]" +
          "_N[" + std::to_string(n_lower()) + "-" + fmt(n_upper()) + "]" +
          "_K[" + std::to_string(k_lower()) + "-" + fmt(k_upper()) + "]" +
-         "_" + (batch == batch_class_t::batched ? "batched" : "single");
+         "_" + (batched ? "batched" : "single");
 }
 
 // ============================================================================

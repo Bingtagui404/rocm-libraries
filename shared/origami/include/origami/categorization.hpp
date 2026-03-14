@@ -45,18 +45,37 @@ namespace origami {
  * M and N define the output tile grid:
  *   num_tiles = ceil(M/MT_M) * ceil(N/MT_N)
  *
- * This determines parallelism and tile utilization. Five ranges capture
- * the distinct occupancy regimes regardless of layout:
+ * This determines parallelism and tile utilization.  Five ranges
+ * capture distinct occupancy regimes.  Boundaries are derived from
+ * the macro-tile sizes used in practice (MT: 32–256) and the CU
+ * counts of target hardware (256–304 CUs):
  *
- *   tiny:   fits in a single tile (limited parallelism)
- *   small:  1-4 tiles per dim (partial-wave effects)
- *   medium: moderate parallelism, L2 reuse emerges
- *   large:  fully parallel, bandwidth-limited
- *   xlarge: deeply parallel, MALL/L2 capacity effects
+ *   tiny   [1, 64]:     Smaller than most tiles.  At the largest tile
+ *                        (256), a single tile covers the dimension with
+ *                        heavy padding waste. Only vector-like kernels or
+ *                        one-tile solutions are competitive.
  *
- * These roles are transpose-invariant: the output is always M x N,
- * the tile grid is always ceil(M/MT_M) * ceil(N/MT_N), regardless of
- * whether A or B is transposed.
+ *   small  [65, 256]:    Up to one maximum tile (MT_max = 256).  Exactly
+ *                        1 tile row/column — no inter-tile parallelism
+ *                        along this dimension. Edge effects dominate.
+ *
+ *   medium [257, 1024]:  2–4 max-tiles.  Partial-wave occupancy: the GPU
+ *                        is not fully utilized.  Tile choice strongly
+ *                        affects utilization (e.g. M=768 → 3 tiles of
+ *                        256 vs 6 tiles of 128).
+ *
+ *   large  [1025, 4096]: 4–16 max-tiles.  For square problems at 256x256
+ *                        tiles, num_tiles = 16*16 = 256, which matches
+ *                        a 256-CU GPU (gfx950). This is the transition
+ *                        from partial-GPU to full-GPU utilization.
+ *
+ *   xlarge [4097, inf):  16+ max-tiles per dimension.  Multiple waves
+ *                        are needed, scheduling hides latency, L2/MALL
+ *                        capacity effects dominate.
+ *
+ * These roles are transpose-invariant: the output C is always M x N,
+ * so the tile grid is always ceil(M/MT_M) * ceil(N/MT_N) regardless of
+ * which matrix is transposed.
  */
 enum class mn_range_t : std::uint8_t {
   tiny   = 0,  ///< [1, 64]
@@ -72,40 +91,26 @@ enum class mn_range_t : std::uint8_t {
  * @brief Size range labels for the K (reduction) dimension.
  *
  * K defines the reduction loop depth: iterations = ceil(K/MT_K).
- * Increasing K monotonically raises arithmetic intensity:
+ * K monotonically raises arithmetic intensity:
  *
  *   AI = 2MNK / ((MK + KN + MN) * bpe)
  *   1/AI = (bpe/2) * (1/M + 1/N + 1/K)
  *
- * There is essentially one structural transition: from memory-bound
- * (short K) to compute-bound (long K). Two ranges suffice.
+ * There is one structural transition: memory-bound → compute-bound.
+ * The K=2048 boundary places moderate-sized square problems (M=N=1024)
+ * near the roofline crossover for BF16 on current hardware:
+ *   AI(1024, 1024, 2048, bpe=2) = 2*1024*1024*2048 / ((2*1024*2048 + 1024^2)*2)
+ *                                ≈ 585 ops/byte
+ * which is above the MI300X roofline (~247), confirming that long_k
+ * problems of moderate M/N size are indeed compute-bound.
  *
- * This role is also transpose-invariant: K is always the reduction
- * dimension regardless of whether A or B stores K contiguously.
- * Layout affects HOW K-slices are loaded (coalescing pattern) but
- * not the number of loop iterations or the AI.
+ * Layout does not change K's role: K is always the reduction
+ * dimension.  Transpose affects which address pattern is used to
+ * load K-slices, but not the loop iteration count or AI.
  */
 enum class k_range_t : std::uint8_t {
   short_k = 0,  ///< [1, 2048]    — typically memory-bound
   long_k  = 1,  ///< [2049, inf)  — typically compute-bound
-
-  count   = 2
-};
-
-// ============================================================================
-// Batch regime
-// ============================================================================
-
-/**
- * @brief Batch regime.
- *
- * Batched GEMMs (batch > 1) use fundamentally different workgroup
- * mapping strategies (staggerU disabled, WGM changed, XCC mapping
- * adjusted) compared to single GEMMs.
- */
-enum class batch_class_t : std::uint8_t {
-  single  = 0,  ///< batch == 1
-  batched = 1,  ///< batch > 1
 
   count   = 2
 };
@@ -120,14 +125,13 @@ inline constexpr std::array<std::size_t, 5> MN_RANGE_UPPER_BOUNDS = {
 inline constexpr std::array<std::size_t, 2> K_RANGE_UPPER_BOUNDS = {
     2048, SIZE_MAX};
 
-/// Total categories: 5(M) * 5(N) * 2(K) * 2(batch) = 100.
+/// Total categories: 5(M) * 5(N) * 2(K) = 50.
 inline constexpr std::size_t NUM_GEMM_CATEGORIES =
     static_cast<std::size_t>(mn_range_t::count) *
     static_cast<std::size_t>(mn_range_t::count) *
-    static_cast<std::size_t>(k_range_t::count) *
-    static_cast<std::size_t>(batch_class_t::count);
+    static_cast<std::size_t>(k_range_t::count);
 
-static_assert(NUM_GEMM_CATEGORIES == 100, "Category count must be 100");
+static_assert(NUM_GEMM_CATEGORIES == 50, "Category count must be 50");
 
 // ============================================================================
 // Category type
@@ -136,34 +140,43 @@ static_assert(NUM_GEMM_CATEGORIES == 100, "Category count must be 100");
 /**
  * @brief GEMM category — size-based classification for heuristic lookup.
  *
- * Categorizes GEMM problems by (M, N, K, batch) into one of 100 buckets.
- * Problems in the same category are expected to pick similar solutions.
+ * Categorizes GEMM problems by (M, N, K) into one of 50 buckets.
+ * Batch is tracked as a flag but does not affect the category ID,
+ * keeping the category space at 50.
  *
- * The heuristic lookup key combines this category with layout and dtype:
+ * The intended heuristic lookup combines this category with layout
+ * and dtype as separate axes:
+ *
  *   heuristic_params = lookup(category.id(), layout, dtype)
  *
- * Design rationale for why M/N/K ranges are layout-invariant:
+ * Insights from NVIDIA CUTLASS / nvMatmulHeuristics / cuBLAS:
  *
- *   1. M and N always define the output tile grid and parallelism.
- *      num_tiles = ceil(M/MT_M) * ceil(N/MT_N) — no transpose in this.
+ *   - NVIDIA uses an analytical model (not fixed size buckets) to
+ *     predict runtime, L2 hit rate, and memory bandwidth for each
+ *     candidate tile.  Origami already does this via
+ *     compute_total_latency().  The categorization here is for
+ *     applying heuristic WEIGHT ADJUSTMENTS to that model.
  *
- *   2. K always defines the reduction loop depth.
- *      AI = 2MNK / ((MK+KN+MN)*bpe) — layout-independent.
+ *   - NVIDIA's MatmulTile enum lists tiles (8x8 through 256x192).
+ *     Our M/N boundaries at {64, 256} align with the tile range:
+ *     64 is the smallest practical tile, 256 is the largest.
  *
- *   3. Layout changes which dimension is contiguous in memory (affecting
- *      coalescing and cache behavior), but the regime boundaries for
- *      tile utilization and compute-vs-memory balance are the same.
+ *   - NVIDIA's ClusterShape (1x1x1 through 16x1x1) groups thread
+ *     blocks for L2 sharing on Hopper.  This is analogous to
+ *     origami's workgroup_mapping (WGM) — a parameter selected
+ *     WITHIN a category, not a categorization axis.
  *
- *   4. The heuristic RULE applied within each category should differ
- *      per layout and dtype, but the category BOUNDARIES do not.
+ *   - NVIDIA's split-K strategies (none, stream-K, segment-K)
+ *     are selected based on K-vs-MN ratio.  Our short_k/long_k
+ *     split captures this regime transition.
  */
 struct gemm_category_t {
-  mn_range_t    m_range;
-  mn_range_t    n_range;
-  k_range_t     k_range;
-  batch_class_t batch;
+  mn_range_t m_range;
+  mn_range_t n_range;
+  k_range_t  k_range;
+  bool       batched = false;  ///< batch > 1 (not part of id())
 
-  /// Unique category id in [0, NUM_GEMM_CATEGORIES).
+  /// Unique category id in [0, NUM_GEMM_CATEGORIES), based on (M, N, K) only.
   std::size_t id() const noexcept;
 
   std::size_t m_lower() const noexcept;
@@ -174,10 +187,9 @@ struct gemm_category_t {
   std::size_t k_upper() const noexcept;
 
   /**
-   * @brief Arithmetic intensity at the geometric center of this category.
+   * @brief AI at the geometric center of this category's ranges.
    *
    * @param bytes_per_element Element size in bytes (default 2.0 for BF16)
-   * @return double AI in ops/byte
    */
   double representative_arithmetic_intensity(double bytes_per_element = 2.0) const noexcept;
 
@@ -186,7 +198,7 @@ struct gemm_category_t {
 
   bool operator==(const gemm_category_t& o) const noexcept {
     return m_range == o.m_range && n_range == o.n_range &&
-           k_range == o.k_range && batch == o.batch;
+           k_range == o.k_range && batched == o.batched;
   }
   bool operator!=(const gemm_category_t& o) const noexcept { return !(*this == o); }
 };
@@ -197,22 +209,17 @@ struct gemm_category_t {
 
 mn_range_t classify_mn(std::size_t dim) noexcept;
 k_range_t classify_k(std::size_t dim) noexcept;
-batch_class_t classify_batch(std::size_t batch) noexcept;
 
 /**
- * @brief Categorize a GEMM problem by its size dimensions and batch.
+ * @brief Categorize a GEMM problem by its dimensions.
  *
- * Uses problem.size.{m,n,k} and problem.batch.
- * Layout and dtype do NOT affect the category; they are separate
- * heuristic lookup axes.
- *
- * @param problem GEMM problem description
- * @return gemm_category_t Category descriptor
+ * Uses problem.size.{m,n,k} for the category ID and problem.batch
+ * for the batched flag.  Layout and dtype do NOT affect the category.
  */
 gemm_category_t categorize(const problem_t& problem) noexcept;
 
 /**
- * @brief Categorize from raw dimensions (batch defaults to 1).
+ * @brief Categorize from raw M, N, K (batch defaults to single).
  */
 gemm_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noexcept;
 
@@ -225,11 +232,9 @@ gemm_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noex
 gemm_category_t category_from_id(std::size_t id);
 
 /**
- * @brief Compute GEMM arithmetic intensity.
+ * @brief Compute GEMM arithmetic intensity (layout-independent).
  *
  *   AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
- *
- * Layout-independent: only depends on dimensions and element size.
  */
 double compute_arithmetic_intensity(double m, double n, double k,
                                     double bytes_per_element = 2.0) noexcept;

@@ -332,17 +332,12 @@ NB_MODULE(origami, m) {
       .value("long_k", origami::k_range_t::long_k)
       .export_values();
 
-  nanobind::enum_<origami::batch_class_t>(m, "batch_class_t")
-      .value("single", origami::batch_class_t::single)
-      .value("batched", origami::batch_class_t::batched)
-      .export_values();
-
   nanobind::class_<origami::gemm_category_t>(m, "gemm_category_t")
       .def(nanobind::init<>())
       .def_rw("m_range", &origami::gemm_category_t::m_range)
       .def_rw("n_range", &origami::gemm_category_t::n_range)
       .def_rw("k_range", &origami::gemm_category_t::k_range)
-      .def_rw("batch", &origami::gemm_category_t::batch)
+      .def_rw("batched", &origami::gemm_category_t::batched)
       .def("id", &origami::gemm_category_t::id)
       .def("m_lower", &origami::gemm_category_t::m_lower)
       .def("m_upper", &origami::gemm_category_t::m_upper)
