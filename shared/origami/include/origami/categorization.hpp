@@ -35,22 +35,24 @@
 
 namespace origami {
 
+// ============================================================================
+// Axis 1: Size ranges (M, N, K) — the geometric shape of the GEMM
+// ============================================================================
+
 /**
  * @brief Size range labels for M and N dimensions.
  *
- * Five logarithmic ranges chosen at power-of-2 boundaries that align
- * with typical macro-tile sizes (64, 128, 256) and workgroup parallelism
- * regime transitions.
+ * Five logarithmic ranges at power-of-2 boundaries aligned with
+ * typical macro-tile sizes (64, 128, 256) and parallelism regimes.
  *
- * The M and N dimensions determine tile shape and the degree of
- * parallelism (numWGs = ceil(M/MT_M) * ceil(N/MT_N)).  Five ranges
- * are needed to distinguish problems where tile utilization differs
- * significantly:
- *   - tiny:   fits in a single tile row/column (limited parallelism)
- *   - small:  1-4 tiles per dimension (partial-wave effects dominate)
- *   - medium: moderate parallelism, L2 reuse patterns emerge
- *   - large:  fully parallel, memory bandwidth limited
- *   - xlarge: deeply parallel, MALL/L2 capacity effects
+ * The number of workgroups is ceil(M/MT_M) * ceil(N/MT_N), so M and
+ * N determine tile utilization and CU occupancy.  Five ranges
+ * distinguish the key parallelism regimes:
+ *   tiny:   single-tile row/column, limited parallelism
+ *   small:  1-4 tiles, partial-wave effects dominate
+ *   medium: moderate parallelism, L2 reuse emerges
+ *   large:  fully parallel, bandwidth-limited
+ *   xlarge: deeply parallel, MALL/L2 capacity effects
  */
 enum class mn_range_t : std::uint8_t {
   tiny   = 0,  ///< [1, 64]
@@ -65,20 +67,16 @@ enum class mn_range_t : std::uint8_t {
 /**
  * @brief Size range labels for the K (reduction) dimension.
  *
- * Only two ranges are needed for K because K affects solution
- * selection through a single monotonic mechanism: arithmetic
- * intensity (AI).
+ * K affects solution selection monotonically through arithmetic
+ * intensity (AI):
  *
- * Arithmetic intensity for GEMM:
- *   AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
+ *   AI = 2MNK / ((MK + KN + MN) * bpe)
+ *   1/AI = (bpe/2) * (1/M + 1/N + 1/K)
  *
- * Equivalently:  1/AI = (bpe/2) * (1/M + 1/N + 1/K)
- *
- * Increasing K monotonically increases AI (the 1/K term shrinks).
- * At the K=2048 boundary, square problems of moderate size
- * (M=N >= 1024) cross the roofline from memory-bound to
- * compute-bound on current hardware (MI300X: ~245 ops/byte,
- * MI250X: ~120 ops/byte for BF16).
+ * Increasing K shrinks the 1/K term, raising AI.  A single boundary
+ * at K=2048 separates the memory-bound regime (short K, low AI) from
+ * the compute-bound regime (long K, high AI) for typical hardware
+ * and BF16 precision.
  */
 enum class k_range_t : std::uint8_t {
   short_k = 0,  ///< [1, 2048]    — typically memory-bound
@@ -87,165 +85,296 @@ enum class k_range_t : std::uint8_t {
   count   = 2
 };
 
-/**
- * @brief Upper bounds (inclusive) for M/N dimension ranges.
- *
- * Index i gives the upper bound for mn_range_t(i).
- * The last entry uses SIZE_MAX to represent infinity.
- */
 inline constexpr std::array<std::size_t, 5> MN_RANGE_UPPER_BOUNDS = {
     64, 256, 1024, 4096, SIZE_MAX};
 
-/**
- * @brief Upper bounds (inclusive) for K dimension ranges.
- *
- * Index i gives the upper bound for k_range_t(i).
- * The last entry uses SIZE_MAX to represent infinity.
- */
 inline constexpr std::array<std::size_t, 2> K_RANGE_UPPER_BOUNDS = {
     2048, SIZE_MAX};
 
-/// Total number of GEMM categories: |M ranges| * |N ranges| * |K ranges|.
-inline constexpr std::size_t NUM_GEMM_CATEGORIES =
+/// Number of size-only categories: 5(M) * 5(N) * 2(K) = 50.
+inline constexpr std::size_t NUM_SIZE_CATEGORIES =
     static_cast<std::size_t>(mn_range_t::count) *
     static_cast<std::size_t>(mn_range_t::count) *
     static_cast<std::size_t>(k_range_t::count);
 
-static_assert(NUM_GEMM_CATEGORIES == 50, "Category count must be 50");
+static_assert(NUM_SIZE_CATEGORIES == 50, "Size category count must be 50");
+
+// ============================================================================
+// Axis 2: Layout — matrix transpose combination
+// ============================================================================
 
 /**
- * @brief Describes a GEMM category as a tuple of dimension ranges.
+ * @brief Matrix layout (transpose pair) for op(A) * op(B).
  *
- * Each category represents a region of the (M, N, K) problem space
- * where GEMMs are expected to pick similar solutions.  The category
- * ID is a unique integer in [0, 50) computed as:
+ * Layout determines which dimension is contiguous in memory for each
+ * operand, critically affecting vectorized load width, L2 cache line
+ * utilization, and coalescing efficiency:
  *
- *   id = m_idx * |N_ranges| * |K_ranges| + n_idx * |K_ranges| + k_idx
- *      = m_idx * 10 + n_idx * 2 + k_idx
+ *   Layout | A contiguous dim | B contiguous dim
+ *   -------+------------------+-----------------
+ *     NN   |       M          |       K
+ *     NT   |       M          |       N
+ *     TN   |       K          |       K
+ *     TT   |       K          |       N
+ *
+ * (Column-major / BLAS convention: op(A) is M x K.
+ *  transA=N → A is M x K stored col-major, M contiguous.
+ *  transA=T → A is K x M stored col-major, K contiguous.)
+ *
+ * TN is the most common layout in deep learning (both operands
+ * have K contiguous, enabling the widest vector loads in the
+ * inner loop).
  */
-struct gemm_category_t {
+enum class layout_t : std::uint8_t {
+  NN = 0,
+  NT = 1,
+  TN = 2,
+  TT = 3,
+
+  count = 4
+};
+
+// ============================================================================
+// Axis 3: Data type class — grouped by compute precision
+// ============================================================================
+
+/**
+ * @brief Data type class grouping types with similar compute behavior.
+ *
+ * Types within a class share:
+ *   - Similar bytes-per-element (bpe) → same AI at given (M,N,K)
+ *   - Same or similar matrix instruction dimensions (MI_M, MI_N, MI_K)
+ *   - Similar valid macro-tile sizes
+ *
+ * Grouping prevents category explosion while preserving the key
+ * distinctions that affect solution selection.
+ */
+enum class dtype_class_t : std::uint8_t {
+  f64      = 0,  ///< Double, ComplexDouble          (8 bytes)
+  f32      = 1,  ///< Float, XFloat32                (4 bytes)
+  f16      = 2,  ///< Half, BFloat16                 (2 bytes)
+  f8       = 3,  ///< Float8*, BFloat8* variants     (1 byte)
+  i8       = 4,  ///< Int8                           (1 byte, integer path)
+  sub_byte = 5,  ///< Int4, Float4, Float6, BFloat6  (< 1 byte)
+
+  count    = 6
+};
+
+// ============================================================================
+// Axis 4: Batch regime
+// ============================================================================
+
+/**
+ * @brief Batch regime.
+ *
+ * Batched GEMMs (batch > 1) use fundamentally different workgroup
+ * mapping strategies (staggerU disabled, WGM changed) and can
+ * sometimes fuse across the batch dimension for better occupancy.
+ */
+enum class batch_class_t : std::uint8_t {
+  single  = 0,  ///< batch == 1
+  batched = 1,  ///< batch > 1
+
+  count   = 2
+};
+
+// ============================================================================
+// Composite category types
+// ============================================================================
+
+/**
+ * @brief Size-only category (M/N/K ranges).
+ *
+ * Captures the geometric shape of the GEMM independent of layout,
+ * data type, or batch count.  50 categories.
+ */
+struct gemm_size_category_t {
   mn_range_t m_range;
   mn_range_t n_range;
   k_range_t  k_range;
 
-  /// Unique category identifier in [0, NUM_GEMM_CATEGORIES).
+  /// Unique id in [0, NUM_SIZE_CATEGORIES).
   std::size_t id() const noexcept;
 
-  /// Lower bound (inclusive) for the M dimension in this category.
   std::size_t m_lower() const noexcept;
-
-  /// Upper bound (inclusive) for the M dimension in this category.
   std::size_t m_upper() const noexcept;
-
-  /// Lower bound (inclusive) for the N dimension in this category.
   std::size_t n_lower() const noexcept;
-
-  /// Upper bound (inclusive) for the N dimension in this category.
   std::size_t n_upper() const noexcept;
-
-  /// Lower bound (inclusive) for the K dimension in this category.
   std::size_t k_lower() const noexcept;
-
-  /// Upper bound (inclusive) for the K dimension in this category.
   std::size_t k_upper() const noexcept;
 
   /**
-   * @brief Compute the arithmetic intensity at the geometric center of
-   *        this category's (M, N, K) range.
+   * @brief Arithmetic intensity at the geometric center of this category.
    *
-   * AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
-   *
-   * Uses clamped geometric means of each range as representative values.
-   * For the unbounded xlarge ranges, a representative cap of 16384 is used.
-   *
-   * @param bytes_per_element Element size in bytes (e.g. 2.0 for BF16)
-   * @return double Arithmetic intensity (ops/byte)
+   * @param bytes_per_element Element size in bytes (default 2.0 for BF16)
+   * @return double AI in ops/byte
    */
   double representative_arithmetic_intensity(double bytes_per_element = 2.0) const noexcept;
 
-  /// Human-readable string, e.g. "cat21_M[257-1024]_N[65-256]_K[1-2048]".
+  std::string to_string() const;
+
+  bool operator==(const gemm_size_category_t& o) const noexcept {
+    return m_range == o.m_range && n_range == o.n_range && k_range == o.k_range;
+  }
+  bool operator!=(const gemm_size_category_t& o) const noexcept { return !(*this == o); }
+};
+
+/// Total heuristic key space: 50 sizes * 4 layouts * 6 dtypes * 2 batch = 2400.
+inline constexpr std::size_t NUM_FULL_CATEGORIES =
+    NUM_SIZE_CATEGORIES *
+    static_cast<std::size_t>(layout_t::count) *
+    static_cast<std::size_t>(dtype_class_t::count) *
+    static_cast<std::size_t>(batch_class_t::count);
+
+static_assert(NUM_FULL_CATEGORIES == 2400, "Full category space must be 2400");
+
+/**
+ * @brief Full GEMM problem category — the complete heuristic lookup key.
+ *
+ * Combines all four classification axes extracted from problem_t:
+ *   1. Size regime   (M/N/K ranges)   — 50 values
+ *   2. Layout        (transpose pair)  — 4 values
+ *   3. Data type     (precision class)  — 6 values
+ *   4. Batch regime  (single/batched)  — 2 values
+ *
+ * Design rationale (following NVIDIA CUTLASS/nvMatmulHeuristics approach):
+ *
+ *   NVIDIA's cublasLt classifies problems by
+ *   (op_type, A_type, B_type, compute_type, layout_A, layout_B)
+ *   then selects tile sizes (MatmulTile), cluster shapes (ClusterShape),
+ *   and split-K strategies per classification.
+ *
+ *   Similarly, this categorization serves as a heuristic key:
+ *     heuristic_params = lookup(category.full_id())
+ *
+ * Memory layout semantics (BLAS column-major convention):
+ *
+ *   For op(A)=M x K, op(B)=K x N:
+ *
+ *   | Layout | A stored as | A contiguous dim | B stored as | B contiguous dim |
+ *   |--------|-------------|------------------|-------------|------------------|
+ *   |   NN   |  M x K      |       M          |  K x N      |       K          |
+ *   |   NT   |  M x K      |       M          |  N x K      |       N          |
+ *   |   TN   |  K x M      |       K          |  K x N      |       K          |
+ *   |   TT   |  K x M      |       K          |  N x K      |       N          |
+ *
+ *   When the contiguous dimension is small, vectorized loads are narrow
+ *   and cache line utilization drops.  This affects the optimal tile
+ *   shape and stagger strategy within each size category.
+ */
+struct gemm_category_t {
+  gemm_size_category_t size;
+  layout_t             layout;
+  dtype_class_t        dtype;
+  batch_class_t        batch;
+
+  /// Unique id in [0, NUM_FULL_CATEGORIES).
+  std::size_t full_id() const noexcept;
+
+  /// Size-only category id in [0, NUM_SIZE_CATEGORIES) for backward compat.
+  std::size_t size_id() const noexcept { return size.id(); }
+
+  /**
+   * @brief The contiguous (fastest-varying) dimension for operand A.
+   *
+   * Returns 'm' if M is contiguous in memory (transA=N),
+   *         'k' if K is contiguous in memory (transA=T).
+   */
+  char contiguous_dim_a() const noexcept;
+
+  /**
+   * @brief The contiguous (fastest-varying) dimension for operand B.
+   *
+   * Returns 'k' if K is contiguous (transB=N),
+   *         'n' if N is contiguous (transB=T).
+   */
+  char contiguous_dim_b() const noexcept;
+
+  /**
+   * @brief Bytes per element for the classified data type.
+   */
+  double bytes_per_element() const noexcept;
+
+  /**
+   * @brief Arithmetic intensity using this category's dtype bpe.
+   */
+  double representative_arithmetic_intensity() const noexcept;
+
   std::string to_string() const;
 
   bool operator==(const gemm_category_t& o) const noexcept {
-    return m_range == o.m_range && n_range == o.n_range && k_range == o.k_range;
+    return size == o.size && layout == o.layout && dtype == o.dtype && batch == o.batch;
   }
-
   bool operator!=(const gemm_category_t& o) const noexcept { return !(*this == o); }
 };
 
-/**
- * @brief Classify an M or N dimension value into its range bucket.
- *
- * @param dim Dimension value (must be >= 1)
- * @return mn_range_t The range bucket for this dimension value
- */
+// ============================================================================
+// Classification functions
+// ============================================================================
+
 mn_range_t classify_mn(std::size_t dim) noexcept;
-
-/**
- * @brief Classify a K dimension value into its range bucket.
- *
- * @param dim Dimension value (must be >= 1)
- * @return k_range_t The range bucket for this dimension value
- */
 k_range_t classify_k(std::size_t dim) noexcept;
+layout_t classify_layout(transpose_t a_transpose, transpose_t b_transpose) noexcept;
+dtype_class_t classify_dtype(data_type_t mi_dtype) noexcept;
+batch_class_t classify_batch(std::size_t batch) noexcept;
 
 /**
- * @brief Categorize a GEMM problem into one of 50 categories.
+ * @brief Categorize a GEMM problem using all fields of problem_t.
  *
- * Maps any (M, N, K) triple into a category based on logarithmic
- * ranges of each dimension.  Problems within the same category are
- * expected to select similar GEMM solutions (tile sizes, configs).
- *
- * Mathematical basis:
- *   The GEMM arithmetic intensity AI = 2MNK / ((MK+KN+MN)*bpe)
- *   determines whether a problem is compute-bound or memory-bound.
- *   1/AI = (bpe/2) * (1/M + 1/N + 1/K) shows AI is governed by
- *   the harmonic relationship of M, N, K — the smallest dimension
- *   dominates.  The 5 M/N ranges capture tile-utilization and
- *   parallelism regimes, while the 2 K ranges separate memory-bound
- *   from compute-bound problems.
+ * Extracts:
+ *   - size.m, size.n, size.k → size category
+ *   - a_transpose, b_transpose → layout
+ *   - mi_dtype → dtype class
+ *   - batch → batch regime
  *
  * @param problem GEMM problem description
- * @return gemm_category_t Category descriptor
+ * @return gemm_category_t Full category descriptor
  */
 gemm_category_t categorize(const problem_t& problem) noexcept;
 
 /**
- * @brief Categorize by raw M, N, K dimensions.
+ * @brief Categorize from raw dimensions only (size category, defaults for rest).
  *
- * @param m M dimension
- * @param n N dimension
- * @param k K dimension
- * @return gemm_category_t Category descriptor
+ * Uses TN layout, f16 dtype, single batch as defaults.
  */
-gemm_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noexcept;
+gemm_size_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noexcept;
 
 /**
- * @brief Reconstruct a category descriptor from its integer id.
+ * @brief Reconstruct a size category from its integer id.
  *
- * @param id Category id in [0, NUM_GEMM_CATEGORIES)
- * @return gemm_category_t Category descriptor
- * @throws std::out_of_range if id >= NUM_GEMM_CATEGORIES
+ * @param id Category id in [0, NUM_SIZE_CATEGORIES)
+ * @throws std::out_of_range if id >= NUM_SIZE_CATEGORIES
  */
-gemm_category_t category_from_id(std::size_t id);
+gemm_size_category_t size_category_from_id(std::size_t id);
+
+/**
+ * @brief Reconstruct a full category from its integer id.
+ *
+ * @param id Category id in [0, NUM_FULL_CATEGORIES)
+ * @throws std::out_of_range if id >= NUM_FULL_CATEGORIES
+ */
+gemm_category_t category_from_full_id(std::size_t id);
 
 /**
  * @brief Compute GEMM arithmetic intensity.
  *
  *   AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
  *
- * This is the ratio of floating-point operations to bytes transferred,
- * and determines the roofline regime:
- *   - AI < hardware_peak_ops/memory_bw  →  memory-bound
- *   - AI > hardware_peak_ops/memory_bw  →  compute-bound
- *
  * @param m M dimension
  * @param n N dimension
  * @param k K dimension
- * @param bytes_per_element Element size in bytes (e.g. 2.0 for BF16)
+ * @param bytes_per_element Element size in bytes (default 2.0 for BF16)
  * @return double Arithmetic intensity (ops/byte)
  */
 double compute_arithmetic_intensity(double m, double n, double k,
                                     double bytes_per_element = 2.0) noexcept;
+
+// ============================================================================
+// String conversion helpers
+// ============================================================================
+
+const char* layout_to_string(layout_t layout) noexcept;
+const char* dtype_class_to_string(dtype_class_t dtype) noexcept;
+const char* batch_class_to_string(batch_class_t batch) noexcept;
 
 }  // namespace origami

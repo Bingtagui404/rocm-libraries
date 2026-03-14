@@ -332,37 +332,78 @@ NB_MODULE(origami, m) {
       .value("long_k", origami::k_range_t::long_k)
       .export_values();
 
+  nanobind::enum_<origami::layout_t>(m, "layout_t")
+      .value("NN", origami::layout_t::NN)
+      .value("NT", origami::layout_t::NT)
+      .value("TN", origami::layout_t::TN)
+      .value("TT", origami::layout_t::TT)
+      .export_values();
+
+  nanobind::enum_<origami::dtype_class_t>(m, "dtype_class_t")
+      .value("f64", origami::dtype_class_t::f64)
+      .value("f32", origami::dtype_class_t::f32)
+      .value("f16", origami::dtype_class_t::f16)
+      .value("f8", origami::dtype_class_t::f8)
+      .value("i8", origami::dtype_class_t::i8)
+      .value("sub_byte", origami::dtype_class_t::sub_byte)
+      .export_values();
+
+  nanobind::enum_<origami::batch_class_t>(m, "batch_class_t")
+      .value("single", origami::batch_class_t::single)
+      .value("batched", origami::batch_class_t::batched)
+      .export_values();
+
+  nanobind::class_<origami::gemm_size_category_t>(m, "gemm_size_category_t")
+      .def(nanobind::init<>())
+      .def_rw("m_range", &origami::gemm_size_category_t::m_range)
+      .def_rw("n_range", &origami::gemm_size_category_t::n_range)
+      .def_rw("k_range", &origami::gemm_size_category_t::k_range)
+      .def("id", &origami::gemm_size_category_t::id)
+      .def("m_lower", &origami::gemm_size_category_t::m_lower)
+      .def("m_upper", &origami::gemm_size_category_t::m_upper)
+      .def("n_lower", &origami::gemm_size_category_t::n_lower)
+      .def("n_upper", &origami::gemm_size_category_t::n_upper)
+      .def("k_lower", &origami::gemm_size_category_t::k_lower)
+      .def("k_upper", &origami::gemm_size_category_t::k_upper)
+      .def("to_string", &origami::gemm_size_category_t::to_string)
+      .def("representative_arithmetic_intensity",
+           &origami::gemm_size_category_t::representative_arithmetic_intensity,
+           nanobind::arg("bytes_per_element") = 2.0)
+      .def("__eq__", &origami::gemm_size_category_t::operator==)
+      .def("__ne__", &origami::gemm_size_category_t::operator!=);
+
   nanobind::class_<origami::gemm_category_t>(m, "gemm_category_t")
       .def(nanobind::init<>())
-      .def_rw("m_range", &origami::gemm_category_t::m_range)
-      .def_rw("n_range", &origami::gemm_category_t::n_range)
-      .def_rw("k_range", &origami::gemm_category_t::k_range)
-      .def("id", &origami::gemm_category_t::id)
-      .def("m_lower", &origami::gemm_category_t::m_lower)
-      .def("m_upper", &origami::gemm_category_t::m_upper)
-      .def("n_lower", &origami::gemm_category_t::n_lower)
-      .def("n_upper", &origami::gemm_category_t::n_upper)
-      .def("k_lower", &origami::gemm_category_t::k_lower)
-      .def("k_upper", &origami::gemm_category_t::k_upper)
-      .def("to_string", &origami::gemm_category_t::to_string)
+      .def_rw("size", &origami::gemm_category_t::size)
+      .def_rw("layout", &origami::gemm_category_t::layout)
+      .def_rw("dtype", &origami::gemm_category_t::dtype)
+      .def_rw("batch", &origami::gemm_category_t::batch)
+      .def("full_id", &origami::gemm_category_t::full_id)
+      .def("size_id", &origami::gemm_category_t::size_id)
+      .def("contiguous_dim_a", &origami::gemm_category_t::contiguous_dim_a)
+      .def("contiguous_dim_b", &origami::gemm_category_t::contiguous_dim_b)
+      .def("bytes_per_element", &origami::gemm_category_t::bytes_per_element)
       .def("representative_arithmetic_intensity",
-           &origami::gemm_category_t::representative_arithmetic_intensity,
-           nanobind::arg("bytes_per_element") = 2.0,
-           "Arithmetic intensity at the geometric center of this category")
+           &origami::gemm_category_t::representative_arithmetic_intensity)
+      .def("to_string", &origami::gemm_category_t::to_string)
       .def("__eq__", &origami::gemm_category_t::operator==)
       .def("__ne__", &origami::gemm_category_t::operator!=);
 
   m.def("categorize",
         &origami::categorize,
-        "Categorize a GEMM problem into one of 100 categories");
+        "Categorize a GEMM problem using all problem_t fields");
 
   m.def("categorize_mnk",
         &origami::categorize_mnk,
-        "Categorize by M, N, K dimensions");
+        "Categorize by M, N, K dimensions (size category only)");
 
-  m.def("category_from_id",
-        &origami::category_from_id,
-        "Reconstruct a category from its integer id");
+  m.def("size_category_from_id",
+        &origami::size_category_from_id,
+        "Reconstruct a size category from its integer id");
+
+  m.def("category_from_full_id",
+        &origami::category_from_full_id,
+        "Reconstruct a full category from its integer id");
 
   m.def("compute_arithmetic_intensity",
         &origami::compute_arithmetic_intensity,
@@ -370,5 +411,6 @@ NB_MODULE(origami, m) {
         nanobind::arg("bytes_per_element") = 2.0,
         "Compute GEMM arithmetic intensity (ops/byte)");
 
-  m.attr("NUM_GEMM_CATEGORIES") = origami::NUM_GEMM_CATEGORIES;
+  m.attr("NUM_SIZE_CATEGORIES") = origami::NUM_SIZE_CATEGORIES;
+  m.attr("NUM_FULL_CATEGORIES") = origami::NUM_FULL_CATEGORIES;
 }
