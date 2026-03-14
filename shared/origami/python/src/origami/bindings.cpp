@@ -8,6 +8,7 @@
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/unordered_map.h>
 #include <nanobind/stl/vector.h>
+#include "origami/categorization.hpp"
 #include "origami/gemm.hpp"
 #include "origami/hardware.hpp"
 #include "origami/origami.hpp"
@@ -317,4 +318,49 @@ NB_MODULE(origami, m) {
         &origami::streamk::compute_number_of_output_tiles,
         "Compute number of output tiles");
 
+  // Categorization enums
+  nanobind::enum_<origami::mn_range_t>(m, "mn_range_t")
+      .value("tiny", origami::mn_range_t::tiny)
+      .value("small", origami::mn_range_t::small)
+      .value("medium", origami::mn_range_t::medium)
+      .value("large", origami::mn_range_t::large)
+      .value("xlarge", origami::mn_range_t::xlarge)
+      .export_values();
+
+  nanobind::enum_<origami::k_range_t>(m, "k_range_t")
+      .value("small", origami::k_range_t::small)
+      .value("medium", origami::k_range_t::medium)
+      .value("large", origami::k_range_t::large)
+      .value("xlarge", origami::k_range_t::xlarge)
+      .export_values();
+
+  nanobind::class_<origami::gemm_category_t>(m, "gemm_category_t")
+      .def(nanobind::init<>())
+      .def_rw("m_range", &origami::gemm_category_t::m_range)
+      .def_rw("n_range", &origami::gemm_category_t::n_range)
+      .def_rw("k_range", &origami::gemm_category_t::k_range)
+      .def("id", &origami::gemm_category_t::id)
+      .def("m_lower", &origami::gemm_category_t::m_lower)
+      .def("m_upper", &origami::gemm_category_t::m_upper)
+      .def("n_lower", &origami::gemm_category_t::n_lower)
+      .def("n_upper", &origami::gemm_category_t::n_upper)
+      .def("k_lower", &origami::gemm_category_t::k_lower)
+      .def("k_upper", &origami::gemm_category_t::k_upper)
+      .def("to_string", &origami::gemm_category_t::to_string)
+      .def("__eq__", &origami::gemm_category_t::operator==)
+      .def("__ne__", &origami::gemm_category_t::operator!=);
+
+  m.def("categorize",
+        &origami::categorize,
+        "Categorize a GEMM problem into one of 100 categories");
+
+  m.def("categorize_mnk",
+        &origami::categorize_mnk,
+        "Categorize by M, N, K dimensions");
+
+  m.def("category_from_id",
+        &origami::category_from_id,
+        "Reconstruct a category from its integer id");
+
+  m.attr("NUM_GEMM_CATEGORIES") = origami::NUM_GEMM_CATEGORIES;
 }
