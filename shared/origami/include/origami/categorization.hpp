@@ -42,47 +42,66 @@ namespace origami {
 /**
  * @brief Size range labels for M and N dimensions.
  *
- * M and N define the output tile grid:
- *   num_tiles = ceil(M/MT_M) * ceil(N/MT_N)
+ * The boundaries are derived from the origami latency model and
+ * TensileLite's solution-matching behavior:
  *
- * This determines parallelism and tile utilization.  Five ranges
- * capture distinct occupancy regimes.  Boundaries are derived from
- * the macro-tile sizes used in practice (MT: 32–256) and the CU
- * counts of target hardware (256–304 CUs):
+ * 1. ORIGAMI'S LATENCY MODEL decomposes total latency as:
  *
- *   tiny   [1, 64]:     Smaller than most tiles.  At the largest tile
- *                        (256), a single tile covers the dimension with
- *                        heavy padding waste. Only vector-like kernels or
- *                        one-tile solutions are competitive.
+ *      L_total = L_timestep * num_timesteps
  *
- *   small  [65, 256]:    Up to one maximum tile (MT_max = 256).  Exactly
- *                        1 tile row/column — no inter-tile parallelism
- *                        along this dimension. Edge effects dominate.
+ *    where num_timesteps = ceil(num_tiles / N_CU), and
+ *    num_tiles = ceil(M/MT_M) * ceil(N/MT_N).
  *
- *   medium [257, 1024]:  2–4 max-tiles.  Partial-wave occupancy: the GPU
- *                        is not fully utilized.  Tile choice strongly
- *                        affects utilization (e.g. M=768 → 3 tiles of
- *                        256 vs 6 tiles of 128).
+ *    The key regime transitions occur when num_tiles crosses
+ *    multiples of N_CU (256 for gfx950).  For the maximum tile
+ *    size MT_max = 256, this gives:
  *
- *   large  [1025, 4096]: 4–16 max-tiles.  For square problems at 256x256
- *                        tiles, num_tiles = 16*16 = 256, which matches
- *                        a 256-CU GPU (gfx950). This is the transition
- *                        from partial-GPU to full-GPU utilization.
+ *      num_tiles_per_dim = M / MT_max
  *
- *   xlarge [4097, inf):  16+ max-tiles per dimension.  Multiple waves
- *                        are needed, scheduling hides latency, L2/MALL
- *                        capacity effects dominate.
+ *      M <=  256:  1 tile,    num_tiles_per_dim <= 1   (sub-tile)
+ *      M <= 1024:  2-4 tiles, partial-wave occupancy
+ *      M <= 4096:  4-16 tiles, approaching full-GPU
+ *      M >  4096:  16+ tiles, multi-wave
  *
- * These roles are transpose-invariant: the output C is always M x N,
- * so the tile grid is always ceil(M/MT_M) * ceil(N/MT_N) regardless of
- * which matrix is transposed.
+ * 2. TENSILELITE'S RATIO DISTANCE operates in log-space:
+ *
+ *      d(p1, p2) = |log(M1/M2)| + |log(N1/N2)| + |log(K1/K2)|
+ *
+ *    This means solutions are matched by multiplicative ratio,
+ *    not absolute difference.  The natural binning in log-space
+ *    is geometric: each boundary should be a constant multiple
+ *    of the previous one.
+ *
+ *    The ratio between consecutive boundaries is 4x:
+ *      1 -> 64 -> 256 -> 1024 -> 4096 -> inf
+ *           (x4)   (x4)    (x4)
+ *
+ *    In log2-space, the boundaries are at {6, 8, 10, 12},
+ *    i.e. evenly spaced at intervals of 2 (factor of 4).
+ *
+ * 3. TILE SIZE ALIGNMENT:
+ *
+ *    The boundaries coincide with the macro-tile range used in
+ *    origami heuristics (MT: 32-256, from heuristics.cpp CMS configs):
+ *
+ *      64  = smallest practical tile (MI_M=16/32, 2-4 MI blocks)
+ *      256 = largest practical tile  (MT_max in CMS kernels)
+ *
+ *    The work_utilization formula from gemm.cpp:
+ *
+ *      utilization = (M * N * K) / (ceil(M/MT_M)*MT_M * ceil(N/MT_N)*MT_N * ceil(K/MT_K)*MT_K)
+ *
+ *    has discontinuities at M = k*MT_M for integer k.  The range
+ *    boundaries at {64, 256, 1024, 4096} bound the number of tiles
+ *    (1, 1-4, 4-16, 16+) which determines how much utilization loss
+ *    varies within each range.
  */
 enum class mn_range_t : std::uint8_t {
-  tiny   = 0,  ///< [1, 64]
-  small  = 1,  ///< [65, 256]
-  medium = 2,  ///< [257, 1024]
-  large  = 3,  ///< [1025, 4096]
-  xlarge = 4,  ///< [4097, inf)
+  tiny   = 0,  ///< [1, 64]     — sub-tile: M < smallest practical tile
+  small  = 1,  ///< [65, 256]   — single-tile: M <= MT_max (256)
+  medium = 2,  ///< [257, 1024] — few-tile: 2-4 max-tiles, partial-wave
+  large  = 3,  ///< [1025, 4096]— multi-tile: 4-16 max-tiles, near full-GPU
+  xlarge = 4,  ///< [4097, inf) — many-tile: 16+ max-tiles, multi-wave
 
   count  = 5
 };
@@ -90,23 +109,28 @@ enum class mn_range_t : std::uint8_t {
 /**
  * @brief Size range labels for the K (reduction) dimension.
  *
- * K defines the reduction loop depth: iterations = ceil(K/MT_K).
- * K monotonically raises arithmetic intensity:
+ * K controls the inner loop iteration count and arithmetic intensity.
+ * From the origami latency model (gemm.cpp line 861-862):
  *
- *   AI = 2MNK / ((MK + KN + MN) * bpe)
- *   1/AI = (bpe/2) * (1/M + 1/N + 1/K)
+ *   L_tile = max(L_compute * w_compute, L_mem * w_memory) * num_k_iter
  *
- * There is one structural transition: memory-bound → compute-bound.
- * The K=2048 boundary places moderate-sized square problems (M=N=1024)
- * near the roofline crossover for BF16 on current hardware:
- *   AI(1024, 1024, 2048, bpe=2) = 2*1024*1024*2048 / ((2*1024*2048 + 1024^2)*2)
- *                                ≈ 585 ops/byte
- * which is above the MI300X roofline (~247), confirming that long_k
- * problems of moderate M/N size are indeed compute-bound.
+ * The regime transition is when L_compute overtakes L_mem, i.e.
+ * when the problem crosses the roofline.  This happens when:
  *
- * Layout does not change K's role: K is always the reduction
- * dimension.  Transpose affects which address pattern is used to
- * load K-slices, but not the loop iteration count or AI.
+ *   AI = 2MNK / ((MK + KN + MN) * bpe) > peak_compute / peak_bandwidth
+ *
+ * Solving for K at the roofline crossover (for square M=N=D, bpe=2):
+ *
+ *   AI = DK / (2K + D)  =>  K_cross = AI_roof * D / (D - 2*AI_roof)
+ *
+ * For MI300X (gfx942): AI_roof ~ 247, D=1024 => K_cross ~ 477
+ * For MI350X (gfx950): AI_roof ~ 288, D=1024 => K_cross ~ 658
+ *
+ * K=2048 is well above these crossover points for D>=1024, confirming
+ * that long_k problems of moderate M/N are compute-bound on both
+ * architectures.  For smaller problems (D=256), K_cross is negative
+ * (always memory-bound regardless of K), which is correctly captured
+ * since even long_k with tiny M/N stays in a memory-bound category.
  */
 enum class k_range_t : std::uint8_t {
   short_k = 0,  ///< [1, 2048]    — typically memory-bound
@@ -144,31 +168,9 @@ static_assert(NUM_GEMM_CATEGORIES == 50, "Category count must be 50");
  * Batch is tracked as a flag but does not affect the category ID,
  * keeping the category space at 50.
  *
- * The intended heuristic lookup combines this category with layout
- * and dtype as separate axes:
+ * The intended heuristic lookup combines this with layout and dtype:
  *
  *   heuristic_params = lookup(category.id(), layout, dtype)
- *
- * Insights from NVIDIA CUTLASS / nvMatmulHeuristics / cuBLAS:
- *
- *   - NVIDIA uses an analytical model (not fixed size buckets) to
- *     predict runtime, L2 hit rate, and memory bandwidth for each
- *     candidate tile.  Origami already does this via
- *     compute_total_latency().  The categorization here is for
- *     applying heuristic WEIGHT ADJUSTMENTS to that model.
- *
- *   - NVIDIA's MatmulTile enum lists tiles (8x8 through 256x192).
- *     Our M/N boundaries at {64, 256} align with the tile range:
- *     64 is the smallest practical tile, 256 is the largest.
- *
- *   - NVIDIA's ClusterShape (1x1x1 through 16x1x1) groups thread
- *     blocks for L2 sharing on Hopper.  This is analogous to
- *     origami's workgroup_mapping (WGM) — a parameter selected
- *     WITHIN a category, not a categorization axis.
- *
- *   - NVIDIA's split-K strategies (none, stream-K, segment-K)
- *     are selected based on K-vs-MN ratio.  Our short_k/long_k
- *     split captures this regime transition.
  */
 struct gemm_category_t {
   mn_range_t m_range;
@@ -193,7 +195,7 @@ struct gemm_category_t {
    */
   double representative_arithmetic_intensity(double bytes_per_element = 2.0) const noexcept;
 
-  /// e.g. "cat042_M[257-1024]_N[65-256]_K[1-2048]_single"
+  /// e.g. "cat42_M[257-1024]_N[65-256]_K[1-2048]_single"
   std::string to_string() const;
 
   bool operator==(const gemm_category_t& o) const noexcept {
