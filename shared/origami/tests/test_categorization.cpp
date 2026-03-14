@@ -33,17 +33,13 @@
 
 using Catch::Approx;
 
-// ========================================================================
-// Size category tests (50 categories)
-// ========================================================================
-
-TEST_CASE("Categorization: NUM_SIZE_CATEGORIES is 50", "[categorization]") {
-  REQUIRE(origami::NUM_SIZE_CATEGORIES == 50);
+TEST_CASE("Categorization: NUM_GEMM_CATEGORIES is 100", "[categorization]") {
+  REQUIRE(origami::NUM_GEMM_CATEGORIES == 100);
 }
 
-TEST_CASE("Categorization: NUM_FULL_CATEGORIES is 2400", "[categorization]") {
-  REQUIRE(origami::NUM_FULL_CATEGORIES == 2400);
-}
+// ========================================================================
+// classify_mn
+// ========================================================================
 
 TEST_CASE("Categorization: classify_mn boundaries", "[categorization]") {
   REQUIRE(origami::classify_mn(1) == origami::mn_range_t::tiny);
@@ -58,6 +54,10 @@ TEST_CASE("Categorization: classify_mn boundaries", "[categorization]") {
   REQUIRE(origami::classify_mn(100000) == origami::mn_range_t::xlarge);
 }
 
+// ========================================================================
+// classify_k
+// ========================================================================
+
 TEST_CASE("Categorization: classify_k boundaries", "[categorization]") {
   REQUIRE(origami::classify_k(1) == origami::k_range_t::short_k);
   REQUIRE(origami::classify_k(2048) == origami::k_range_t::short_k);
@@ -65,46 +65,184 @@ TEST_CASE("Categorization: classify_k boundaries", "[categorization]") {
   REQUIRE(origami::classify_k(65536) == origami::k_range_t::long_k);
 }
 
-TEST_CASE("Categorization: size category id uniqueness", "[categorization]") {
-  std::set<std::size_t> ids;
-  for (int mi = 0; mi < static_cast<int>(origami::mn_range_t::count); ++mi) {
-    for (int ni = 0; ni < static_cast<int>(origami::mn_range_t::count); ++ni) {
-      for (int ki = 0; ki < static_cast<int>(origami::k_range_t::count); ++ki) {
-        origami::gemm_size_category_t cat{
-            static_cast<origami::mn_range_t>(mi),
-            static_cast<origami::mn_range_t>(ni),
-            static_cast<origami::k_range_t>(ki)};
-        REQUIRE(cat.id() < origami::NUM_SIZE_CATEGORIES);
-        ids.insert(cat.id());
-      }
-    }
-  }
-  REQUIRE(ids.size() == origami::NUM_SIZE_CATEGORIES);
+// ========================================================================
+// classify_batch
+// ========================================================================
+
+TEST_CASE("Categorization: classify_batch", "[categorization]") {
+  REQUIRE(origami::classify_batch(0) == origami::batch_class_t::single);
+  REQUIRE(origami::classify_batch(1) == origami::batch_class_t::single);
+  REQUIRE(origami::classify_batch(2) == origami::batch_class_t::batched);
+  REQUIRE(origami::classify_batch(128) == origami::batch_class_t::batched);
 }
 
-TEST_CASE("Categorization: size_category_from_id round-trip", "[categorization]") {
-  for (std::size_t id = 0; id < origami::NUM_SIZE_CATEGORIES; ++id) {
-    auto cat = origami::size_category_from_id(id);
+// ========================================================================
+// ID uniqueness and round-trip
+// ========================================================================
+
+TEST_CASE("Categorization: id uniqueness and range", "[categorization]") {
+  std::set<std::size_t> ids;
+  for (int mi = 0; mi < static_cast<int>(origami::mn_range_t::count); ++mi)
+    for (int ni = 0; ni < static_cast<int>(origami::mn_range_t::count); ++ni)
+      for (int ki = 0; ki < static_cast<int>(origami::k_range_t::count); ++ki)
+        for (int bi = 0; bi < static_cast<int>(origami::batch_class_t::count); ++bi) {
+          origami::gemm_category_t cat{
+              static_cast<origami::mn_range_t>(mi),
+              static_cast<origami::mn_range_t>(ni),
+              static_cast<origami::k_range_t>(ki),
+              static_cast<origami::batch_class_t>(bi)};
+          auto id = cat.id();
+          REQUIRE(id < origami::NUM_GEMM_CATEGORIES);
+          ids.insert(id);
+        }
+  REQUIRE(ids.size() == origami::NUM_GEMM_CATEGORIES);
+}
+
+TEST_CASE("Categorization: category_from_id round-trip", "[categorization]") {
+  for (std::size_t id = 0; id < origami::NUM_GEMM_CATEGORIES; ++id) {
+    auto cat = origami::category_from_id(id);
     REQUIRE(cat.id() == id);
   }
 }
 
-TEST_CASE("Categorization: size_category_from_id out-of-range", "[categorization]") {
-  REQUIRE_THROWS_AS(origami::size_category_from_id(50), std::out_of_range);
-  REQUIRE_THROWS_AS(origami::size_category_from_id(999), std::out_of_range);
+TEST_CASE("Categorization: category_from_id out-of-range", "[categorization]") {
+  REQUIRE_THROWS_AS(origami::category_from_id(100), std::out_of_range);
+  REQUIRE_THROWS_AS(origami::category_from_id(999), std::out_of_range);
 }
 
-TEST_CASE("Categorization: full problem space coverage", "[categorization]") {
-  std::vector<std::size_t> test_dims = {1, 32, 64, 65, 128, 256, 257, 512, 1024,
-                                        1025, 2048, 4096, 4097, 8192, 16384};
-  std::vector<std::size_t> test_k_dims = {1, 128, 512, 1024, 2048,
-                                          2049, 4096, 8192, 16384, 65536};
+// ========================================================================
+// categorize from problem_t
+// ========================================================================
 
-  for (auto m : test_dims) {
-    for (auto n : test_dims) {
-      for (auto k : test_k_dims) {
+TEST_CASE("Categorization: categorize from problem_t", "[categorization]") {
+  auto problem = make_problem(2048, 4096, 1024);
+  auto cat     = origami::categorize(problem);
+  REQUIRE(cat.m_range == origami::mn_range_t::large);
+  REQUIRE(cat.n_range == origami::mn_range_t::large);
+  REQUIRE(cat.k_range == origami::k_range_t::short_k);
+  REQUIRE(cat.batch == origami::batch_class_t::single);
+}
+
+TEST_CASE("Categorization: layout does NOT change category", "[categorization]") {
+  origami::problem_t p1;
+  p1.size = {1024, 2048, 4096};
+  p1.batch = 1;
+  p1.a_transpose = origami::transpose_t::T;
+  p1.b_transpose = origami::transpose_t::N;
+  p1.mi_dtype = origami::data_type_t::BFloat16;
+
+  origami::problem_t p2 = p1;
+  p2.a_transpose = origami::transpose_t::N;
+  p2.b_transpose = origami::transpose_t::T;
+
+  origami::problem_t p3 = p1;
+  p3.a_transpose = origami::transpose_t::N;
+  p3.b_transpose = origami::transpose_t::N;
+
+  REQUIRE(origami::categorize(p1) == origami::categorize(p2));
+  REQUIRE(origami::categorize(p1) == origami::categorize(p3));
+}
+
+TEST_CASE("Categorization: dtype does NOT change category", "[categorization]") {
+  origami::problem_t p1;
+  p1.size = {1024, 1024, 4096};
+  p1.batch = 1;
+  p1.a_transpose = origami::transpose_t::T;
+  p1.b_transpose = origami::transpose_t::N;
+  p1.mi_dtype = origami::data_type_t::BFloat16;
+
+  origami::problem_t p2 = p1;
+  p2.mi_dtype = origami::data_type_t::Float;
+  p2.a_dtype  = origami::data_type_t::Float;
+  p2.b_dtype  = origami::data_type_t::Float;
+
+  REQUIRE(origami::categorize(p1) == origami::categorize(p2));
+}
+
+TEST_CASE("Categorization: batch changes category", "[categorization]") {
+  origami::problem_t single_p;
+  single_p.size = {1024, 1024, 1024};
+  single_p.batch = 1;
+  single_p.a_transpose = origami::transpose_t::T;
+  single_p.b_transpose = origami::transpose_t::N;
+  single_p.mi_dtype = origami::data_type_t::BFloat16;
+
+  origami::problem_t batched_p = single_p;
+  batched_p.batch = 16;
+
+  auto single_cat  = origami::categorize(single_p);
+  auto batched_cat = origami::categorize(batched_p);
+
+  REQUIRE(single_cat.m_range == batched_cat.m_range);
+  REQUIRE(single_cat.n_range == batched_cat.n_range);
+  REQUIRE(single_cat.k_range == batched_cat.k_range);
+  REQUIRE(single_cat.batch != batched_cat.batch);
+  REQUIRE(single_cat.id() != batched_cat.id());
+}
+
+// ========================================================================
+// categorize_mnk (size-only, batch=single)
+// ========================================================================
+
+TEST_CASE("Categorization: categorize_mnk", "[categorization]") {
+  auto cat = origami::categorize_mnk(32, 128, 512);
+  REQUIRE(cat.m_range == origami::mn_range_t::tiny);
+  REQUIRE(cat.n_range == origami::mn_range_t::small);
+  REQUIRE(cat.k_range == origami::k_range_t::short_k);
+  REQUIRE(cat.batch == origami::batch_class_t::single);
+}
+
+// ========================================================================
+// Boundary and corner cases
+// ========================================================================
+
+TEST_CASE("Categorization: boundary values", "[categorization]") {
+  SECTION("id 0: tiny M, tiny N, short K, single") {
+    auto cat = origami::categorize_mnk(1, 1, 1);
+    REQUIRE(cat.id() == 0);
+  }
+
+  SECTION("max id: xlarge M, xlarge N, long K, batched") {
+    origami::gemm_category_t cat{origami::mn_range_t::xlarge,
+                                  origami::mn_range_t::xlarge,
+                                  origami::k_range_t::long_k,
+                                  origami::batch_class_t::batched};
+    REQUIRE(cat.id() == 99);
+  }
+
+  SECTION("exact boundary: K=2048 vs K=2049") {
+    auto a = origami::categorize_mnk(512, 512, 2048);
+    auto b = origami::categorize_mnk(512, 512, 2049);
+    REQUIRE(a.k_range == origami::k_range_t::short_k);
+    REQUIRE(b.k_range == origami::k_range_t::long_k);
+  }
+}
+
+TEST_CASE("Categorization: bound accessors", "[categorization]") {
+  auto cat = origami::categorize_mnk(512, 128, 4096);
+  REQUIRE(cat.m_lower() == 257);
+  REQUIRE(cat.m_upper() == 1024);
+  REQUIRE(cat.n_lower() == 65);
+  REQUIRE(cat.n_upper() == 256);
+  REQUIRE(cat.k_lower() == 2049);
+  REQUIRE(cat.k_upper() == SIZE_MAX);
+}
+
+// ========================================================================
+// Full problem space coverage
+// ========================================================================
+
+TEST_CASE("Categorization: full problem space coverage", "[categorization]") {
+  std::vector<std::size_t> dims = {1, 32, 64, 65, 128, 256, 257, 512, 1024,
+                                   1025, 2048, 4096, 4097, 8192, 16384};
+  std::vector<std::size_t> k_dims = {1, 128, 512, 1024, 2048,
+                                     2049, 4096, 8192, 16384, 65536};
+
+  for (auto m : dims)
+    for (auto n : dims)
+      for (auto k : k_dims) {
         auto cat = origami::categorize_mnk(m, n, k);
-        REQUIRE(cat.id() < origami::NUM_SIZE_CATEGORIES);
+        REQUIRE(cat.id() < origami::NUM_GEMM_CATEGORIES);
         REQUIRE(m >= cat.m_lower());
         REQUIRE(n >= cat.n_lower());
         REQUIRE(k >= cat.k_lower());
@@ -112,287 +250,68 @@ TEST_CASE("Categorization: full problem space coverage", "[categorization]") {
         if (cat.n_upper() != SIZE_MAX) REQUIRE(n <= cat.n_upper());
         if (cat.k_upper() != SIZE_MAX) REQUIRE(k <= cat.k_upper());
       }
-    }
-  }
 }
 
 // ========================================================================
-// Layout classification
+// Similar/different problems
 // ========================================================================
 
-TEST_CASE("Categorization: classify_layout", "[categorization]") {
-  REQUIRE(origami::classify_layout(origami::transpose_t::N, origami::transpose_t::N) == origami::layout_t::NN);
-  REQUIRE(origami::classify_layout(origami::transpose_t::N, origami::transpose_t::T) == origami::layout_t::NT);
-  REQUIRE(origami::classify_layout(origami::transpose_t::T, origami::transpose_t::N) == origami::layout_t::TN);
-  REQUIRE(origami::classify_layout(origami::transpose_t::T, origami::transpose_t::T) == origami::layout_t::TT);
+TEST_CASE("Categorization: similar problems share category", "[categorization]") {
+  REQUIRE(origami::categorize_mnk(2048, 2048, 4096) ==
+          origami::categorize_mnk(3000, 3500, 5000));
 }
 
-TEST_CASE("Categorization: contiguous dimensions", "[categorization]") {
-  SECTION("NN: A contiguous=M, B contiguous=K") {
-    origami::problem_t problem;
-    problem.size = {1024, 1024, 1024};
-    problem.a_transpose = origami::transpose_t::N;
-    problem.b_transpose = origami::transpose_t::N;
-    problem.mi_dtype = origami::data_type_t::BFloat16;
-    auto cat = origami::categorize(problem);
-    REQUIRE(cat.contiguous_dim_a() == 'm');
-    REQUIRE(cat.contiguous_dim_b() == 'k');
-  }
-
-  SECTION("NT: A contiguous=M, B contiguous=N") {
-    origami::problem_t problem;
-    problem.size = {1024, 1024, 1024};
-    problem.a_transpose = origami::transpose_t::N;
-    problem.b_transpose = origami::transpose_t::T;
-    problem.mi_dtype = origami::data_type_t::BFloat16;
-    auto cat = origami::categorize(problem);
-    REQUIRE(cat.contiguous_dim_a() == 'm');
-    REQUIRE(cat.contiguous_dim_b() == 'n');
-  }
-
-  SECTION("TN: A contiguous=K, B contiguous=K") {
-    origami::problem_t problem;
-    problem.size = {1024, 1024, 1024};
-    problem.a_transpose = origami::transpose_t::T;
-    problem.b_transpose = origami::transpose_t::N;
-    problem.mi_dtype = origami::data_type_t::BFloat16;
-    auto cat = origami::categorize(problem);
-    REQUIRE(cat.contiguous_dim_a() == 'k');
-    REQUIRE(cat.contiguous_dim_b() == 'k');
-  }
-
-  SECTION("TT: A contiguous=K, B contiguous=N") {
-    origami::problem_t problem;
-    problem.size = {1024, 1024, 1024};
-    problem.a_transpose = origami::transpose_t::T;
-    problem.b_transpose = origami::transpose_t::T;
-    problem.mi_dtype = origami::data_type_t::BFloat16;
-    auto cat = origami::categorize(problem);
-    REQUIRE(cat.contiguous_dim_a() == 'k');
-    REQUIRE(cat.contiguous_dim_b() == 'n');
-  }
-}
-
-// ========================================================================
-// Data type classification
-// ========================================================================
-
-TEST_CASE("Categorization: classify_dtype", "[categorization]") {
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Double) == origami::dtype_class_t::f64);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Float) == origami::dtype_class_t::f32);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::XFloat32) == origami::dtype_class_t::f32);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Half) == origami::dtype_class_t::f16);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::BFloat16) == origami::dtype_class_t::f16);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Float8) == origami::dtype_class_t::f8);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::BFloat8) == origami::dtype_class_t::f8);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Float8BFloat8) == origami::dtype_class_t::f8);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Int8) == origami::dtype_class_t::i8);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Int4) == origami::dtype_class_t::sub_byte);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Float4) == origami::dtype_class_t::sub_byte);
-  REQUIRE(origami::classify_dtype(origami::data_type_t::Float6) == origami::dtype_class_t::sub_byte);
-}
-
-TEST_CASE("Categorization: bytes_per_element by dtype class", "[categorization]") {
-  origami::problem_t problem;
-  problem.size = {1024, 1024, 1024};
-  problem.a_transpose = origami::transpose_t::T;
-  problem.b_transpose = origami::transpose_t::N;
-
-  problem.mi_dtype = origami::data_type_t::Double;
-  REQUIRE(origami::categorize(problem).bytes_per_element() == 8.0);
-
-  problem.mi_dtype = origami::data_type_t::Float;
-  REQUIRE(origami::categorize(problem).bytes_per_element() == 4.0);
-
-  problem.mi_dtype = origami::data_type_t::BFloat16;
-  REQUIRE(origami::categorize(problem).bytes_per_element() == 2.0);
-
-  problem.mi_dtype = origami::data_type_t::Float8;
-  REQUIRE(origami::categorize(problem).bytes_per_element() == 1.0);
-
-  problem.mi_dtype = origami::data_type_t::Float4;
-  REQUIRE(origami::categorize(problem).bytes_per_element() == 0.5);
-}
-
-// ========================================================================
-// Batch classification
-// ========================================================================
-
-TEST_CASE("Categorization: classify_batch", "[categorization]") {
-  REQUIRE(origami::classify_batch(1) == origami::batch_class_t::single);
-  REQUIRE(origami::classify_batch(0) == origami::batch_class_t::single);
-  REQUIRE(origami::classify_batch(2) == origami::batch_class_t::batched);
-  REQUIRE(origami::classify_batch(128) == origami::batch_class_t::batched);
-}
-
-// ========================================================================
-// Full categorization from problem_t
-// ========================================================================
-
-TEST_CASE("Categorization: full categorize from problem_t", "[categorization]") {
-  origami::problem_t problem;
-  problem.size = {2048, 4096, 1024};
-  problem.batch = 1;
-  problem.a_transpose = origami::transpose_t::T;
-  problem.b_transpose = origami::transpose_t::N;
-  problem.a_dtype = origami::data_type_t::BFloat16;
-  problem.b_dtype = origami::data_type_t::BFloat16;
-  problem.mi_dtype = origami::data_type_t::BFloat16;
-
-  auto cat = origami::categorize(problem);
-
-  REQUIRE(cat.size.m_range == origami::mn_range_t::large);
-  REQUIRE(cat.size.n_range == origami::mn_range_t::large);
-  REQUIRE(cat.size.k_range == origami::k_range_t::short_k);
-  REQUIRE(cat.layout == origami::layout_t::TN);
-  REQUIRE(cat.dtype == origami::dtype_class_t::f16);
-  REQUIRE(cat.batch == origami::batch_class_t::single);
-}
-
-TEST_CASE("Categorization: different layouts produce different categories", "[categorization]") {
-  auto make = [](origami::transpose_t a, origami::transpose_t b) {
-    origami::problem_t p;
-    p.size = {1024, 1024, 4096};
-    p.a_transpose = a;
-    p.b_transpose = b;
-    p.mi_dtype = origami::data_type_t::BFloat16;
-    return origami::categorize(p);
-  };
-
-  auto tn = make(origami::transpose_t::T, origami::transpose_t::N);
-  auto nt = make(origami::transpose_t::N, origami::transpose_t::T);
-  auto nn = make(origami::transpose_t::N, origami::transpose_t::N);
-
-  REQUIRE(tn.size == nt.size);
-  REQUIRE(tn.layout != nt.layout);
-  REQUIRE(tn.layout != nn.layout);
-  REQUIRE(tn.full_id() != nt.full_id());
-  REQUIRE(tn.full_id() != nn.full_id());
-}
-
-TEST_CASE("Categorization: different dtypes produce different categories", "[categorization]") {
-  auto make = [](origami::data_type_t dtype) {
-    origami::problem_t p;
-    p.size = {1024, 1024, 4096};
-    p.a_transpose = origami::transpose_t::T;
-    p.b_transpose = origami::transpose_t::N;
-    p.mi_dtype = dtype;
-    return origami::categorize(p);
-  };
-
-  auto bf16 = make(origami::data_type_t::BFloat16);
-  auto fp32 = make(origami::data_type_t::Float);
-  auto fp8  = make(origami::data_type_t::Float8);
-
-  REQUIRE(bf16.size == fp32.size);
-  REQUIRE(bf16.dtype != fp32.dtype);
-  REQUIRE(bf16.dtype != fp8.dtype);
-  REQUIRE(bf16.full_id() != fp32.full_id());
-}
-
-TEST_CASE("Categorization: batched vs single produce different categories", "[categorization]") {
-  origami::problem_t single_problem;
-  single_problem.size = {1024, 1024, 1024};
-  single_problem.batch = 1;
-  single_problem.a_transpose = origami::transpose_t::T;
-  single_problem.b_transpose = origami::transpose_t::N;
-  single_problem.mi_dtype = origami::data_type_t::BFloat16;
-
-  origami::problem_t batch_problem = single_problem;
-  batch_problem.batch = 16;
-
-  auto single_cat = origami::categorize(single_problem);
-  auto batch_cat  = origami::categorize(batch_problem);
-
-  REQUIRE(single_cat.size == batch_cat.size);
-  REQUIRE(single_cat.batch != batch_cat.batch);
-  REQUIRE(single_cat.full_id() != batch_cat.full_id());
-}
-
-// ========================================================================
-// Full ID round-trip
-// ========================================================================
-
-TEST_CASE("Categorization: category_from_full_id round-trip", "[categorization]") {
-  for (std::size_t sz = 0; sz < origami::NUM_SIZE_CATEGORIES; ++sz) {
-    for (int li = 0; li < static_cast<int>(origami::layout_t::count); ++li) {
-      for (int di = 0; di < static_cast<int>(origami::dtype_class_t::count); ++di) {
-        for (int bi = 0; bi < static_cast<int>(origami::batch_class_t::count); ++bi) {
-          origami::gemm_category_t cat{
-              origami::size_category_from_id(sz),
-              static_cast<origami::layout_t>(li),
-              static_cast<origami::dtype_class_t>(di),
-              static_cast<origami::batch_class_t>(bi)};
-          auto id = cat.full_id();
-          REQUIRE(id < origami::NUM_FULL_CATEGORIES);
-          auto recovered = origami::category_from_full_id(id);
-          REQUIRE(recovered == cat);
-        }
-      }
-    }
-  }
-}
-
-TEST_CASE("Categorization: category_from_full_id out-of-range", "[categorization]") {
-  REQUIRE_THROWS_AS(origami::category_from_full_id(2400), std::out_of_range);
+TEST_CASE("Categorization: different regimes have different categories", "[categorization]") {
+  REQUIRE(origami::categorize_mnk(32, 32, 32) != origami::categorize_mnk(4096, 4096, 4096));
+  REQUIRE(origami::categorize_mnk(8192, 64, 1024) != origami::categorize_mnk(64, 8192, 1024));
 }
 
 // ========================================================================
 // Arithmetic intensity
 // ========================================================================
 
-TEST_CASE("Categorization: AI varies with dtype bpe", "[categorization]") {
-  origami::problem_t p;
-  p.size = {2048, 2048, 4096};
-  p.a_transpose = origami::transpose_t::T;
-  p.b_transpose = origami::transpose_t::N;
-
-  p.mi_dtype = origami::data_type_t::Float8;
-  auto cat_f8 = origami::categorize(p);
-
-  p.mi_dtype = origami::data_type_t::BFloat16;
-  auto cat_f16 = origami::categorize(p);
-
-  p.mi_dtype = origami::data_type_t::Float;
-  auto cat_f32 = origami::categorize(p);
-
-  REQUIRE(cat_f8.representative_arithmetic_intensity() >
-          cat_f16.representative_arithmetic_intensity());
-  REQUIRE(cat_f16.representative_arithmetic_intensity() >
-          cat_f32.representative_arithmetic_intensity());
-}
-
-TEST_CASE("Categorization: compute_arithmetic_intensity formula", "[categorization]") {
+TEST_CASE("Categorization: arithmetic intensity formula", "[categorization]") {
   double m = 1024, n = 1024, k = 1024, bpe = 2.0;
   double expected = 2.0 * m * n * k / ((m * k + k * n + m * n) * bpe);
   REQUIRE(origami::compute_arithmetic_intensity(m, n, k, bpe) == Approx(expected));
 }
 
+TEST_CASE("Categorization: representative AI", "[categorization]") {
+  SECTION("long_k has higher AI than short_k") {
+    for (int mi = 0; mi < static_cast<int>(origami::mn_range_t::count); ++mi)
+      for (int ni = 0; ni < static_cast<int>(origami::mn_range_t::count); ++ni) {
+        origami::gemm_category_t short_cat{
+            static_cast<origami::mn_range_t>(mi),
+            static_cast<origami::mn_range_t>(ni),
+            origami::k_range_t::short_k,
+            origami::batch_class_t::single};
+        origami::gemm_category_t long_cat{
+            static_cast<origami::mn_range_t>(mi),
+            static_cast<origami::mn_range_t>(ni),
+            origami::k_range_t::long_k,
+            origami::batch_class_t::single};
+        REQUIRE(long_cat.representative_arithmetic_intensity() >
+                short_cat.representative_arithmetic_intensity());
+      }
+  }
+
+  SECTION("AI is positive for all categories") {
+    for (std::size_t id = 0; id < origami::NUM_GEMM_CATEGORIES; ++id) {
+      REQUIRE(origami::category_from_id(id).representative_arithmetic_intensity() > 0.0);
+    }
+  }
+}
+
 // ========================================================================
-// String conversion
+// to_string
 // ========================================================================
 
 TEST_CASE("Categorization: to_string format", "[categorization]") {
-  origami::problem_t p;
-  p.size = {512, 128, 4096};
-  p.a_transpose = origami::transpose_t::T;
-  p.b_transpose = origami::transpose_t::N;
-  p.mi_dtype = origami::data_type_t::BFloat16;
-  p.batch = 1;
-
-  auto cat = origami::categorize(p);
+  auto cat = origami::categorize_mnk(512, 128, 4096);
   auto str = cat.to_string();
-
-  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("sz"));
+  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("cat"));
   REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("_M["));
-  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("TN"));
-  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("f16"));
+  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("_N["));
+  REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("_K["));
   REQUIRE_THAT(str, Catch::Matchers::ContainsSubstring("single"));
-}
-
-TEST_CASE("Categorization: layout_to_string", "[categorization]") {
-  REQUIRE(std::string(origami::layout_to_string(origami::layout_t::NN)) == "NN");
-  REQUIRE(std::string(origami::layout_to_string(origami::layout_t::NT)) == "NT");
-  REQUIRE(std::string(origami::layout_to_string(origami::layout_t::TN)) == "TN");
-  REQUIRE(std::string(origami::layout_to_string(origami::layout_t::TT)) == "TT");
 }

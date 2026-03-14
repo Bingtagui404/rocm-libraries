@@ -40,8 +40,8 @@ K_LABELS  = ["short_k [1,2048]", "long_k [2049,inf)"]
 
 NUM_MN = len(MN_BOUNDS)
 NUM_K  = len(K_BOUNDS)
-NUM_SIZE_CATEGORIES = NUM_MN * NUM_MN * NUM_K  # 50
-NUM_CATEGORIES = NUM_SIZE_CATEGORIES  # alias
+NUM_SIZE_CATEGORIES = NUM_MN * NUM_MN * NUM_K  # 50 (without batch)
+NUM_CATEGORIES = NUM_SIZE_CATEGORIES  # analysis uses size categories only
 
 
 def ai(m, n, k, bpe=2.0):
