@@ -173,11 +173,14 @@ def fig2_ai_distribution(outdir):
     ax.legend(fontsize=11)
 
     ax.axvline(x=120, color="green", linestyle="--", linewidth=1.5, alpha=0.8)
-    ax.text(130, ax.get_ylim()[1] * 0.85, "MI250X\nroofline\n~120",
+    ax.text(130, ax.get_ylim()[1] * 0.85, "MI250X\n(gfx90a)\n~120",
             fontsize=9, color="green", va="top")
-    ax.axvline(x=245, color="purple", linestyle="--", linewidth=1.5, alpha=0.8)
-    ax.text(260, ax.get_ylim()[1] * 0.7, "MI300X\nroofline\n~245",
+    ax.axvline(x=247, color="purple", linestyle="--", linewidth=1.5, alpha=0.8)
+    ax.text(260, ax.get_ylim()[1] * 0.7, "MI300X\n(gfx942)\n~247",
             fontsize=9, color="purple", va="top")
+    ax.axvline(x=288, color="red", linestyle="--", linewidth=1.5, alpha=0.8)
+    ax.text(300, ax.get_ylim()[1] * 0.55, "MI350X\n(gfx950)\n~288",
+            fontsize=9, color="red", va="top")
 
     ax.grid(True, alpha=0.3)
 
@@ -209,9 +212,11 @@ def fig3_ai_vs_dimension(outdir):
         ax.plot(D, ai_vals, style, color=color, linewidth=lw, label=f"K={k}")
 
     ax.axhline(y=120, color="green", linestyle=":", linewidth=1.5, alpha=0.6)
-    ax.text(1.5, 130, "MI250X roofline (~120)", fontsize=9, color="green")
-    ax.axhline(y=245, color="purple", linestyle=":", linewidth=1.5, alpha=0.6)
-    ax.text(1.5, 260, "MI300X roofline (~245)", fontsize=9, color="purple")
+    ax.text(1.5, 130, "MI250X (gfx90a) roofline ~120", fontsize=9, color="green")
+    ax.axhline(y=247, color="purple", linestyle=":", linewidth=1.5, alpha=0.6)
+    ax.text(1.5, 260, "MI300X (gfx942) roofline ~247", fontsize=9, color="purple")
+    ax.axhline(y=288, color="red", linestyle=":", linewidth=1.5, alpha=0.6)
+    ax.text(1.5, 310, "MI350X (gfx950) roofline ~288", fontsize=9, color="red")
 
     for i, ub in enumerate(MN_BOUNDS[:-1]):
         ax.axvline(x=ub, color="gray", linestyle="-.", linewidth=0.8, alpha=0.5)
@@ -387,13 +392,15 @@ def fig6_roofline_regime(outdir):
     Classify each category as memory-bound, transitional, or compute-bound
     relative to MI300X and MI250X rooflines.
     """
-    MI300X_ROOFLINE = 245  # BF16 ops/byte
-    MI250X_ROOFLINE = 120
+    MI250X_ROOFLINE = 120   # gfx90a: 383 TFLOPS / 3.2 TB/s
+    MI300X_ROOFLINE = 247   # gfx942: 1307 TFLOPS / 5.3 TB/s
+    MI350X_ROOFLINE = 288   # gfx950: ~2300 TFLOPS / 8.0 TB/s
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(21, 7), constrained_layout=True)
 
-    for idx, (roofline, hw_name) in enumerate([(MI250X_ROOFLINE, "MI250X (gfx942)"),
-                                                (MI300X_ROOFLINE, "MI300X (gfx950)")]):
+    for idx, (roofline, hw_name) in enumerate([(MI250X_ROOFLINE, "MI250X (gfx90a)"),
+                                                (MI300X_ROOFLINE, "MI300X (gfx942)"),
+                                                (MI350X_ROOFLINE, "MI350X (gfx950)")]):
         ax = axes[idx]
         data = np.zeros((NUM_MN, NUM_MN, NUM_K))
 
