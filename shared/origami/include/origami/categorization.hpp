@@ -38,8 +38,19 @@ namespace origami {
 /**
  * @brief Size range labels for M and N dimensions.
  *
- * Logarithmic ranges chosen at power-of-2 boundaries that align with
- * typical macro-tile sizes and GEMM regime transitions.
+ * Five logarithmic ranges chosen at power-of-2 boundaries that align
+ * with typical macro-tile sizes (64, 128, 256) and workgroup parallelism
+ * regime transitions.
+ *
+ * The M and N dimensions determine tile shape and the degree of
+ * parallelism (numWGs = ceil(M/MT_M) * ceil(N/MT_N)).  Five ranges
+ * are needed to distinguish problems where tile utilization differs
+ * significantly:
+ *   - tiny:   fits in a single tile row/column (limited parallelism)
+ *   - small:  1-4 tiles per dimension (partial-wave effects dominate)
+ *   - medium: moderate parallelism, L2 reuse patterns emerge
+ *   - large:  fully parallel, memory bandwidth limited
+ *   - xlarge: deeply parallel, MALL/L2 capacity effects
  */
 enum class mn_range_t : std::uint8_t {
   tiny   = 0,  ///< [1, 64]
@@ -54,16 +65,26 @@ enum class mn_range_t : std::uint8_t {
 /**
  * @brief Size range labels for the K (reduction) dimension.
  *
- * Fewer ranges than M/N because K primarily affects loop iteration
- * count and memory-vs-compute balance rather than tile shape.
+ * Only two ranges are needed for K because K affects solution
+ * selection through a single monotonic mechanism: arithmetic
+ * intensity (AI).
+ *
+ * Arithmetic intensity for GEMM:
+ *   AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
+ *
+ * Equivalently:  1/AI = (bpe/2) * (1/M + 1/N + 1/K)
+ *
+ * Increasing K monotonically increases AI (the 1/K term shrinks).
+ * At the K=2048 boundary, square problems of moderate size
+ * (M=N >= 1024) cross the roofline from memory-bound to
+ * compute-bound on current hardware (MI300X: ~245 ops/byte,
+ * MI250X: ~120 ops/byte for BF16).
  */
 enum class k_range_t : std::uint8_t {
-  small  = 0,  ///< [1, 256]
-  medium = 1,  ///< [257, 2048]
-  large  = 2,  ///< [2049, 8192]
-  xlarge = 3,  ///< [8193, inf)
+  short_k = 0,  ///< [1, 2048]    — typically memory-bound
+  long_k  = 1,  ///< [2049, inf)  — typically compute-bound
 
-  count  = 4
+  count   = 2
 };
 
 /**
@@ -81,8 +102,8 @@ inline constexpr std::array<std::size_t, 5> MN_RANGE_UPPER_BOUNDS = {
  * Index i gives the upper bound for k_range_t(i).
  * The last entry uses SIZE_MAX to represent infinity.
  */
-inline constexpr std::array<std::size_t, 4> K_RANGE_UPPER_BOUNDS = {
-    256, 2048, 8192, SIZE_MAX};
+inline constexpr std::array<std::size_t, 2> K_RANGE_UPPER_BOUNDS = {
+    2048, SIZE_MAX};
 
 /// Total number of GEMM categories: |M ranges| * |N ranges| * |K ranges|.
 inline constexpr std::size_t NUM_GEMM_CATEGORIES =
@@ -90,10 +111,17 @@ inline constexpr std::size_t NUM_GEMM_CATEGORIES =
     static_cast<std::size_t>(mn_range_t::count) *
     static_cast<std::size_t>(k_range_t::count);
 
-static_assert(NUM_GEMM_CATEGORIES == 100, "Category count must be 100");
+static_assert(NUM_GEMM_CATEGORIES == 50, "Category count must be 50");
 
 /**
  * @brief Describes a GEMM category as a tuple of dimension ranges.
+ *
+ * Each category represents a region of the (M, N, K) problem space
+ * where GEMMs are expected to pick similar solutions.  The category
+ * ID is a unique integer in [0, 50) computed as:
+ *
+ *   id = m_idx * |N_ranges| * |K_ranges| + n_idx * |K_ranges| + k_idx
+ *      = m_idx * 10 + n_idx * 2 + k_idx
  */
 struct gemm_category_t {
   mn_range_t m_range;
@@ -121,7 +149,21 @@ struct gemm_category_t {
   /// Upper bound (inclusive) for the K dimension in this category.
   std::size_t k_upper() const noexcept;
 
-  /// Human-readable string, e.g. "cat042_M[257-1024]_N[65-256]_K[257-2048]".
+  /**
+   * @brief Compute the arithmetic intensity at the geometric center of
+   *        this category's (M, N, K) range.
+   *
+   * AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
+   *
+   * Uses clamped geometric means of each range as representative values.
+   * For the unbounded xlarge ranges, a representative cap of 16384 is used.
+   *
+   * @param bytes_per_element Element size in bytes (e.g. 2.0 for BF16)
+   * @return double Arithmetic intensity (ops/byte)
+   */
+  double representative_arithmetic_intensity(double bytes_per_element = 2.0) const noexcept;
+
+  /// Human-readable string, e.g. "cat21_M[257-1024]_N[65-256]_K[1-2048]".
   std::string to_string() const;
 
   bool operator==(const gemm_category_t& o) const noexcept {
@@ -148,11 +190,20 @@ mn_range_t classify_mn(std::size_t dim) noexcept;
 k_range_t classify_k(std::size_t dim) noexcept;
 
 /**
- * @brief Categorize a GEMM problem into one of 100 categories.
+ * @brief Categorize a GEMM problem into one of 50 categories.
  *
  * Maps any (M, N, K) triple into a category based on logarithmic
- * ranges of each dimension. Problems within the same category are
+ * ranges of each dimension.  Problems within the same category are
  * expected to select similar GEMM solutions (tile sizes, configs).
+ *
+ * Mathematical basis:
+ *   The GEMM arithmetic intensity AI = 2MNK / ((MK+KN+MN)*bpe)
+ *   determines whether a problem is compute-bound or memory-bound.
+ *   1/AI = (bpe/2) * (1/M + 1/N + 1/K) shows AI is governed by
+ *   the harmonic relationship of M, N, K — the smallest dimension
+ *   dominates.  The 5 M/N ranges capture tile-utilization and
+ *   parallelism regimes, while the 2 K ranges separate memory-bound
+ *   from compute-bound problems.
  *
  * @param problem GEMM problem description
  * @return gemm_category_t Category descriptor
@@ -177,5 +228,24 @@ gemm_category_t categorize_mnk(std::size_t m, std::size_t n, std::size_t k) noex
  * @throws std::out_of_range if id >= NUM_GEMM_CATEGORIES
  */
 gemm_category_t category_from_id(std::size_t id);
+
+/**
+ * @brief Compute GEMM arithmetic intensity.
+ *
+ *   AI = 2*M*N*K / ((M*K + K*N + M*N) * bytes_per_element)
+ *
+ * This is the ratio of floating-point operations to bytes transferred,
+ * and determines the roofline regime:
+ *   - AI < hardware_peak_ops/memory_bw  →  memory-bound
+ *   - AI > hardware_peak_ops/memory_bw  →  compute-bound
+ *
+ * @param m M dimension
+ * @param n N dimension
+ * @param k K dimension
+ * @param bytes_per_element Element size in bytes (e.g. 2.0 for BF16)
+ * @return double Arithmetic intensity (ops/byte)
+ */
+double compute_arithmetic_intensity(double m, double n, double k,
+                                    double bytes_per_element = 2.0) noexcept;
 
 }  // namespace origami

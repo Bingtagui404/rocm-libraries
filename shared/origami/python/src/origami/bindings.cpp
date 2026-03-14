@@ -328,10 +328,8 @@ NB_MODULE(origami, m) {
       .export_values();
 
   nanobind::enum_<origami::k_range_t>(m, "k_range_t")
-      .value("small", origami::k_range_t::small)
-      .value("medium", origami::k_range_t::medium)
-      .value("large", origami::k_range_t::large)
-      .value("xlarge", origami::k_range_t::xlarge)
+      .value("short_k", origami::k_range_t::short_k)
+      .value("long_k", origami::k_range_t::long_k)
       .export_values();
 
   nanobind::class_<origami::gemm_category_t>(m, "gemm_category_t")
@@ -347,6 +345,10 @@ NB_MODULE(origami, m) {
       .def("k_lower", &origami::gemm_category_t::k_lower)
       .def("k_upper", &origami::gemm_category_t::k_upper)
       .def("to_string", &origami::gemm_category_t::to_string)
+      .def("representative_arithmetic_intensity",
+           &origami::gemm_category_t::representative_arithmetic_intensity,
+           nanobind::arg("bytes_per_element") = 2.0,
+           "Arithmetic intensity at the geometric center of this category")
       .def("__eq__", &origami::gemm_category_t::operator==)
       .def("__ne__", &origami::gemm_category_t::operator!=);
 
@@ -361,6 +363,12 @@ NB_MODULE(origami, m) {
   m.def("category_from_id",
         &origami::category_from_id,
         "Reconstruct a category from its integer id");
+
+  m.def("compute_arithmetic_intensity",
+        &origami::compute_arithmetic_intensity,
+        nanobind::arg("m"), nanobind::arg("n"), nanobind::arg("k"),
+        nanobind::arg("bytes_per_element") = 2.0,
+        "Compute GEMM arithmetic intensity (ops/byte)");
 
   m.attr("NUM_GEMM_CATEGORIES") = origami::NUM_GEMM_CATEGORIES;
 }
