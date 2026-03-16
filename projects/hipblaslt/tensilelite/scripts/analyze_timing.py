@@ -99,6 +99,7 @@ TIMING_HIERARCHY = {
             "gpu_input_reset": {},
             "async_reset_submit": {},
             "rotating_buffer_preparation": {},
+            "sync_copy_stream": {},
             "solution_selection": {},
             "pre_solution": {},
             "kernel_solving": {},
@@ -147,6 +148,7 @@ CPP_PHASE_GROUPS = {
         "gpu_input_preparation",
         "gpu_input_reset",
         "async_reset_submit",
+        "sync_copy_stream",
         "rotating_buffer_preparation",
     ],
     "Reference Computation": [

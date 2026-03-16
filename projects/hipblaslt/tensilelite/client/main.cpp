@@ -1144,7 +1144,10 @@ int main(int argc, const char* argv[])
 
                                 // Ensure any pending async reset is complete
                                 // before the first kernel launch (warmup or benchmark).
-                                dataInit->syncCopyStream();
+                                {
+                                    ScopedTimer timer("sync_copy_stream");
+                                    dataInit->syncCopyStream();
+                                }
 
                                 if(warmupInvocations > 0)
                                 {
