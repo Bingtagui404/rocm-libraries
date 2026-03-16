@@ -9,6 +9,9 @@
 namespace hipdnn_test_sdk::utilities
 {
 using hipdnn_data_sdk::types::bfloat16;
+using hipdnn_data_sdk::types::fp8_e4m3;
+using hipdnn_data_sdk::types::fp8_e5m2;
+using hipdnn_data_sdk::types::fp8_e8m0;
 using hipdnn_data_sdk::types::half;
 }
 
@@ -40,13 +43,25 @@ constexpr auto datatypeToNative()
     {
         return bfloat16{};
     }
+    else if constexpr(DT == DataType::FP8_E4M3)
+    {
+        return fp8_e4m3{};
+    }
+    else if constexpr(DT == DataType::FP8_E5M2)
+    {
+        return fp8_e5m2{};
+    }
+    else if constexpr(DT == DataType::FP8_E8M0)
+    {
+        return fp8_e8m0{};
+    }
     else
     {
         static_assert(DT != DT, "Unsupported DataType");
     }
 }
 
-inline std::variant<float, half, double, int32_t, bfloat16>
+inline std::variant<float, half, double, int32_t, bfloat16, fp8_e4m3, fp8_e5m2, fp8_e8m0>
     datatypeToNativeVariant(hipdnn_data_sdk::data_objects::DataType type)
 {
     using DataType = hipdnn_data_sdk::data_objects::DataType;
@@ -67,6 +82,15 @@ inline std::variant<float, half, double, int32_t, bfloat16>
         break;
     case DataType::BFLOAT16:
         return bfloat16{};
+        break;
+    case DataType::FP8_E4M3:
+        return fp8_e4m3{};
+        break;
+    case DataType::FP8_E5M2:
+        return fp8_e5m2{};
+        break;
+    case DataType::FP8_E8M0:
+        return fp8_e8m0{};
         break;
     default:
         throw std::runtime_error("Error: Invalid type");
@@ -95,6 +119,18 @@ constexpr hipdnn_data_sdk::data_objects::DataType nativeTypeToDataType()
     else if constexpr(std::is_same_v<T, bfloat16>)
     {
         return hipdnn_data_sdk::data_objects::DataType::BFLOAT16;
+    }
+    else if constexpr(std::is_same_v<T, fp8_e4m3>)
+    {
+        return hipdnn_data_sdk::data_objects::DataType::FP8_E4M3;
+    }
+    else if constexpr(std::is_same_v<T, fp8_e5m2>)
+    {
+        return hipdnn_data_sdk::data_objects::DataType::FP8_E5M2;
+    }
+    else if constexpr(std::is_same_v<T, fp8_e8m0>)
+    {
+        return hipdnn_data_sdk::data_objects::DataType::FP8_E8M0;
     }
     else
     {

@@ -51,7 +51,7 @@ public:
             T refValue = refView.getHostValue(indices);
             T implValue = implView.getHostValue(indices);
 
-            auto absDiff = static_cast<float>(fabs(implValue - refValue));
+            auto absDiff = fabs(static_cast<float>(implValue) - static_cast<float>(refValue));
             auto threshold
                 = _absoluteTolerance + _relativeTolerance * fabs(static_cast<float>(refValue));
 
