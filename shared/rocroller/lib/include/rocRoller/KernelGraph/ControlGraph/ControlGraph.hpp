@@ -3,11 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <variant>
-
-#include <bit>
-#include <cstdint>
 
 #include <rocRoller/KernelGraph/ControlGraph/ControlGraph_fwd.hpp>
 
