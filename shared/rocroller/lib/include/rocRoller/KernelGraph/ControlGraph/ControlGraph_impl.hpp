@@ -103,17 +103,22 @@ namespace rocRoller::KernelGraph::ControlGraph
 
     inline NodeOrdering ControlGraph::lookupOrder(CacheOnlyPolicy const, int nodeA, int nodeB) const
     {
+        auto bitsetTest = [](std::vector<uint64_t> const& bs, int id) {
+            size_t word = static_cast<size_t>(id) >> 6;
+            return word < bs.size() && ((bs[word] >> (id & 63)) & 1);
+        };
+
         auto it = m_orderCache.find(nodeA);
         if(it == m_orderCache.end())
             return NodeOrdering::Undefined;
         auto const& orders = it->second;
-        if(std::ranges::binary_search(orders.after, nodeB))
+        if(bitsetTest(orders.after, nodeB))
             return NodeOrdering::LeftFirst;
-        if(std::ranges::binary_search(orders.before, nodeB))
+        if(bitsetTest(orders.before, nodeB))
             return NodeOrdering::RightFirst;
-        if(std::ranges::binary_search(orders.inBody, nodeB))
+        if(bitsetTest(orders.inBody, nodeB))
             return NodeOrdering::RightInBodyOfLeft;
-        if(std::ranges::binary_search(orders.containing, nodeB))
+        if(bitsetTest(orders.containing, nodeB))
             return NodeOrdering::LeftInBodyOfRight;
         return NodeOrdering::Undefined;
     }
@@ -123,32 +128,79 @@ namespace rocRoller::KernelGraph::ControlGraph
         populateOrderCache();
         auto it = m_orderCache.find(node);
         if(it != m_orderCache.end())
-            for(int n : it->second.after)
-                co_yield n;
+        {
+            auto const& bs = it->second.after;
+            for(size_t w = 0; w < bs.size(); ++w)
+            {
+                uint64_t bits = bs[w];
+                while(bits)
+                {
+                    int bit = std::countr_zero(bits);
+                    co_yield static_cast<int>(w * 64 + bit);
+                    bits &= bits - 1;
+                }
+            }
+        }
     }
+
     inline Generator<int> ControlGraph::nodesBefore(int node) const
     {
         populateOrderCache();
         auto it = m_orderCache.find(node);
         if(it != m_orderCache.end())
-            for(int n : it->second.before)
-                co_yield n;
+        {
+            auto const& bs = it->second.before;
+            for(size_t w = 0; w < bs.size(); ++w)
+            {
+                uint64_t bits = bs[w];
+                while(bits)
+                {
+                    int bit = std::countr_zero(bits);
+                    co_yield static_cast<int>(w * 64 + bit);
+                    bits &= bits - 1;
+                }
+            }
+        }
     }
+
     inline Generator<int> ControlGraph::nodesInBody(int node) const
     {
         populateOrderCache();
         auto it = m_orderCache.find(node);
         if(it != m_orderCache.end())
-            for(int n : it->second.inBody)
-                co_yield n;
+        {
+            auto const& bs = it->second.inBody;
+            for(size_t w = 0; w < bs.size(); ++w)
+            {
+                uint64_t bits = bs[w];
+                while(bits)
+                {
+                    int bit = std::countr_zero(bits);
+                    co_yield static_cast<int>(w * 64 + bit);
+                    bits &= bits - 1;
+                }
+            }
+        }
     }
+
     inline Generator<int> ControlGraph::nodesContaining(int node) const
     {
         populateOrderCache();
         auto it = m_orderCache.find(node);
         if(it != m_orderCache.end())
-            for(int n : it->second.containing)
-                co_yield n;
+        {
+            auto const& bs = it->second.containing;
+            for(size_t w = 0; w < bs.size(); ++w)
+            {
+                uint64_t bits = bs[w];
+                while(bits)
+                {
+                    int bit = std::countr_zero(bits);
+                    co_yield static_cast<int>(w * 64 + bit);
+                    bits &= bits - 1;
+                }
+            }
+        }
     }
 
     template <typename T>

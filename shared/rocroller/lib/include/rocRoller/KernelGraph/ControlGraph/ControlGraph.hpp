@@ -6,6 +6,9 @@
 #include <functional>
 #include <variant>
 
+#include <bit>
+#include <cstdint>
+
 #include <rocRoller/KernelGraph/ControlGraph/ControlGraph_fwd.hpp>
 
 #include <rocRoller/Graph/Hypergraph.hpp>
@@ -85,11 +88,11 @@ namespace rocRoller
 
         struct NodeOrders
         {
-            std::vector<int> after;
-            std::vector<int> before;
-            std::vector<int> inBody;
-            std::vector<int> containing;
-            void             clear()
+            std::vector<uint64_t> after;
+            std::vector<uint64_t> before;
+            std::vector<uint64_t> inBody;
+            std::vector<uint64_t> containing;
+            void                  clear()
             {
                 after.clear();
                 before.clear();
@@ -253,35 +256,37 @@ namespace rocRoller
              * startingNodes.
              */
             template <CForwardRangeOf<int> Range>
-            std::vector<int> populateOrderCache(Range const& startingNodes) const;
+            std::vector<uint64_t> populateOrderCache(Range const& startingNodes) const;
 
             /**
              * Populates m_orderCache for startingNode relative to its descendents, and the
              * descendents relative to each other. Returns the descendents of startingNode.
              */
-            std::vector<int> populateOrderCache(int startingNode) const;
+            std::vector<uint64_t> populateOrderCache(int startingNode) const;
 
             virtual void clearCache(Graph::GraphModification modification) override;
             void         populateOrderCache() const;
-            void         sortOrderCache() const;
+            void         validateOrderCache() const;
 
             NodeOrdering lookupOrder(CacheOnlyPolicy const, int nodeA, int nodeB) const;
             NodeOrdering lookupOrder(IgnoreCachePolicy const, int nodeA, int nodeB) const;
 
-            void writeOrderCache(int nodeA, int nodeB, NodeOrdering order) const;
+            void writeOrderCache(std::vector<uint64_t> const& nodesA,
+                                 std::vector<uint64_t> const& nodesB,
+                                 NodeOrdering                 order) const;
 
-            template <CForwardRangeOf<int> ARange = std::initializer_list<int>,
-                      CForwardRangeOf<int> BRange = std::initializer_list<int>>
-            void writeOrderCache(ARange const& nodesA,
-                                 BRange const& nodesB,
-                                 NodeOrdering  order) const;
+            void writeOrderCache(int                          nodeA,
+                                 std::vector<uint64_t> const& nodesB,
+                                 NodeOrdering                 order) const;
+
+            void writeOrderCache(int nodeA, int nodeB, NodeOrdering order) const;
 
             mutable std::unordered_map<int, NodeOrders> m_orderCache;
             /**
              * If an entry is present, the value will be the IDs of every descendent from the key,
              * following every kind of edge.
              */
-            mutable std::unordered_map<int, std::vector<int>> m_descendentCache;
+            mutable std::unordered_map<int, std::vector<uint64_t>> m_descendentCache;
 
             mutable CacheStatus m_cacheStatus = CacheStatus::Invalid;
 
