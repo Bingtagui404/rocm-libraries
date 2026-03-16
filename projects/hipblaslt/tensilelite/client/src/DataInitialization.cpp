@@ -1335,7 +1335,12 @@ namespace TensileLite
                     auto allocPinned = [](size_t bytes) {
                         void* raw = nullptr;
                         HIP_CHECK_EXC(hipHostMalloc(&raw, bytes, 0));
-                        return std::shared_ptr<void>(raw, [](auto p) { hipHostFree(p); });
+                        return std::shared_ptr<void>(raw, [](auto p) {
+                            hipError_t e = hipHostFree(p);
+                            if(e)
+                                std::cerr << "hipHostFree failed: "
+                                          << hipGetErrorString(e) << std::endl;
+                        });
                     };
 
                     if(!pUnit.cpuInput.current)
