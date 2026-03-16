@@ -145,6 +145,19 @@ function(embed_file FILE BASE_DIRECTORY)
     string(MAKE_C_IDENTIFIER "${REL_FILE}" OUTPUT_SYMBOL)
     get_filename_component(OUTPUT_FILE_DIR "${REL_FILE}" DIRECTORY)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${OUTPUT_FILE_DIR}")
+
+    # Some files in ck_tile contain non-ASCII characters, which causes issues with the embedding process
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FILE}")
+    set(SANITIZED_BASE "${CMAKE_CURRENT_BINARY_DIR}/sanitized")
+    set(SANITIZED_FILE "${SANITIZED_BASE}/${REL_FILE}")
+    get_filename_component(SANITIZED_DIR "${SANITIZED_FILE}" DIRECTORY)
+    file(MAKE_DIRECTORY "${SANITIZED_DIR}")
+    file(READ "${FILE}" CONTENT)
+    string(REGEX REPLACE "[^ -~\t\n\r]" "?" CONTENT "${CONTENT}")
+    file(WRITE "${SANITIZED_FILE}" "${CONTENT}")
+    set(FILE "${SANITIZED_FILE}")
+    set(BASE_DIRECTORY "${SANITIZED_BASE}")
+
     if(EMBED_USE STREQUAL "LD")
         set(OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${REL_FILE}.o")
         add_custom_command(

@@ -1,6 +1,13 @@
 # Copyright (c) Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier: MIT
 
+option(USE_HIPRTC_FOR_CODEGEN_TESTS "Whether to enable hipRTC for codegen tests." ON)
+
+find_package(hip REQUIRED)
+if(USE_HIPRTC_FOR_CODEGEN_TESTS)
+    find_package(hiprtc REQUIRED)
+endif()
+
 list(APPEND CMAKE_PREFIX_PATH /opt/rocm)
 add_subdirectory(rtc)
 file(GLOB TEST_SRCS CONFIGURE_DEPENDS *.cpp)
