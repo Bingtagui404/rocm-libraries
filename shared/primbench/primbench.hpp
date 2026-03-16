@@ -1347,6 +1347,7 @@ private:
         ss << ",\"output_batches\":" << s.output_batches;
         ss << ",\"spaces_per_indent\":" << s.spaces_per_indent;
         ss << ",\"stream_blocking_timeout_secs\":" << s.stream_blocking_timeout_secs;
+        ss << ",\"skip_header\":" << s.skip_header;
 
         ss << "}";
         return ss.str();
@@ -3284,7 +3285,8 @@ public:
                "output-amdsmi-context",
                "output-batches",
                "spaces-per-indent",
-               "stream-blocking-timeout-secs"};
+               "stream-blocking-timeout-secs",
+               "skip-header"};
 
         auto parse_value = [](const std::string& value) -> settings::custom_arg_value
         {
@@ -3981,6 +3983,9 @@ private:
             std::cerr << "Error: --stream-blocking-timeout-secs must be greater than 0\n";
             exit(EXIT_FAILURE);
         }
+
+        s.skip_header
+            = cli.get<bool>("skip-header", s.skip_header, "Skip printing the header to output.");
     }
 
     /**

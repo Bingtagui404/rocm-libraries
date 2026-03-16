@@ -147,6 +147,7 @@ It outputs this `results.json`:
             "hip_version": "6.4.43482-0f2d60242",
             "clang_version": "19.0.0git (https://github.com/RadeonOpenCompute/llvm-project roc-6.4.0 25133 c7fe45cf4b819c5991fe208aaa96edf142730f1d)"
         },
+
         "settings": {
             "size": 134217728,
             "hot": false,
@@ -168,7 +169,8 @@ It outputs this `results.json`:
             "output_amdsmi_context": false,
             "output_batches": false,
             "spaces_per_indent": 4,
-            "stream_blocking_timeout_secs": 10
+            "stream_blocking_timeout_secs": 10,
+            "skip_header": false
         },
         "flags": {
             "sync": false
@@ -270,6 +272,7 @@ You can also pass `--help` to benchmarks to print the available options.
 | `--output-batches`                       | Output a `batches` array for each specialization, containing per-batch details.                                                                                                    |
 | `--spaces-per-indent`                    | Number of spaces per indentation level in JSON output. Set to 0 for no indentation. (default: 4)                                                                                   |
 | `--stream-blocking-timeout-secs`         | Maximum stream blocking duration in seconds before timing out. Stream is blocked while queueing kernel calls. Use `primbench::flags::sync` if kernel is synchronous. (default: 10) |
+| `--skip-header`                          | Skip printing the header to output.                                                                                                                                                |
 
 ### Adding Custom Options
 
