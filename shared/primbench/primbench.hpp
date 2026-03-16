@@ -3753,20 +3753,23 @@ public:
         m_family_col_width
             = std::string("Index/").size() + std::to_string(specialization_count).size();
 
-        if(m_settings.dry)
+        if(!m_settings.skip_header)
         {
-            detail::progress::print_dry_header(algorithm,
+            if(m_settings.dry)
+            {
+                detail::progress::print_dry_header(algorithm,
+                                                   m_spec_col_width,
+                                                   m_family_col_width,
+                                                   specialization_count);
+            }
+            else
+            {
+                detail::progress::print_header(algorithm,
                                                m_spec_col_width,
                                                m_family_col_width,
-                                               specialization_count);
-        }
-        else if(!m_settings.skip_header)
-        {
-            detail::progress::print_header(algorithm,
-                                           m_spec_col_width,
-                                           m_family_col_width,
-                                           specialization_count,
-                                           m_settings.noise_timeout_secs);
+                                               specialization_count,
+                                               m_settings.noise_timeout_secs);
+            }
         }
 
         // Run all benchmarks.
