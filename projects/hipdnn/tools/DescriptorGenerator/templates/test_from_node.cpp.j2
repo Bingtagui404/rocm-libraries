@@ -155,6 +155,57 @@ TEST_F(Test{{ op.name }}OperationFromNode, CreatesValidFinalizedDescriptor)
     EXPECT_EQ(desc->getData().{{ op.tensor_fields[0].uid_field }}, {{ op.test_data.tensor_uids.get(op.tensor_fields[0].name, 1) }});
 {% endif %}
 }
+TEST_F(Test{{ op.name }}OperationFromNode, NodeFactoryDelegatesCorrectly)
+{
+    auto node = createStandardNode();
+
+    // NodeFactory::createOperationFromNode delegates to fromNode internally.
+    // Verify the delegation produces a valid, correctly-typed descriptor.
+    auto graphOp = NodeFactory::createOperationFromNode(node, _tensorMap);
+    ASSERT_NE(graphOp, nullptr);
+
+    // Verify the factory dispatched to the correct operation type, then static_cast.
+    // Cannot use dynamic_pointer_cast: backend tests compile with -fno-rtti.
+    auto rebuiltNode = graphOp->buildNode();
+    ASSERT_EQ(rebuiltNode->attributes.type, NodeAttributes::{{ op.node_attributes_union_member }});
+    auto desc = std::static_pointer_cast<{{ op.class_name }}>(graphOp);
+    ASSERT_TRUE(desc->isFinalized());
+
+    // Verify all attributes are correctly populated via the delegated path
+{% for tf in op.tensor_fields %}
+{% if op.test_data.constants_include %}
+{% set uid_const = "K_TENSOR_" ~ (tf.name | upper) ~ "_UID" %}
+    EXPECT_EQ(desc->getData().{{ tf.uid_field }}, {{ uid_const }});
+{% else %}
+    EXPECT_EQ(desc->getData().{{ tf.uid_field }}, {{ op.test_data.tensor_uids.get(tf.name, loop.index) }});
+{% endif %}
+{% endfor %}
+{% for vf in op.vector_fields %}
+{% if op.test_data.constants_include %}
+{% set const_name = vf.test_constant_name if vf.test_constant_name else ("K_CONV_" ~ (vf.name | upper) if "conv" in op.effective_error_label else "K_" ~ (vf.name | upper)) %}
+    EXPECT_EQ(desc->getData().{{ vf.fbs_field }}, toVec({{ const_name }}));
+{% else %}
+    EXPECT_EQ(desc->getData().{{ vf.fbs_field }}, (std::vector<int64_t>{{ '{' }}{{ op.test_data.field_values.get(vf.name, [1, 1]) | join(', ') }}{{ '}' }}));
+{% endif %}
+{% endfor %}
+{% for cf in op.mode_fields %}
+    EXPECT_EQ(desc->getData().{{ cf.fbs_field }}, {{ cf.enum_short_type }}::{{ cf.test_enum_value }});
+{% endfor %}
+{% for ef in op.enum_fields %}
+    EXPECT_EQ(desc->getData().{{ ef.fbs_field }}, {{ ef.enum_short_type }}::{{ ef.test_enum_value }});
+{% endfor %}
+{% if op.has_compute_data_type %}
+    EXPECT_EQ(desc->getComputeDataType(), DataType::FLOAT);
+{% endif %}
+{% for tf in op.tensor_fields %}
+{% if op.test_data.constants_include %}
+{% set uid_const = "K_TENSOR_" ~ (tf.name | upper) ~ "_UID" %}
+    EXPECT_EQ(desc->{{ tf.getter_name }}()->getData().uid, {{ uid_const }});
+{% else %}
+    EXPECT_EQ(desc->{{ tf.getter_name }}()->getData().uid, {{ op.test_data.tensor_uids.get(tf.name, loop.index) }});
+{% endif %}
+{% endfor %}
+}
 {% if op.has_compute_data_type %}
 
 TEST_F(Test{{ op.name }}OperationFromNode, PreservesComputeDataType)
@@ -166,16 +217,17 @@ TEST_F(Test{{ op.name }}OperationFromNode, PreservesComputeDataType)
 }
 {% endif %}
 {% for df in op.mode_fields %}
+{% set alt_value = df.test_alt_enum_value if df.test_alt_enum_value else df.test_enum_value %}
 
 TEST_F(Test{{ op.name }}OperationFromNode, Preserves{{ df.enum_short_type }})
 {
     auto node = createStandardNode();
     auto attrs = createStandard{{ op.name }}Attrs();
-    attrs.{{ df.fbs_field }} = {{ df.enum_short_type }}::{{ df.test_enum_value }};
+    attrs.{{ df.fbs_field }} = {{ df.enum_short_type }}::{{ alt_value }};
     node.attributes.Set(attrs);
     auto desc = {{ op.class_name }}::fromNode(node, _tensorMap);
 
-    ASSERT_EQ(desc->getData().{{ df.fbs_field }}, {{ df.enum_short_type }}::{{ df.test_enum_value }});
+    ASSERT_EQ(desc->getData().{{ df.fbs_field }}, {{ df.enum_short_type }}::{{ alt_value }});
 }
 {% endfor %}
 {% if op.vector_fields %}

@@ -95,6 +95,7 @@ def load_config(path: Path) -> OperationConfig:
                 backend_type_name=df.get("backend_type_name", ""),
                 test_c_type=df.get("test_c_type", ""),
                 test_default_value=df.get("test_default_value", ""),
+                test_alt_enum_value=df.get("test_alt_enum_value", ""),
                 frontend_inverse_converter=df.get("frontend_inverse_converter", ""),
             )
         )
@@ -197,6 +198,23 @@ def _validate_config(config: OperationConfig) -> None:
                     f"Operation '{config.name}', data field '{df.name}': "
                     f"mode fields must have 'backend_type_name' set "
                     f"(e.g., 'HIPDNN_TYPE_CONVOLUTION_MODE')."
+                )
+            if not df.frontend_inverse_converter:
+                print(
+                    f"Warning: Mode field '{df.name}' in operation "
+                    f"'{config.name}' has no 'frontend_inverse_converter'. "
+                    f"The unpacker template will generate an empty function "
+                    f"call. Set this to the backend→frontend conversion "
+                    f"function (e.g., 'fromHipdnnConvMode').",
+                    file=sys.stderr,
+                )
+            if not df.test_alt_enum_value:
+                print(
+                    f"Warning: Mode field '{df.name}' in operation "
+                    f"'{config.name}' has no 'test_alt_enum_value'. "
+                    f"The PreservesMode fromNode test will use the same "
+                    f"value as the default, reducing test coverage.",
+                    file=sys.stderr,
                 )
 
     # Warn if required tensor fields are missing from test_data.tensor_uids

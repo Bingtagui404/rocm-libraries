@@ -100,6 +100,7 @@ class DataField:
     backend_type_name: str = ""
     test_c_type: str = ""
     test_default_value: str = ""
+    test_alt_enum_value: str = ""
 
     # Lifting support (unpacker)
     frontend_inverse_converter: str = ""

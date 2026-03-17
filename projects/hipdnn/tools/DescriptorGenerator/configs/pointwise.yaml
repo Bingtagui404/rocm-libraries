@@ -60,6 +60,7 @@ operation:
       frontend_inverse_converter: "fromHipdnnPointwiseMode"
       backend_type_name: "HIPDNN_TYPE_POINTWISE_MODE"
       test_enum_value: "ADD"
+      test_alt_enum_value: "MUL"
       test_backend_value: "HIPDNN_POINTWISE_MODE_ADD"
       test_c_type: "hipdnnPointwiseMode_t"
       test_default_value: "HIPDNN_POINTWISE_MODE_ABS"

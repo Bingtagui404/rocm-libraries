@@ -97,6 +97,7 @@ operation:
       frontend_inverse_converter: "fromHipdnnConvMode"
       backend_type_name: "HIPDNN_TYPE_CONVOLUTION_MODE"
       test_enum_value: "CROSS_CORRELATION"
+      test_alt_enum_value: "CONVOLUTION"
       test_backend_value: "HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION"
       test_c_type: "hipdnnConvolutionMode_t"
       test_default_value: "HIPDNN_CONVOLUTION_MODE_CONVOLUTION"
