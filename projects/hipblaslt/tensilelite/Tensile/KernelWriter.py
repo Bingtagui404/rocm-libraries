@@ -6220,10 +6220,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
     vgprIdx += numVgprAddressDbg
 
     # for cgemm or zgemm + MIAV case, allocate 2 or 4 vgpr for alpha calculation (cannot use tmp vgpr in write batch)
-    if kernel["ProblemType"]["MacDataTypeA"].isComplex() \
-      and kernel["MIArchVgpr"] \
-      and (kernel["_GlobalAccumulation"] == 'SingleBuffer' or kernel["_GlobalAccumulation"] == None):
-
+    if kernel["ProblemType"]["MacDataTypeA"].isComplex() and kernel["MIArchVgpr"]:
       # need proper alignment
       vgprIdx = ((vgprIdx+2 - 1)//2)*2
       self.states.startVgprAlphaTmp = vgprIdx
@@ -6907,7 +6904,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.states.localReadDoCntMetadata  = 0
 
     if kernel["EnableMatrixInstruction"]:
-      #TODO:import getMXMFMAIssueLatency
       from rocisa.instruction import getMFMAIssueLatency, getSMFMAIssueLatency
       miInputType = getMiInputType(kernel)
 
