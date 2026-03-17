@@ -2824,12 +2824,17 @@ namespace TensileLite
 
             m_cachedGPUInputs = ConvertToProblemInputs(problem, true);
 
-            // Store active slot state in ring[0]
-            m_gpuPtrsRing[0]      = m_gpuPtrs;
-            m_gpuBatchPtrsRing[0] = m_gpuBatchPtrs;
-            m_cachedInputsRing[0] = m_cachedGPUInputs;
+            // Store active slot state in ring[0] only on initial
+            // preparation (asyncStream == nullptr), not when called
+            // from beginAsyncReset where m_gpuPtrs has been moved away.
+            if(!asyncStream)
+            {
+                m_gpuPtrsRing[0]      = m_gpuPtrs;
+                m_gpuBatchPtrsRing[0] = m_gpuBatchPtrs;
+                m_cachedInputsRing[0] = m_cachedGPUInputs;
 
-            initializeAltBufferSets(problem);
+                initializeAltBufferSets(problem);
+            }
             return m_cachedGPUInputs;
         }
 
