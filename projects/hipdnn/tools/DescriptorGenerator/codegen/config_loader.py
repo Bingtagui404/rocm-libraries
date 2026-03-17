@@ -51,6 +51,8 @@ def load_config(path: Path) -> OperationConfig:
         node_class=fe_raw.get("node_class", ""),
         attributes_class=fe_raw.get("attributes_class", ""),
         attributes_include=fe_raw.get("attributes_include", ""),
+        unpacker_function=fe_raw.get("unpacker_function", ""),
+        unpacker_include=fe_raw.get("unpacker_include", ""),
     )
 
     # Tensor fields
@@ -93,6 +95,7 @@ def load_config(path: Path) -> OperationConfig:
                 backend_type_name=df.get("backend_type_name", ""),
                 test_c_type=df.get("test_c_type", ""),
                 test_default_value=df.get("test_default_value", ""),
+                frontend_inverse_converter=df.get("frontend_inverse_converter", ""),
             )
         )
 
@@ -145,6 +148,7 @@ def load_config(path: Path) -> OperationConfig:
         test_params_method_name=op.get("test_params_method_name", ""),
         data_fields_section_label=op.get("data_fields_section_label", ""),
         build_node_attrs_var=op.get("build_node_attrs_var", ""),
+        operation_type_enum=op.get("operation_type_enum", ""),
         test_data=test_data,
     )
 

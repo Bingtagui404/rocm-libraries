@@ -11,6 +11,7 @@ operation:
 
   frontend:
     packer_function: "createConvDgradOperation"
+    unpacker_function: "unpackConvBpropOperation"
     node_class: "ConvolutionDgradNode"
     attributes_class: "ConvDgradAttributes"
 
@@ -76,6 +77,7 @@ operation:
       backend_setter: "setConvMode"
       backend_getter: "getConvMode"
       backend_converter: "toBackendConvMode"
+      frontend_inverse_converter: "fromHipdnnConvMode"
       backend_type_name: "HIPDNN_TYPE_CONVOLUTION_MODE"
       shared: true
       test_enum_value: "CROSS_CORRELATION"
@@ -88,6 +90,8 @@ operation:
   has_compute_data_type: true
   compute_data_type_attr: "HIPDNN_ATTR_CONVOLUTION_COMP_TYPE"
   compute_data_type_shared: true
+
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_CONVOLUTION_BACKWARD_DATA"
 
   test_data:
     tensor_uids: { dy: 10, w: 11, dx: 12 }

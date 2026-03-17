@@ -11,6 +11,7 @@ operation:
 
   frontend:
     packer_function: "createBatchnormInferenceOperation"
+    unpacker_function: "unpackBatchnormInferenceOperation"
     node_class: "BatchnormInferenceNode"
     attributes_class: "BatchnormInferenceAttributes"
 
@@ -56,7 +57,9 @@ operation:
   tensor_array_fields: []
 
   has_compute_data_type: true
-  compute_data_type_attr: "HIPDNN_ATTR_BATCHNORM_INF_COMP_TYPE"
+  compute_data_type_attr: "HIPDNN_ATTR_BATCHNORM_INF_COMP_TYPE_EXT"
+
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_BATCHNORM_INFERENCE"
 
   test_data:
     tensor_uids: { x: 70, mean: 71, inv_variance: 72, scale: 73, bias: 74, y: 75 }

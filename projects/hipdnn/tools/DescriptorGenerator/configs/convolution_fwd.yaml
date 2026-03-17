@@ -16,8 +16,11 @@ operation:
   data_fields_section_label: "Convolution Parameters"
   build_node_attrs_var: "convAttrs"
 
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_CONVOLUTION_FORWARD"
+
   frontend:
     packer_function: "createConvFpropOperation"
+    unpacker_function: "unpackConvFpropOperation"
     node_class: "ConvolutionFpropNode"
     attributes_class: "ConvFpropAttributes"
     attributes_include: "ConvolutionFpropAttributes"
@@ -91,6 +94,7 @@ operation:
       backend_setter: "setConvMode"
       backend_getter: "getConvMode"
       backend_converter: "toBackendConvMode"
+      frontend_inverse_converter: "fromHipdnnConvMode"
       backend_type_name: "HIPDNN_TYPE_CONVOLUTION_MODE"
       test_enum_value: "CROSS_CORRELATION"
       test_backend_value: "HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION"

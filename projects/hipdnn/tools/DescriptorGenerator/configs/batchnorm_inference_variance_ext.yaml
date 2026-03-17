@@ -11,6 +11,7 @@ operation:
 
   frontend:
     packer_function: "createBatchnormInferenceVarianceExtOperation"
+    unpacker_function: "unpackBatchnormInferenceVarianceExtOperation"
     node_class: "BatchnormInferenceNodeVarianceExt"
     attributes_class: "BatchnormInferenceAttributesVarianceExt"
 
@@ -62,7 +63,9 @@ operation:
   tensor_array_fields: []
 
   has_compute_data_type: true
-  compute_data_type_attr: "HIPDNN_ATTR_BATCHNORM_INF_VAR_EXT_COMP_TYPE"
+  compute_data_type_attr: "HIPDNN_ATTR_BATCHNORM_INF_VAR_COMP_TYPE_EXT"
+
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_BATCHNORM_INFERENCE_VARIANCE"
 
   test_data:
     tensor_uids: { x: 80, mean: 81, variance: 82, scale: 83, bias: 84, y: 85, epsilon: 86 }

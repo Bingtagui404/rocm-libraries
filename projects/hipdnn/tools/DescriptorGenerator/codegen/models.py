@@ -50,6 +50,21 @@ class TensorField:
     def getter_name(self) -> str:
         return f"get{self.pascal_name}Desc"
 
+    @property
+    def frontend_setter(self) -> str:
+        """Derive setter method name for unpacker.
+
+        If frontend_getter is set (e.g., "get_x()"), derives "set_x".
+        Otherwise uses "set_{name}".
+        """
+        if self.frontend_getter:
+            # "get_x()" -> "set_x"
+            base = self.frontend_getter.replace("()", "")
+            if base.startswith("get_"):
+                return "set_" + base[4:]
+            return base
+        return f"set_{self.name}"
+
 
 def _to_camel_case(snake: str) -> str:
     """Convert snake_case to camelCase."""
@@ -85,6 +100,9 @@ class DataField:
     backend_type_name: str = ""
     test_c_type: str = ""
     test_default_value: str = ""
+
+    # Lifting support (unpacker)
+    frontend_inverse_converter: str = ""
 
     @property
     def camel_name(self) -> str:
@@ -145,6 +163,21 @@ class DataField:
             return self.cpp_enum.rsplit("::", 1)[-1]
         return ""
 
+    @property
+    def frontend_setter_name(self) -> str:
+        """Derive setter method name for unpacker.
+
+        If frontend_getter is set (e.g., "get_convolution_mode()"), derives
+        "set_convolution_mode". Otherwise uses "set_{name}".
+        """
+        if self.frontend_getter:
+            # "get_convolution_mode()" -> "set_convolution_mode"
+            base = self.frontend_getter.replace("()", "")
+            if base.startswith("get_"):
+                return "set_" + base[4:]
+            return base
+        return f"set_{self.name}"
+
 
 @dataclass
 class TensorArrayField:
@@ -157,6 +190,11 @@ class TensorArrayField:
     required: bool = False
     test_uids: list[int] = field(default_factory=list)
     test_label: str = ""
+
+    @property
+    def member_name(self) -> str:
+        """Member variable name (e.g., 'peer_stats' -> '_peer_statsDescs')."""
+        return f"_{self.name}Descs"
 
 
 @dataclass
@@ -185,6 +223,10 @@ class FrontendConfig:
     node_class: str = ""
     attributes_class: str = ""
     attributes_include: str = ""
+
+    # Lifting support (unpacker)
+    unpacker_function: str = ""
+    unpacker_include: str = ""
 
     @property
     def effective_attributes_include(self) -> str:
@@ -230,6 +272,9 @@ class OperationConfig:
     has_compute_data_type: bool = True
     compute_data_type_attr: str = ""
     compute_data_type_shared: bool = False
+
+    # Lifting support (unpacker)
+    operation_type_enum: str = ""
 
     error_label: str = ""
     packer_operation_label: str = ""
@@ -315,6 +360,23 @@ class OperationConfig:
                 )
                 return f"{base}Packer.hpp"
         return f"{self.name}Packer.hpp"
+
+    @property
+    def unpacker_filename(self) -> str:
+        """Filename for the generated unpacker header."""
+        if self.frontend.node_class:
+            base = (
+                self.frontend.node_class[:-4]
+                if self.frontend.node_class.endswith("Node")
+                else self.frontend.node_class
+            )
+            return f"{base}Unpacker.hpp"
+        return f"{self.name}Unpacker.hpp"
+
+    @property
+    def test_from_node_filename(self) -> str:
+        """Filename for the from-node unit test."""
+        return f"Test{self.name}OperationFromNode.cpp"
 
     @property
     def test_descriptor_filename(self) -> str:

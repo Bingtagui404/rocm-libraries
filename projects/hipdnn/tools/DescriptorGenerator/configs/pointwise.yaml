@@ -11,6 +11,7 @@ operation:
 
   frontend:
     packer_function: "createPointwiseOperation"
+    unpacker_function: "unpackPointwiseOperation"
     node_class: "PointwiseNode"
     attributes_class: "PointwiseAttributes"
 
@@ -56,6 +57,7 @@ operation:
       backend_setter: "setPointwiseMode"
       backend_getter: "getPointwiseMode"
       backend_converter: "toBackendPointwiseMode"
+      frontend_inverse_converter: "fromHipdnnPointwiseMode"
       backend_type_name: "HIPDNN_TYPE_POINTWISE_MODE"
       test_enum_value: "ADD"
       test_backend_value: "HIPDNN_POINTWISE_MODE_ADD"
@@ -107,7 +109,9 @@ operation:
   tensor_array_fields: []
 
   has_compute_data_type: true
-  compute_data_type_attr: "HIPDNN_ATTR_POINTWISE_COMP_TYPE"
+  compute_data_type_attr: "HIPDNN_ATTR_POINTWISE_MATH_PREC"
+
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_POINTWISE"
 
   test_data:
     tensor_uids: { in_0: 40, out_0: 41 }

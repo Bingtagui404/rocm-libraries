@@ -11,6 +11,7 @@ operation:
 
   frontend:
     packer_function: "createMatmulOperation"
+    unpacker_function: "unpackMatmulOperation"
     node_class: "MatmulNode"
     attributes_class: "MatmulAttributes"
 
@@ -38,7 +39,9 @@ operation:
   tensor_array_fields: []
 
   has_compute_data_type: true
-  compute_data_type_attr: "HIPDNN_ATTR_MATMUL_COMP_TYPE"
+  compute_data_type_attr: "HIPDNN_ATTR_MATMUL_MATH_PREC_EXT"
+
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_MATMUL"
 
   test_data:
     tensor_uids: { a: 30, b: 31, c: 32 }
