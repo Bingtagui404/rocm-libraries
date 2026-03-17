@@ -899,6 +899,7 @@ namespace TensileLite
 
         {
             HIP_CHECK_EXC(hipStreamCreate(&m_copyStream));
+            HIP_CHECK_EXC(hipEventCreateWithFlags(&m_copyDoneEvent, hipEventDisableTiming));
             m_rotatingBuffer
                 = args["rotating-buffer-size"].as<int32_t>() * 1024 * 1024; // Change to bytes
             m_rotatingMode   = args["rotating-buffer-mode"].as<int32_t>();
@@ -2858,6 +2859,13 @@ namespace TensileLite
 
         DataInitialization::~DataInitialization()
         {
+            if(m_copyDoneEvent)
+            {
+                hipError_t e = hipEventDestroy(m_copyDoneEvent);
+                if(e)
+                    std::cerr << "~DataInitialization: hipEventDestroy failed: "
+                              << hipGetErrorString(e) << std::endl;
+            }
             if(m_copyStream)
             {
                 hipError_t e = hipStreamSynchronize(m_copyStream);

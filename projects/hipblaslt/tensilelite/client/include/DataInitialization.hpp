@@ -275,10 +275,22 @@ namespace TensileLite
             {
                 if(m_copyStream)
                     HIP_CHECK_EXC(hipStreamSynchronize(m_copyStream));
+                m_copyEventRecorded = false;
+            }
+
+            // GPU-side wait: make computeStream wait for the copy to
+            // finish without blocking the CPU.
+            void waitCopyDone(hipStream_t computeStream)
+            {
+                if(m_copyEventRecorded)
+                {
+                    HIP_CHECK_EXC(hipStreamWaitEvent(computeStream, m_copyDoneEvent, 0));
+                    m_copyEventRecorded = false;
+                }
             }
 
             // Double-buffer: kick off async reset of the alt buffer
-            // on m_copyStream. The caller must syncCopyStream() before
+            // on m_copyStream. The caller must waitCopyDone() before
             // using the alt buffer (done in main.cpp before benchmark_runs).
             void beginAsyncReset(ContractionProblem const* problem)
             {
@@ -326,6 +338,9 @@ namespace TensileLite
                 m_cachedGPUInputs = std::move(saveCached);
                 m_maxElements    = std::move(saveMax);
                 m_groupedOffsets = std::move(saveOffsets);
+
+                HIP_CHECK_EXC(hipEventRecord(m_copyDoneEvent, m_copyStream));
+                m_copyEventRecorded = true;
 
                 m_asyncResetPending = true;
             }
@@ -985,7 +1000,9 @@ namespace TensileLite
             std::vector<void**>              m_gpuBatchPtrsAlt;
             std::shared_ptr<ProblemInputs>   m_cachedGPUInputsAlt;
 
-            hipStream_t m_copyStream = nullptr;
+            hipStream_t m_copyStream       = nullptr;
+            hipEvent_t  m_copyDoneEvent    = nullptr;
+            bool        m_copyEventRecorded = false;
 
             size_t    m_maxBatch;
             uint8_t** m_pinnedBatchStaging = nullptr;
