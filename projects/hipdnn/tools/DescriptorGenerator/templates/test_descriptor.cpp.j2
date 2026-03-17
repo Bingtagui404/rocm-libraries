@@ -504,6 +504,7 @@ TEST_F(Test{{ op.class_name }}, GetAttributeTensorDescriptor)
 
     ASSERT_EQ(elementCount, 1);
     ASSERT_NE(retrieved{{ op.tensor_fields[0].pascal_name }}, nullptr);
+    std::unique_ptr<HipdnnBackendDescriptor> guard{{ op.tensor_fields[0].pascal_name }}(retrieved{{ op.tensor_fields[0].pascal_name }});
 }
 
 // =============================================================================
@@ -868,8 +869,19 @@ TEST_F(Test{{ op.class_name }}, BuildNodeProducesCorrectNodeT)
 {% endfor %}
 {% for df in op.vector_fields %}
 {% if df.build_node_check %}
-    ASSERT_EQ({{ op.effective_build_node_attrs_var }}->{{ df.fbs_field }}.size(), {{ op.test_data.field_values.get(df.name, [1, 1]) | length }});
+{% if op.test_data.constants_include %}
+{% set const_name = df.test_constant_name if df.test_constant_name else ("K_CONV_" ~ (df.name | upper) if "conv" in op.effective_error_label else "K_" ~ (df.name | upper)) %}
+    EXPECT_EQ({{ op.effective_build_node_attrs_var }}->{{ df.fbs_field }}, toVec({{ const_name }}));
+{% else %}
+    EXPECT_EQ({{ op.effective_build_node_attrs_var }}->{{ df.fbs_field }}, (std::vector<int64_t>{{ '{' }}{{ op.test_data.field_values.get(df.name, [1, 1]) | join(', ') }}{{ '}' }}));
 {% endif %}
+{% endif %}
+{% endfor %}
+{% for ef in op.enum_fields %}
+    EXPECT_EQ({{ op.effective_build_node_attrs_var }}->{{ ef.fbs_field }}, {{ ef.enum_short_type }}::{{ ef.test_enum_value }});
+{% endfor %}
+{% for cf in op.mode_fields %}
+    EXPECT_EQ({{ op.effective_build_node_attrs_var }}->{{ cf.fbs_field }}, {{ cf.enum_short_type }}::{{ cf.test_enum_value }});
 {% endfor %}
 }
 {% if op.has_compute_data_type %}
@@ -991,6 +1003,9 @@ TEST_F(Test{{ op.class_name }}, Get{{ taf.test_label or taf.name | replace('_', 
     ASSERT_EQ(elementCount, {{ taf.test_uids | length }});
 {% for uid in taf.test_uids %}
     ASSERT_NE(retrieved[{{ loop.index0 }}], nullptr);
+{% endfor %}
+{% for uid in taf.test_uids %}
+    std::unique_ptr<HipdnnBackendDescriptor> guard{{ loop.index0 }}(retrieved[{{ loop.index0 }}]);
 {% endfor %}
 }
 {% endif %}
