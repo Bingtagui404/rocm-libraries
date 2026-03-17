@@ -429,7 +429,6 @@ public:
     hip_monitor(hip_monitor&&)                 = delete;
     hip_monitor& operator=(hip_monitor&&)      = delete;
 
-    // TODO: Make this an override of the class monitor.
     /// Singleton accessor.
     static hip_monitor& instance()
     {
@@ -919,7 +918,6 @@ private:
     {
         double             batch_ms; ///< Total time for the batch.
         std::vector<float> iterations_ms; ///< Time per iteration.
-        // monitor::stats     stats; ///< Monitor stats after batch // TODO: Put back
     };
 
     /// Serializes the start of the JSON file.
