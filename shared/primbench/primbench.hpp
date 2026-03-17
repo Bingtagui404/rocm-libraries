@@ -823,18 +823,12 @@ public:
     }
 
     /// Stores a batch of benchmark results.
-    void save(double                    batch_ms,
-              const std::vector<float>& iterations_ms)
-            //   const monitor::stats&     stats) // TODO: Put back
+    void save(double batch_ms, const std::vector<float>& iterations_ms)
     {
-        struct batch batch
-        {};
-
-        batch.batch_ms      = batch_ms;
-        batch.iterations_ms = iterations_ms;
-        // batch.stats  = stats;
-
-        m_batches.push_back(batch);
+        m_batches.push_back({
+            .batch_ms = batch_ms,
+            .iterations_ms = iterations_ms
+        });
     }
 
     /// Outputs JSON and CSV specialization information.
