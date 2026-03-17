@@ -132,7 +132,8 @@ template <typename ADataType_,
           index_t kCMPerLane_,
           index_t kCMNumAccess_,
           typename OpType_,
-          MmaOpFamily OpFamily_>
+          MmaOpFamily OpFamily_,
+          index_t kCompressionRatio_ = 1>
 struct amdgcn_mma_base
 {
     using OpType                          = OpType_;
@@ -149,13 +150,14 @@ struct amdgcn_mma_base
     static constexpr index_t kK = FragK; // K = K2 * K1 * K0
 
     // Layout constants, check description above.
-    static constexpr index_t kABKPerLane  = kABKPerLane_;  // K2 * K0
-    static constexpr index_t kAKNumAccess = kAKNumAccess_; // K2
-    static constexpr index_t kARepeat     = kARepeat_;     // RDNA3 repetition and MFMA block-hiding
-    static constexpr index_t kBKNumAccess = kBKNumAccess_; // K2
-    static constexpr index_t kBRepeat     = kBRepeat_;     // RDNA3 repetition and MFMA block-hiding
-    static constexpr index_t kCMPerLane   = kCMPerLane_;   // M2 * M0
-    static constexpr index_t kCMNumAccess = kCMNumAccess_; // M2
+    static constexpr index_t kABKPerLane       = kABKPerLane_;       // K2 * K0
+    static constexpr index_t kAKNumAccess      = kAKNumAccess_;      // K2
+    static constexpr index_t kARepeat          = kARepeat_;          // RDNA3 repetition and MFMA block-hiding
+    static constexpr index_t kBKNumAccess      = kBKNumAccess_;      // K2
+    static constexpr index_t kBRepeat          = kBRepeat_;          // RDNA3 repetition and MFMA block-hiding
+    static constexpr index_t kCMPerLane        = kCMPerLane_;        // M2 * M0
+    static constexpr index_t kCMNumAccess      = kCMNumAccess_;      // M2
+    static constexpr index_t kCompressionRatio = kCompressionRatio_; // Sparse intrisics matrix A compression
 
     // Register types (derived)
     static constexpr index_t WaveSize = WaveSize_;
@@ -163,7 +165,7 @@ struct amdgcn_mma_base
     static_assert((kN * kK * kBRepeat) % WaveSize == 0);
     static_assert((kM * kN) % WaveSize == 0);
 
-    using AVecType = ext_vector_t<ADataType, kM * kK * kARepeat / WaveSize>;
+    using AVecType = ext_vector_t<ADataType, kM * kK * kARepeat / WaveSize / kCompressionRatio>;
     using BVecType = ext_vector_t<BDataType, kN * kK * kBRepeat / WaveSize>;
     using CVecType = ext_vector_t<CDataType, kM * kN / WaveSize>;
 };
