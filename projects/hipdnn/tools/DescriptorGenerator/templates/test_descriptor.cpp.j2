@@ -3,6 +3,7 @@
 
 #include "DescriptorTestUtils.hpp"
 #include "HipdnnException.hpp"
+#include "HipdnnOperationType.h"
 #include "TensorDescriptorTestUtils.hpp"
 #include "TestMacros.hpp"
 #include "descriptors/{{ op.class_name }}.hpp"
@@ -1010,3 +1011,100 @@ TEST_F(Test{{ op.class_name }}, Get{{ taf.test_label or taf.name | replace('_', 
 }
 {% endif %}
 {% endfor %}
+
+// =============================================================================
+// Operation Name Tests
+// =============================================================================
+
+TEST_F(Test{{ op.class_name }}, SetAttributeNameSuccess)
+{
+    auto desc = getDescriptor();
+    std::string name = "test_{{ op.name | lower }}_op";
+
+    ASSERT_NO_THROW(desc->setAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT,
+                                       HIPDNN_TYPE_CHAR,
+                                       static_cast<int64_t>(name.size()),
+                                       name.c_str()));
+
+    // Finalize and verify name round-trips
+    setRequiredAttributes();
+    desc->finalize();
+
+    int64_t count = 0;
+    desc->getAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT, HIPDNN_TYPE_CHAR, 0, &count, nullptr);
+    ASSERT_EQ(count, static_cast<int64_t>(name.size() + 1));
+
+    std::vector<char> buffer(static_cast<size_t>(count));
+    int64_t actualCount = 0;
+    desc->getAttribute(
+        HIPDNN_ATTR_OPERATION_NAME_EXT, HIPDNN_TYPE_CHAR, count, &actualCount, buffer.data());
+    EXPECT_STREQ(buffer.data(), "test_{{ op.name | lower }}_op");
+}
+
+TEST_F(Test{{ op.class_name }}, GetAttributeNameQueryReturnsSizeInclNull)
+{
+    auto desc = getDescriptor();
+    std::string name = "my_op";
+    desc->setAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT,
+                       HIPDNN_TYPE_CHAR,
+                       static_cast<int64_t>(name.size()),
+                       name.c_str());
+    setRequiredAttributes();
+    desc->finalize();
+
+    int64_t count = 0;
+    desc->getAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT, HIPDNN_TYPE_CHAR, 0, &count, nullptr);
+    EXPECT_EQ(count, static_cast<int64_t>(name.size() + 1));
+}
+{% if op.operation_type_enum %}
+
+// =============================================================================
+// Operation Type Tests
+// =============================================================================
+
+TEST_F(Test{{ op.class_name }}, GetAttributeOperationTypeReturnsCorrectType)
+{
+    makeFinalized();
+    auto desc = getDescriptor();
+
+    hipdnnOperationType_t opType = HIPDNN_OPERATION_TYPE_NOT_SET;
+    int64_t elementCount = 0;
+    ASSERT_NO_THROW(desc->getAttribute(
+        HIPDNN_ATTR_OPERATION_TYPE_EXT, HIPDNN_TYPE_OPERATION_TYPE_EXT, 1, &elementCount, &opType));
+
+    ASSERT_EQ(elementCount, 1);
+    EXPECT_EQ(opType, {{ op.operation_type_enum }});
+}
+
+TEST_F(Test{{ op.class_name }}, GetAttributeOperationTypeQueryReturnsOne)
+{
+    makeFinalized();
+    auto desc = getDescriptor();
+
+    int64_t elementCount = 0;
+    ASSERT_NO_THROW(desc->getAttribute(
+        HIPDNN_ATTR_OPERATION_TYPE_EXT, HIPDNN_TYPE_OPERATION_TYPE_EXT, 0, &elementCount, nullptr));
+    ASSERT_EQ(elementCount, 1);
+}
+{% endif %}
+
+TEST_F(Test{{ op.class_name }}, BuildNodePreservesName)
+{
+    setRequiredAttributes();
+    auto desc = getDescriptor();
+
+    std::string opName = "test_{{ op.name | lower }}";
+    desc->setAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT,
+                       HIPDNN_TYPE_CHAR,
+                       static_cast<int64_t>(opName.size()),
+                       opName.c_str());
+{% if op.has_compute_data_type %}
+    auto computeType = HIPDNN_DATA_FLOAT;
+    desc->setAttribute({{ op.compute_data_type_attr }}, HIPDNN_TYPE_DATA_TYPE, 1, &computeType);
+{% endif %}
+    desc->finalize();
+
+    auto node = desc->buildNode();
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->name, "test_{{ op.name | lower }}");
+}

@@ -317,6 +317,9 @@ TEST_F(TestGraphDescriptor{{ op.name }}, BuildFromSingleOperation)
     // Verify {{ taf.name }} tensor array is empty (not set in basic test)
     EXPECT_EQ(graphT->nodes[0]->attributes.As{{ op.fbs_table }}()->{{ taf.fbs_field }}.size(), 0u);
 {% endfor %}
+
+    // Verify default node name is empty
+    EXPECT_TRUE(graphT->nodes[0]->name.empty());
 }
 {% if op.has_compute_data_type %}
 
@@ -461,6 +464,13 @@ TEST_F(TestGraphDescriptor{{ op.name }}, {{ op.name }}AttributesPreserved)
     auto computeType = HIPDNN_DATA_FLOAT;
     opDesc->setAttribute({{ op.compute_data_type_attr }}, HIPDNN_TYPE_DATA_TYPE, 1, &computeType);
 {% endif %}
+
+    // Set operation name
+    std::string opName = "test_{{ op.name | lower }}";
+    opDesc->setAttribute(HIPDNN_ATTR_OPERATION_NAME_EXT,
+                         HIPDNN_TYPE_CHAR,
+                         static_cast<int64_t>(opName.size()),
+                         opName.c_str());
     opDesc->finalize();
 
     auto desc = getDescriptor();
@@ -529,6 +539,9 @@ TEST_F(TestGraphDescriptor{{ op.name }}, {{ op.name }}AttributesPreserved)
 {% endif %}
 {% endfor %}
 );
+
+    // Verify operation name
+    EXPECT_EQ(graphT->nodes[0]->name, "test_{{ op.name | lower }}");
 }
 {% endif %}
 

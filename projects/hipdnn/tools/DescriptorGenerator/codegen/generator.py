@@ -37,8 +37,12 @@ class DescriptorGenerator:
             / config.test_descriptor_filename,
             "test_graph_ops.cpp.j2": Path("backend/tests/descriptors")
             / config.test_graph_filename,
+            "test_from_node.cpp.j2": Path("backend/tests/descriptors")
+            / config.test_from_node_filename,
             "test_integration.cpp.j2": Path("tests/frontend")
             / config.test_integration_filename,
+            "unpacker.hpp.j2": Path("frontend/include/hipdnn_frontend/detail")
+            / config.unpacker_filename,
         }
 
         for template_name, rel_path in file_templates.items():
@@ -55,6 +59,10 @@ class DescriptorGenerator:
             "fragments/string_utils_block.j2": "string_utils_block.txt",
             "fragments/factory_case.j2": "factory_case.txt",
             "fragments/cmake_entries.j2": "cmake_entries.txt",
+            "fragments/node_factory_case.j2": "node_factory_case.txt",
+            "fragments/operation_unpacker_case.j2": "operation_unpacker_case.txt",
+            "fragments/operation_type_enum.j2": "operation_type_enum.txt",
+            "fragments/node_unpack_override.j2": "node_unpack_override.txt",
         }
 
         fragments_dir = output_dir / "fragments"
