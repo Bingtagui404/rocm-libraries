@@ -10,10 +10,11 @@ Adding a new operation follows this sequence:
 4. **Add enums** — Insert new enum values into the backend headers (see steps below)
 5. **Add enum test coverage** — Add `EXPECT_STREQ` entries to `TestBackendEnumStringUtils.cpp`
 6. **Place generated files** — Copy generated source and test files into the project tree
-7. **Update CMake** — Add new source and test files to the build
-8. **Review and build** — Compile, run tests, review generated code
-9. **Extract test constants** — Replace inline test literals with named constants (see Step 9 below)
-10. **Implement integration test** — The generated integration test is a stub; implement full E2E round-trip tests (see Step 10 below)
+7. **Add lifting support** — For operations that need lifting (graph → descriptor → frontend), run `--lift-only` to generate unpacker, fromNode test, and fragment templates. Apply changes from `fragments/descriptor_lifting_additions.txt` to existing descriptor files.
+8. **Update CMake** — Add new source and test files to the build
+9. **Review and build** — Compile, run tests, review generated code
+10. **Extract test constants** — Replace inline test literals with named constants (see Step 10 below)
+11. **Implement integration test** — The generated integration test is a stub; implement full E2E round-trip tests (see Step 11 below)
 
 ---
 
@@ -124,7 +125,72 @@ Use `ConvolutionFpropNode.hpp` as the reference for this pattern. The `create_op
 
 ---
 
-## Step 7: Update CMake
+## Step 7: Add Lifting Support
+
+For operations that need lifting (reconstructing frontend graph attributes from serialized FlatBuffer data), use the `--lift-only` flag:
+
+```bash
+.venv/bin/python generate.py --config configs/<op>.yaml --output-dir /tmp/lift-output --lift-only
+```
+
+This generates only lifting-related files:
+
+| Generated File | Purpose |
+|----------------|---------|
+| `frontend/include/hipdnn_frontend/detail/<Op>Unpacker.hpp` | Frontend unpacker (inverse of packer) |
+| `backend/tests/descriptors/Test<Op>OperationFromNode.cpp` | fromNode() round-trip tests |
+| `fragments/node_factory_case.txt` | NodeFactory switch case for this operation |
+| `fragments/operation_unpacker_case.txt` | OperationUnpacker switch case |
+| `fragments/operation_type_enum.txt` | hipdnnOperationType_t enum entry |
+| `fragments/node_unpack_override.txt` | Node class unpack_from_descriptor override |
+| `fragments/descriptor_lifting_additions.txt` | Manual changes for existing descriptor files |
+
+### 7a. Apply Descriptor Additions
+
+The `descriptor_lifting_additions.txt` file contains the exact changes to make to the existing `<Op>OperationDescriptor.hpp/.cpp`:
+
+- **HPP**: Add `#include <unordered_map>`, `fromNode()` declaration, `_name` member
+- **CPP**: Add `HIPDNN_ATTR_OPERATION_NAME_EXT` handling in setAttribute/getAttribute, `HIPDNN_ATTR_OPERATION_TYPE_EXT` handling in getAttribute, `_name` in buildNode/toString, and the full `fromNode()` implementation
+
+### 7b. Place Lifting Files
+
+| Generated File | Target Location |
+|----------------|-----------------|
+| `<Op>Unpacker.hpp` | `projects/hipdnn/frontend/include/hipdnn_frontend/detail/` |
+| `Test<Op>OperationFromNode.cpp` | `projects/hipdnn/backend/tests/descriptors/` |
+
+### 7c. Wire Lifting Fragments
+
+Insert the content from each fragment into the corresponding shared file:
+
+| Fragment | Target File | What to Add |
+|----------|-------------|-------------|
+| `node_factory_case.txt` | `backend/src/descriptors/NodeFactory.cpp` | Case in `createFromNode()` switch |
+| `operation_unpacker_case.txt` | `frontend/src/OperationUnpacker.cpp` | Case in the unpacker dispatch |
+| `operation_type_enum.txt` | `backend/include/HipdnnOperationType.h` | Enum entry for this operation |
+| `node_unpack_override.txt` | Frontend node header (e.g., `ConvolutionFpropNode.hpp`) | `unpack_from_descriptor` override |
+
+### 7d. Wire `unpack_from_descriptor` in the Frontend Node
+
+The generated `node_unpack_override.txt` provides the `unpack_from_descriptor()` override. Add it to the frontend node class along with the unpacker include:
+
+```cpp
+#include "hipdnn_frontend/detail/<Op>Unpacker.hpp"
+
+Error unpack_from_descriptor(
+    hipdnn_backend_descriptor_t const opDesc) override
+{
+    return detail::unpack<Op>(get_attributes(), opDesc);
+}
+```
+
+### 7e. Update CMake
+
+Add the new test file to `backend/tests/CMakeLists.txt`. The cmake_entries.txt fragment (from full generation) includes the fromNode test entry.
+
+---
+
+## Step 8: Update CMake
 
 Insert the content from `fragments/cmake_entries.txt`.
 
@@ -135,7 +201,7 @@ Insert the content from `fragments/cmake_entries.txt`.
 
 ---
 
-## Step 8: Review and Build
+## Step 9: Review and Build
 
 ```bash
 cd projects/hipdnn/build
@@ -152,7 +218,7 @@ Review the generated code for correctness, paying attention to:
 
 ---
 
-## Step 9: Extract Test Constants
+## Step 10: Extract Test Constants
 
 The generator inlines literal test values from the YAML config (e.g., `{1, 1}` for padding, `1` for tensor UIDs). After placing the generated files, review the test code and replace inline literals with named constants.
 
@@ -218,9 +284,9 @@ If the test values are only used in a single test file and are not meaningful be
 
 ---
 
-## Step 10: Implement the Integration Test
+## Step 11: Implement the Integration Test
 
-**IMPORTANT**: The generated integration test (`Integration<Op>DescriptorLowering.cpp`) is a **stub** — it has the fixture and setup, but no actual test cases. You MUST implement the full E2E round-trip tests before the work is considered complete. Integration tests should use named constants (see Step 9).
+**IMPORTANT**: The generated integration test (`Integration<Op>DescriptorLowering.cpp`) is a **stub** — it has the fixture and setup, but no actual test cases. You MUST implement the full E2E round-trip tests before the work is considered complete. Integration tests should use named constants (see Step 10).
 
 Use `tests/frontend/IntegrationConvFpropDescriptorLowering.cpp` as the reference. Each integration test should:
 
@@ -351,12 +417,16 @@ operation:
     packer_function: "createConvWgradOperation"    # Function name in the generated packer
     node_class: "ConvolutionWgradNode"              # The frontend node class (if it exists)
     attributes_class: "ConvWgradAttributes"         # The frontend attributes class (if it exists)
+    # Lifting support (optional, required for --lift-only mode)
+    unpacker_function: "unpackConvFprop"             # Function name in the generated unpacker
+    unpacker_include: ""                              # Override derived include file name (optional)
 
   # Shared attributes — if this operation reuses attributes from another operation
   # (e.g., all conv ops share HIPDNN_ATTR_CONVOLUTION_PRE_PADDINGS), use the SAME
   # attr_name values. Do NOT create new per-operation copies.
   has_compute_data_type: true
   compute_data_type_attr: "HIPDNN_ATTR_CONVOLUTION_COMP_TYPE"  # Shared across conv ops
+  operation_type_enum: "HIPDNN_OPERATION_TYPE_CONVOLUTION_FORWARD"  # For HIPDNN_ATTR_OPERATION_TYPE_EXT
 
   # Test data — UIDs should be distinct across operations to avoid confusion
   test_data:
@@ -378,6 +448,7 @@ operation:
 |----------|------|---------|-------------|
 | `shared` | bool | `false` | If `true`, the attribute enum already exists (defined by another operation). Fragment templates skip shared fields to avoid duplicate enum entries. Core templates still include them for setAttribute/getAttribute. |
 | `test_enum_value` | string | `""` | **Required for enum fields.** The enum constant to use in generated tests (e.g., `CROSS_CORRELATION` for ConvMode, `ADD` for PointwiseMode). |
+| `frontend_inverse_converter` | string | `""` | Conversion function from backend C-API value back to frontend enum (used in unpacker). Only needed for `mode` fields. Example: `toFrontendConvMode` |
 
 ### Operation-Level Shared Properties
 
@@ -539,3 +610,6 @@ Generated code and post-generation edits MUST use existing utilities rather than
 - **The integration test is a stub** — it must be implemented following the pattern above
 - Fragment files contain comments indicating where to insert each snippet
 - Enum values (PLACEHOLDER_VALUE) must be replaced with actual numeric values following the existing numbering scheme
+- The unpacker `.hpp` file is complete and ready to use as-is
+- The fromNode test file is complete and ready to compile
+- Fragment files for lifting (NodeFactory, OperationUnpacker, operation type enum, node unpack override) contain comments indicating where to insert each snippet
