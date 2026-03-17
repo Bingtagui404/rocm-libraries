@@ -7,7 +7,6 @@
 #include "ck_tile/core/arch/arch.hpp"
 #include "ck_tile/core/arch/mma/amdgcn_mma.hpp"
 #include "ck_tile/core/numeric/vector_type.hpp"
-#include "ck_tile/ops/gemm/warp/warp_gemm_smfmac_impl.hpp"
 #include "ck_tile/core/arch/mma/sparse/sparse_traits.hpp"
 
 namespace ck_tile::core::arch::mma {
