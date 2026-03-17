@@ -28,6 +28,12 @@ def main():
         type=Path,
         help="Output directory (e.g., ../../ to write relative to hipdnn project root)",
     )
+    parser.add_argument(
+        "--lift-only",
+        action="store_true",
+        help="Generate only lifting-related files (unpacker, fromNode tests, "
+        "lifting fragments, descriptor additions guide)",
+    )
     args = parser.parse_args()
 
     if not args.config.exists():
@@ -52,12 +58,16 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        written = generator.render(config, args.output_dir)
+        if args.lift_only:
+            written = generator.render_lift_only(config, args.output_dir)
+        else:
+            written = generator.render(config, args.output_dir)
     except Exception as e:
         print(f"Template rendering error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\nGenerated {len(written)} files:")
+    mode_label = "lifting" if args.lift_only else ""
+    print(f"\nGenerated {len(written)} {mode_label} files:".replace("  ", " "))
     for f in written:
         print(f"  {f}")
 
