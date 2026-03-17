@@ -919,7 +919,7 @@ TEST_F(Test{{ op.class_name }}, TryAsInterfaceReturnsValidGraphOp)
 {
     makeFinalized();
 
-    auto graphOp = _wrapper->tryAsInterface<IGraphOperation>();
+    auto graphOp = _wrapper->tryAsGraphOperation();
     ASSERT_NE(graphOp, nullptr);
 
     // Verify the returned interface is the same underlying object
@@ -936,7 +936,7 @@ TEST_F(Test{{ op.class_name }}, TryAsInterfaceReturnsValidGraphOp)
 TEST_F(Test{{ op.class_name }}, TryAsInterfaceReturnsNullForWrongType)
 {
     // TensorDescriptor does not implement IGraphOperation
-    auto graphOp = {{ op.tensor_fields[0].member_name }}->tryAsInterface<IGraphOperation>();
+    auto graphOp = {{ op.tensor_fields[0].member_name }}->tryAsGraphOperation();
     EXPECT_EQ(graphOp, nullptr);
 }
 {% for taf in op.tensor_array_fields %}
