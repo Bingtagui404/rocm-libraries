@@ -39,9 +39,10 @@
 #include <../test/verify.hpp>
 
 #include <miopen/errors.hpp>
+#include <miopen/logger.hpp>
 #include <miopen/miopen.h>
 #include <miopen/rnn.hpp>
-#include <miopen/tensor.hpp>
+#include <miopen/tensor_ops.hpp>
 
 #include <algorithm>
 #include <array>
@@ -291,9 +292,9 @@ int RNNDriver<Tgpu, Tref>::AddCmdLineArgs()
 template <typename Tgpu, typename Tref>
 std::vector<int> RNNDriver<Tgpu, Tref>::GetInputTensorLengthsFromCmdLine()
 {
-    int nseq = inflags.GetValueInt("seq_len");
+    const int nseq = inflags.GetValueInt("seq_len");
     int in_h = inflags.GetValueInt("in_h");
-    std::vector<int> in_n(nseq, 0);
+    std::vector in_n(nseq, 0);
     std::string batchstr = inflags.GetValueStr("batchsize");
 
     std::stringstream ss(batchstr);
@@ -318,7 +319,8 @@ std::vector<int> RNNDriver<Tgpu, Tref>::GetInputTensorLengthsFromCmdLine()
         if(cont > 0 && in_n[cont] > in_n[cont - 1])
         {
             printf("Incorrect input batch size at time %d\n", cont);
-            return std::vector<int>({0});
+            in_n = std::vector<int>({0});
+            return in_n;
         }
         else
         {
@@ -769,13 +771,6 @@ int RNNDriver<Tgpu, Tref>::AllocateBuffersAndCopy()
 
     return miopenStatusSuccess;
 }
-
-#include <array>
-#include <initializer_list>
-#include <miopen/errors.hpp>
-#include <miopen/logger.hpp>
-#include <miopen/tensor.hpp>
-#include <miopen/tensor_ops.hpp>
 
 template <typename Tgpu, typename Tref>
 int RNNDriver<Tgpu, Tref>::RunForwardGPU()

@@ -4938,7 +4938,7 @@ struct ConvWinogradNHWCTransposingBase : TransposingSolver<Derived,
     /// Override Transpose to recompute layout strings after transposing tensors.
     /// This is needed because conv::ProblemDescription caches layout strings at construction,
     /// and they must be updated to reflect the new NCHW-like strides after transposition.
-    inline static Problem Transpose(const Problem& problem)
+    static Problem Transpose(const Problem& problem)
     {
         auto transposed_problem = Base::Transpose(problem);
         // CRITICAL: Attempt to update cached layout strings to match transposed strides.
@@ -4950,7 +4950,7 @@ struct ConvWinogradNHWCTransposingBase : TransposingSolver<Derived,
         return transposed_problem;
     }
 
-    inline static auto GetTransposes(const Problem& problem)
+    static auto GetTransposes(const Problem& problem)
     {
         const bool is_wrw = problem.IsDirectionBackwardWrW();
 
@@ -4958,7 +4958,7 @@ struct ConvWinogradNHWCTransposingBase : TransposingSolver<Derived,
         // - For 4D tensors: Automatically interpreted as NCHW (D dimension is implicit/1)
         // - For 5D tensors: Full NCDHW layout for 3D convolutions
         // This makes the transposing solver future-proof for both 2D and 3D convolutions.
-        auto ret = std::array<ProblemTensorTransposeDescriptor<Problem, InvokeParams>, 3>{{
+        return std::array<ProblemTensorTransposeDescriptor<Problem, InvokeParams>, 3>{{
             {
                 &Problem::GetIn,
                 &InvokeParams::inDesc,
@@ -4984,8 +4984,6 @@ struct ConvWinogradNHWCTransposingBase : TransposingSolver<Derived,
                 is_wrw,  // Fwd/Bwd: output; WrW: input
             },
         }};
-
-        return ret;
     }
 };
 
