@@ -407,5 +407,10 @@ class OperationConfig:
         return [f for f in self.data_fields if not f.shared]
 
     @property
+    def graph_verifiable_data_fields(self) -> list[DataField]:
+        """Data fields included in verify<Op>Node helper (vector, mode, enum)."""
+        return [f for f in self.data_fields if f.is_vector or f.is_mode or f.is_enum]
+
+    @property
     def has_tensor_array_fields(self) -> bool:
         return len(self.tensor_array_fields) > 0

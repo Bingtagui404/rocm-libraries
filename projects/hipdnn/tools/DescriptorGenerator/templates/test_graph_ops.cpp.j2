@@ -134,16 +134,16 @@ public:
         EXPECT_EQ(tensor->virtual_, expectedVirtual);
     }
 
-{% if op.data_fields %}
+{% if op.graph_verifiable_data_fields %}
     static void verify{{ op.name }}Node(const NodeT& node,
 {% if op.has_compute_data_type %}
                                   DataType expectedComputeType,
 {% endif %}
 {% for tf in op.tensor_fields %}
-                                  int64_t expected{{ tf.pascal_name }}Uid{% if not loop.last or op.data_fields %},{% endif %}
+                                  int64_t expected{{ tf.pascal_name }}Uid{% if not loop.last or op.graph_verifiable_data_fields %},{% endif %}
 
 {% endfor %}
-{% for df in op.data_fields %}
+{% for df in op.graph_verifiable_data_fields %}
 {% if df.is_vector %}
                                   const std::vector<int64_t>& expected{{ df.name | replace('_', ' ') | title | replace(' ', '') }}{% if not loop.last %},{% endif %}
 
@@ -259,7 +259,7 @@ TEST_F(TestGraphDescriptor{{ op.name }}, BuildFromSingleOperation)
 {% endfor %}
 
     // Verify node attributes
-{% if op.data_fields %}
+{% if op.graph_verifiable_data_fields %}
     verify{{ op.name }}Node(*graphT->nodes[0],
 {% if op.has_compute_data_type %}
                       DataType::FLOAT,
@@ -267,14 +267,14 @@ TEST_F(TestGraphDescriptor{{ op.name }}, BuildFromSingleOperation)
 {% for tf in op.tensor_fields %}
 {% if op.test_data.constants_include %}
 {% set uid_const = "K_TENSOR_" ~ (tf.name | upper) ~ "_UID" %}
-                      {{ uid_const }}{% if not loop.last or op.data_fields %},{% endif %}
+                      {{ uid_const }}{% if not loop.last or op.graph_verifiable_data_fields %},{% endif %}
 
 {% else %}
-                      {{ op.test_data.tensor_uids.get(tf.name, loop.index) }}{% if not loop.last or op.data_fields %},{% endif %}
+                      {{ op.test_data.tensor_uids.get(tf.name, loop.index) }}{% if not loop.last or op.graph_verifiable_data_fields %},{% endif %}
 
 {% endif %}
 {% endfor %}
-{% for df in op.data_fields %}
+{% for df in op.graph_verifiable_data_fields %}
 {% if df.is_vector %}
 {% if op.test_data.constants_include %}
 {% set const_name = df.test_constant_name if df.test_constant_name else ("K_CONV_" ~ (df.name | upper) if "conv" in op.effective_error_label else "K_" ~ (df.name | upper)) %}
@@ -508,14 +508,14 @@ TEST_F(TestGraphDescriptor{{ op.name }}, {{ op.name }}AttributesPreserved)
 {% for tf in op.tensor_fields %}
 {% if op.test_data.constants_include %}
 {% set uid_const = "K_TENSOR_" ~ (tf.name | upper) ~ "_UID" %}
-                      {{ uid_const }}{% if not loop.last or op.data_fields %},{% endif %}
+                      {{ uid_const }}{% if not loop.last or op.graph_verifiable_data_fields %},{% endif %}
 
 {% else %}
-                      {{ op.test_data.tensor_uids.get(tf.name, loop.index) }}{% if not loop.last or op.data_fields %},{% endif %}
+                      {{ op.test_data.tensor_uids.get(tf.name, loop.index) }}{% if not loop.last or op.graph_verifiable_data_fields %},{% endif %}
 
 {% endif %}
 {% endfor %}
-{% for df in op.data_fields %}
+{% for df in op.graph_verifiable_data_fields %}
 {% if df.is_vector %}
 {% set tv = df.test_value if df.test_value else op.test_data.field_values.get(df.name, [2, 3]) %}
                       kCustom{{ df.name | replace('_', ' ') | title | replace(' ', '') }}{% if not loop.last %},{% endif %}
