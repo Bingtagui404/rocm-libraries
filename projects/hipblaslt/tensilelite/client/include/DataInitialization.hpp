@@ -231,14 +231,12 @@ namespace TensileLite
             // A temporarily wrapper
             std::shared_ptr<ProblemInputs> prepareGPUInputs(ContractionProblem const* problem)
             {
-                if(m_asyncResetPending)
+                if(m_pendingResets > 0)
                 {
-                    // Double-buffer: swap to the alt buffer prepared by
-                    // beginAsyncReset. Caller must syncCopyStream() before
-                    // the buffer is actually used (done in main.cpp before
-                    // benchmark_runs).
-                    rotateBufSets();
-                    m_asyncResetPending = false;
+                    // Advance to the next pre-filled buffer in the ring.
+                    // Caller must waitCopyDone() before the buffer is
+                    // actually used (done in main.cpp before benchmark_runs).
+                    advanceBuffer();
                     return m_cachedGPUInputs;
                 }
 
@@ -255,47 +253,56 @@ namespace TensileLite
                     throw std::runtime_error("Failed to cast to any ContractionProblem.");
             }
 
-            // Cancel any pending async reset and invalidate alt buffers
+            // Cancel any pending async resets and invalidate alt buffers
             // (e.g., when switching to a new problem whose data differs).
             void cancelAsyncReset()
             {
-                if(m_asyncResetPending)
+                if(m_pendingResets > 0 || m_activeNeedsSync)
                 {
                     syncCopyStream();
-                    m_asyncResetPending = false;
+                    m_pendingResets    = 0;
+                    m_activeNeedsSync = false;
                 }
-                // Clear alt vectors so initializeAltBufferSet re-runs
+                m_activeIdx = 0;
+                // Clear alt ring slots so initializeAltBufferSets re-runs
                 // for the new problem's data.
-                m_gpuPtrsAlt.clear();
-                m_gpuBatchPtrsAlt.clear();
-                m_cachedGPUInputsAlt.reset();
+                for(size_t i = 1; i < MAX_BUFFER_SETS; i++)
+                {
+                    m_gpuPtrsRing[i].clear();
+                    m_gpuBatchPtrsRing[i].clear();
+                    m_cachedInputsRing[i].reset();
+                }
             }
 
             void syncCopyStream()
             {
                 if(m_copyStream)
                     HIP_CHECK_EXC(hipStreamSynchronize(m_copyStream));
-                m_copyEventRecorded = false;
             }
 
-            // GPU-side wait: make computeStream wait for the copy to
-            // finish without blocking the CPU.
+            // GPU-side wait: make computeStream wait for the copy into
+            // the active buffer slot to finish, without blocking the CPU.
             void waitCopyDone(hipStream_t computeStream)
             {
-                if(m_copyEventRecorded)
-                {
-                    HIP_CHECK_EXC(hipStreamWaitEvent(computeStream, m_copyDoneEvent, 0));
-                    m_copyEventRecorded = false;
-                }
+                if(!m_activeNeedsSync)
+                    return;
+                HIP_CHECK_EXC(hipStreamWaitEvent(
+                    computeStream, m_copyDoneEvents[m_activeIdx], 0));
+                m_activeNeedsSync = false;
             }
 
-            // Double-buffer: kick off async reset of the alt buffer
+            // Kick off async reset of the next free buffer slot in the ring
             // on m_copyStream. The caller must waitCopyDone() before
-            // using the alt buffer (done in main.cpp before benchmark_runs).
+            // using the buffer (done in main.cpp before benchmark_runs).
             void beginAsyncReset(ContractionProblem const* problem)
             {
                 if(!m_hasAltBuffers || !m_copyStream)
                     return;
+                if(m_pendingResets >= m_numActiveBuffers - 1)
+                    return; // all non-active slots already have pending DMA
+
+                size_t targetIdx
+                    = (m_activeIdx + m_pendingResets + 1) % m_numActiveBuffers;
 
                 // Save current working state
                 auto savePtrs    = std::move(m_gpuPtrs);
@@ -304,32 +311,39 @@ namespace TensileLite
                 auto saveMax     = std::move(m_maxElements);
                 auto saveOffsets = std::move(m_groupedOffsets);
 
-                // Swap pristine pointers to target alt buffer
+                // Point pristine pointers at target ring slot
                 for(auto& vd : m_vdata)
                     for(auto& [dt, pu] : vd.pristine)
                     {
-                        std::swap(pu.gpuInput.current, pu.gpuInput.currentAlt);
-                        std::swap(pu.gpuInput.batch, pu.gpuInput.batchAlt);
+                        std::swap(pu.gpuInput.current,
+                                  pu.gpuInput.buffers[targetIdx]);
+                        std::swap(pu.gpuInput.batch,
+                                  pu.gpuInput.batchBufs[targetIdx]);
                     }
 
-                // Async-prepare alt
-                if(auto gemmProblem = dynamic_cast<ContractionProblemGemm const*>(problem))
+                // Async-prepare into target slot
+                if(auto gemmProblem
+                   = dynamic_cast<ContractionProblemGemm const*>(problem))
                     prepareGPUInputsInternal(*gemmProblem, m_copyStream);
                 else if(auto groupedProblem
-                        = dynamic_cast<ContractionProblemGroupedGemm const*>(problem))
-                    prepareGPUInputsInternal(groupedProblem->gemms[0], m_copyStream);
+                        = dynamic_cast<ContractionProblemGroupedGemm const*>(
+                            problem))
+                    prepareGPUInputsInternal(
+                        groupedProblem->gemms[0], m_copyStream);
 
-                // Store results in alt slots
-                m_gpuPtrsAlt      = std::move(m_gpuPtrs);
-                m_gpuBatchPtrsAlt = std::move(m_gpuBatchPtrs);
-                m_cachedGPUInputsAlt = std::move(m_cachedGPUInputs);
+                // Store results in target ring slot
+                m_gpuPtrsRing[targetIdx]      = std::move(m_gpuPtrs);
+                m_gpuBatchPtrsRing[targetIdx] = std::move(m_gpuBatchPtrs);
+                m_cachedInputsRing[targetIdx] = std::move(m_cachedGPUInputs);
 
-                // Swap pristine pointers back
+                // Swap pristine pointers back to active slot
                 for(auto& vd : m_vdata)
                     for(auto& [dt, pu] : vd.pristine)
                     {
-                        std::swap(pu.gpuInput.current, pu.gpuInput.currentAlt);
-                        std::swap(pu.gpuInput.batch, pu.gpuInput.batchAlt);
+                        std::swap(pu.gpuInput.current,
+                                  pu.gpuInput.buffers[targetIdx]);
+                        std::swap(pu.gpuInput.batch,
+                                  pu.gpuInput.batchBufs[targetIdx]);
                     }
 
                 // Restore working state
@@ -339,10 +353,9 @@ namespace TensileLite
                 m_maxElements    = std::move(saveMax);
                 m_groupedOffsets = std::move(saveOffsets);
 
-                HIP_CHECK_EXC(hipEventRecord(m_copyDoneEvent, m_copyStream));
-                m_copyEventRecorded = true;
-
-                m_asyncResetPending = true;
+                HIP_CHECK_EXC(
+                    hipEventRecord(m_copyDoneEvents[targetIdx], m_copyStream));
+                m_pendingResets++;
             }
 
             std::shared_ptr<ProblemInputs>
@@ -856,16 +869,18 @@ namespace TensileLite
             }
 
         protected:
+            static constexpr size_t MAX_BUFFER_SETS = 3;
+
             // Memory input for class DataInitialization
             struct MemoryInput
             {
-                std::shared_ptr<void>  current;
+                std::shared_ptr<void>  current; // Active buffer (= buffers[activeIdx])
                 std::shared_ptr<void>  valid;
                 std::shared_ptr<void>  bad;
-                std::shared_ptr<void*> batch;
-                // Alternate buffers for double-buffering
-                std::shared_ptr<void>  currentAlt;
-                std::shared_ptr<void*> batchAlt;
+                std::shared_ptr<void*> batch;   // Active batch  (= batchBufs[activeIdx])
+                // Ring of buffer allocations for multi-buffering
+                std::shared_ptr<void>  buffers[MAX_BUFFER_SETS];
+                std::shared_ptr<void*> batchBufs[MAX_BUFFER_SETS];
             };
 
             // Pristine unit for each allocated memory
@@ -957,20 +972,23 @@ namespace TensileLite
             std::shared_ptr<ProblemInputs>
                 ConvertToProblemInputs(ContractionProblemGemm const& problem, bool isGPU);
 
-            void initializeAltBufferSet(ContractionProblemGemm const& problem);
+            void initializeAltBufferSets(ContractionProblemGemm const& problem);
 
-            // Swap buffer sets: current↔alt.
-            void rotateBufSets()
+            // Advance to the next buffer in the ring.
+            void advanceBuffer()
             {
+                m_activeIdx = (m_activeIdx + 1) % m_numActiveBuffers;
                 for(auto& vd : m_vdata)
                     for(auto& [dt, pu] : vd.pristine)
                     {
-                        std::swap(pu.gpuInput.current, pu.gpuInput.currentAlt);
-                        std::swap(pu.gpuInput.batch, pu.gpuInput.batchAlt);
+                        pu.gpuInput.current = pu.gpuInput.buffers[m_activeIdx];
+                        pu.gpuInput.batch   = pu.gpuInput.batchBufs[m_activeIdx];
                     }
-                std::swap(m_gpuPtrs, m_gpuPtrsAlt);
-                std::swap(m_gpuBatchPtrs, m_gpuBatchPtrsAlt);
-                std::swap(m_cachedGPUInputs, m_cachedGPUInputsAlt);
+                m_gpuPtrs        = m_gpuPtrsRing[m_activeIdx];
+                m_gpuBatchPtrs   = m_gpuBatchPtrsRing[m_activeIdx];
+                m_cachedGPUInputs = m_cachedInputsRing[m_activeIdx];
+                m_pendingResets--;
+                m_activeNeedsSync = true;
             }
 
             std::shared_ptr<ProblemInputs>
@@ -989,20 +1007,22 @@ namespace TensileLite
             bool m_cpuInit = false;
             bool m_gpuInit = false;
 
-            // Double-buffer control
-            bool m_hasAltBuffers      = false;
-            bool m_asyncResetPending  = false;
+            // Multi-buffer ring control
+            bool   m_hasAltBuffers    = false;
+            size_t m_numActiveBuffers = 2;  // 2 for double-buffer, 3 for triple
+            size_t m_activeIdx        = 0;
+            size_t m_pendingResets    = 0;
+            bool   m_activeNeedsSync  = false; // active buffer's DMA not yet synced
 
             std::shared_ptr<ProblemInputs> m_cachedGPUInputs;
 
-            // Double-buffer: alternate set of working vectors and cached inputs
-            std::vector<void*>               m_gpuPtrsAlt;
-            std::vector<void**>              m_gpuBatchPtrsAlt;
-            std::shared_ptr<ProblemInputs>   m_cachedGPUInputsAlt;
+            // Ring of buffer sets
+            std::vector<void*>             m_gpuPtrsRing[MAX_BUFFER_SETS];
+            std::vector<void**>            m_gpuBatchPtrsRing[MAX_BUFFER_SETS];
+            std::shared_ptr<ProblemInputs> m_cachedInputsRing[MAX_BUFFER_SETS];
 
-            hipStream_t m_copyStream       = nullptr;
-            hipEvent_t  m_copyDoneEvent    = nullptr;
-            bool        m_copyEventRecorded = false;
+            hipStream_t m_copyStream = nullptr;
+            hipEvent_t  m_copyDoneEvents[MAX_BUFFER_SETS] = {};
 
             size_t    m_maxBatch;
             uint8_t** m_pinnedBatchStaging = nullptr;

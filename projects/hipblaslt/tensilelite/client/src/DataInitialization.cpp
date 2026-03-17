@@ -899,7 +899,20 @@ namespace TensileLite
 
         {
             HIP_CHECK_EXC(hipStreamCreate(&m_copyStream));
-            HIP_CHECK_EXC(hipEventCreateWithFlags(&m_copyDoneEvent, hipEventDisableTiming));
+            for(size_t i = 0; i < MAX_BUFFER_SETS; i++)
+                HIP_CHECK_EXC(
+                    hipEventCreateWithFlags(&m_copyDoneEvents[i], hipEventDisableTiming));
+
+            // Determine whether to use triple-buffering (no benchmark runs)
+            {
+                int numBenchmarks    = args["num-benchmarks"].as<int>();
+                int numEnqPerSync    = args["num-enqueues-per-sync"].as<int>();
+                int numSyncsPerBench = args["num-syncs-per-benchmark"].as<int>();
+                bool noBenchmarkRuns = (numBenchmarks == 0 || numEnqPerSync == 0
+                                        || numSyncsPerBench == 0);
+                m_numActiveBuffers   = noBenchmarkRuns ? 3 : 2;
+            }
+
             m_rotatingBuffer
                 = args["rotating-buffer-size"].as<int32_t>() * 1024 * 1024; // Change to bytes
             m_rotatingMode   = args["rotating-buffer-mode"].as<int32_t>();
@@ -1442,29 +1455,38 @@ namespace TensileLite
                             s << "[input gpu]" << ss.str();
                             throw std::runtime_error(s.str().c_str());
                         }
-                        pUnit.gpuInput.current = ptr;
-                        std::string n          = "batch" + it.name;
+                        pUnit.gpuInput.current    = ptr;
+                        pUnit.gpuInput.buffers[0] = ptr;
+                        std::string n             = "batch" + it.name;
                         auto        batch_ptr
                             = allocNewGPUBuffer<void*>(n.c_str(), sizeof(uint8_t*) * m_maxBatch);
                         if(batch_ptr == nullptr)
                             throw std::runtime_error("out of batch gpu memory");
-                        pUnit.gpuInput.batch = batch_ptr;
+                        pUnit.gpuInput.batch       = batch_ptr;
+                        pUnit.gpuInput.batchBufs[0] = batch_ptr;
 
-                        // Allocate alternate buffers for double-buffering
-                        if(m_hasAltBuffers && !pUnit.gpuInput.currentAlt)
+                        // Allocate alternate buffers for multi-buffering
+                        for(size_t slot = 1;
+                            m_hasAltBuffers && slot < MAX_BUFFER_SETS;
+                            slot++)
                         {
-                            auto altPtr = allocNewGPUBuffer<void>(
-                                (it.name + "_alt").c_str(), size);
-                            auto altBatch = allocNewGPUBuffer<void*>(
-                                (n + "_alt").c_str(), sizeof(uint8_t*) * m_maxBatch);
-                            if(altPtr && altBatch)
+                            if(!pUnit.gpuInput.buffers[slot])
                             {
-                                pUnit.gpuInput.currentAlt = altPtr;
-                                pUnit.gpuInput.batchAlt   = altBatch;
-                            }
-                            else
-                            {
-                                m_hasAltBuffers = false;
+                                auto altSuffix = "_alt" + std::to_string(slot);
+                                auto altPtr    = allocNewGPUBuffer<void>(
+                                    (it.name + altSuffix).c_str(), size);
+                                auto altBatch = allocNewGPUBuffer<void*>(
+                                    (n + altSuffix).c_str(),
+                                    sizeof(uint8_t*) * m_maxBatch);
+                                if(altPtr && altBatch)
+                                {
+                                    pUnit.gpuInput.buffers[slot]   = altPtr;
+                                    pUnit.gpuInput.batchBufs[slot] = altBatch;
+                                }
+                                else
+                                {
+                                    m_hasAltBuffers = false;
+                                }
                             }
                         }
                     }
@@ -2801,19 +2823,25 @@ namespace TensileLite
                 initializeConstantInputs(problem);
 
             m_cachedGPUInputs = ConvertToProblemInputs(problem, true);
-            initializeAltBufferSet(problem);
+
+            // Store active slot state in ring[0]
+            m_gpuPtrsRing[0]      = m_gpuPtrs;
+            m_gpuBatchPtrsRing[0] = m_gpuBatchPtrs;
+            m_cachedInputsRing[0] = m_cachedGPUInputs;
+
+            initializeAltBufferSets(problem);
             return m_cachedGPUInputs;
         }
 
-        void DataInitialization::initializeAltBufferSet(
+        void DataInitialization::initializeAltBufferSets(
             ContractionProblemGemm const& problem)
         {
-            if(!m_hasAltBuffers || !m_gpuPtrsAlt.empty())
+            if(!m_hasAltBuffers || !m_gpuPtrsRing[1].empty())
                 return;
 
             // Helper: initialize one alt buffer set by targeting it via
             // pristine pointer swap, then restoring.
-            auto initOneAltSet = [&](auto swapFn,
+            auto initOneAltSet = [&](size_t                          slot,
                                      std::vector<void*>&             dstPtrs,
                                      std::vector<void**>&            dstBatch,
                                      std::shared_ptr<ProblemInputs>& dstCached) {
@@ -2823,7 +2851,14 @@ namespace TensileLite
                 auto saveMax     = std::move(m_maxElements);
                 auto saveOffsets = std::move(m_groupedOffsets);
 
-                swapFn();
+                for(auto& vd : m_vdata)
+                    for(auto& [dt, pu] : vd.pristine)
+                    {
+                        std::swap(pu.gpuInput.current,
+                                  pu.gpuInput.buffers[slot]);
+                        std::swap(pu.gpuInput.batch,
+                                  pu.gpuInput.batchBufs[slot]);
+                    }
 
                 copyInputs(m_gpuPtrs,
                            m_gpuBatchPtrs,
@@ -2836,7 +2871,14 @@ namespace TensileLite
                 dstPtrs   = std::move(m_gpuPtrs);
                 dstBatch  = std::move(m_gpuBatchPtrs);
 
-                swapFn();
+                for(auto& vd : m_vdata)
+                    for(auto& [dt, pu] : vd.pristine)
+                    {
+                        std::swap(pu.gpuInput.current,
+                                  pu.gpuInput.buffers[slot]);
+                        std::swap(pu.gpuInput.batch,
+                                  pu.gpuInput.batchBufs[slot]);
+                    }
 
                 m_gpuPtrs        = std::move(savePtrs);
                 m_gpuBatchPtrs   = std::move(saveBatch);
@@ -2845,26 +2887,24 @@ namespace TensileLite
                 m_groupedOffsets = std::move(saveOffsets);
             };
 
-            initOneAltSet(
-                [&]() {
-                    for(auto& vd : m_vdata)
-                        for(auto& [dt, pu] : vd.pristine)
-                        {
-                            std::swap(pu.gpuInput.current, pu.gpuInput.currentAlt);
-                            std::swap(pu.gpuInput.batch, pu.gpuInput.batchAlt);
-                        }
-                },
-                m_gpuPtrsAlt, m_gpuBatchPtrsAlt, m_cachedGPUInputsAlt);
+            for(size_t slot = 1; slot < MAX_BUFFER_SETS; slot++)
+                initOneAltSet(slot,
+                              m_gpuPtrsRing[slot],
+                              m_gpuBatchPtrsRing[slot],
+                              m_cachedInputsRing[slot]);
         }
 
         DataInitialization::~DataInitialization()
         {
-            if(m_copyDoneEvent)
+            for(size_t i = 0; i < MAX_BUFFER_SETS; i++)
             {
-                hipError_t e = hipEventDestroy(m_copyDoneEvent);
-                if(e)
-                    std::cerr << "~DataInitialization: hipEventDestroy failed: "
-                              << hipGetErrorString(e) << std::endl;
+                if(m_copyDoneEvents[i])
+                {
+                    hipError_t e = hipEventDestroy(m_copyDoneEvents[i]);
+                    if(e)
+                        std::cerr << "~DataInitialization: hipEventDestroy failed: "
+                                  << hipGetErrorString(e) << std::endl;
+                }
             }
             if(m_copyStream)
             {
