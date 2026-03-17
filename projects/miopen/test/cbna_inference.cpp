@@ -145,9 +145,9 @@ struct verify_forward_conv_bias_batchnorm_activ
         }
         else
         {
-            return bout;
+            return std::move(bout);
         }
-        return aout;
+        return std::move(aout);
     }
 
     tensor<T> gpu() const

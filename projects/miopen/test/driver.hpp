@@ -742,7 +742,7 @@ struct test_driver
             return miopen::detach_async([=] {
                 result_type result;
                 load(f.string(), result);
-                return result;
+                return std::move(result);
             });
         }
         else
