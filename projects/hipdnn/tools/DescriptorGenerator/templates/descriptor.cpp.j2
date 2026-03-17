@@ -5,6 +5,7 @@
 #include "DescriptorAttributeUtils.hpp"
 #include "HipdnnBackendDescriptorType.h"
 #include "HipdnnException.hpp"
+#include "HipdnnOperationType.h"
 #include <hipdnn_data_sdk/utilities/StringUtil.hpp>
 
 namespace hipdnn_backend
@@ -115,6 +116,13 @@ void {{ op.class_name }}::setAttribute(hipdnnBackendAttributeName_t attributeNam
         setTensorArrayDesc(attributeName, attributeType, elementCount, arrayOfElements);
         break;
 {% endfor %}
+    case HIPDNN_ATTR_OPERATION_NAME_EXT:
+        setString(_name,
+                  attributeType,
+                  elementCount,
+                  arrayOfElements,
+                  "{{ op.class_name }}::setAttribute()");
+        break;
     default:
         throw HipdnnException(HIPDNN_STATUS_NOT_SUPPORTED,
                               "{{ op.class_name }}::setAttribute: attributeName not "
@@ -274,6 +282,24 @@ void {{ op.class_name }}::getAttribute(hipdnnBackendAttributeName_t attributeNam
             attributeName, attributeType, requestedElementCount, elementCount, arrayOfElements);
         break;
 {% endfor %}
+    case HIPDNN_ATTR_OPERATION_NAME_EXT:
+        getString(_name,
+                  attributeType,
+                  requestedElementCount,
+                  elementCount,
+                  arrayOfElements,
+                  "{{ op.class_name }}::getAttribute()");
+        break;
+{% if op.operation_type_enum %}
+    case HIPDNN_ATTR_OPERATION_TYPE_EXT:
+        getOperationType({{ op.operation_type_enum }},
+                         attributeType,
+                         requestedElementCount,
+                         elementCount,
+                         arrayOfElements,
+                         "{{ op.class_name }}::getAttribute()");
+        break;
+{% endif %}
     default:
         throw HipdnnException(HIPDNN_STATUS_NOT_SUPPORTED,
                               "{{ op.class_name }}::getAttribute: attributeName not "
@@ -378,6 +404,7 @@ std::unique_ptr<{{ op.fbs_namespace }}::NodeT>
     {{ op.class_name }}::buildNode() const
 {
     auto node = std::make_unique<{{ op.fbs_namespace }}::NodeT>();
+    node->name = _name;
 {% if op.has_compute_data_type %}
     node->compute_data_type = _computeDataType;
 {% endif %}
@@ -394,12 +421,9 @@ std::string {{ op.class_name }}::toString() const
 {
     using hipdnn_data_sdk::utilities::vecToString;
     std::string str = "{{ op.class_name }}: {";
+    str += "name=" + _name;
 {% for tf in op.tensor_fields %}
-{% if loop.first %}
-    str += "{{ tf.name }}_uid=" + std::to_string(_data.{{ tf.uid_field }});
-{% else %}
     str += ", {{ tf.name }}_uid=" + std::to_string(_data.{{ tf.uid_field }});
-{% endif %}
 {% endfor %}
 {% for df in op.data_fields %}
 {% if df.is_vector %}
@@ -421,6 +445,35 @@ std::string {{ op.class_name }}::toString() const
 {% endif %}
     str += "}";
     return str;
+}
+
+std::shared_ptr<{{ op.class_name }}> {{ op.class_name }}::fromNode(
+    const {{ op.fbs_namespace }}::NodeT& nodeT,
+    const std::unordered_map<int64_t, std::shared_ptr<TensorDescriptor>>& tensorMap)
+{
+    const auto* attrs = nodeT.attributes.As{{ op.fbs_table }}();
+    THROW_IF_NULL(attrs, HIPDNN_STATUS_INTERNAL_ERROR,
+                  "{{ op.class_name }}::fromNode: {{ op.fbs_table }} is null");
+
+    auto desc = std::make_shared<{{ op.class_name }}>();
+    desc->_data = *attrs;
+{% if op.has_compute_data_type %}
+    desc->_computeDataType = nodeT.compute_data_type;
+{% endif %}
+    desc->_name = nodeT.name;
+{% for tf in op.tensor_fields %}
+    desc->{{ tf.member_name }} = findTensorInMap(
+        tensorMap, attrs->{{ tf.uid_field }}, "{{ op.class_name }}::fromNode: {{ tf.pascal_name }}");
+{% endfor %}
+{% for taf in op.tensor_array_fields %}
+    for(auto uid : attrs->{{ taf.fbs_field }})
+    {
+        desc->_{{ taf.name }}Descs.push_back(
+            findTensorInMap(tensorMap, uid, "{{ op.class_name }}::fromNode: {{ taf.name }}"));
+    }
+{% endfor %}
+    desc->finalize();
+    return desc;
 }
 
 } // namespace hipdnn_backend

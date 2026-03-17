@@ -9,3 +9,6 @@
 
 # tests/frontend/CMakeLists.txt — add to public_hipdnn_frontend_tests sources:
     {{ op.test_integration_filename }}
+
+# backend/tests/CMakeLists.txt — add to hipdnn_backend_tests sources (fromNode tests):
+    descriptors/{{ op.test_from_node_filename }}

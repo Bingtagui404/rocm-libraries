@@ -7,6 +7,8 @@
 #include "IGraphOperation.hpp"
 #include "TensorDescriptor.hpp"
 #include <{{ op.fbs_namespace | replace('::', '/') }}/{{ op.fbs_generated_header }}>
+#include <{{ op.fbs_namespace | replace('::', '/') }}/graph_generated.h>
+#include <unordered_map>
 
 namespace hipdnn_backend
 {
@@ -55,6 +57,13 @@ public:
     std::vector<std::shared_ptr<TensorDescriptor>> getTensorDescriptors() const override;
     std::unique_ptr<{{ op.fbs_namespace }}::NodeT> buildNode() const override;
 
+    // Creates a finalized {{ op.class_name }} directly from a FlatBuffer NodeT.
+    // Casts nodeT.attributes to {{ op.fbs_table }} internally, then directly assigns
+    // the data struct, looks up tensor descriptors from the tensor map, and calls finalize().
+    static std::shared_ptr<{{ op.class_name }}>
+        fromNode(const {{ op.fbs_namespace }}::NodeT& nodeT,
+                 const std::unordered_map<int64_t, std::shared_ptr<TensorDescriptor>>& tensorMap);
+
     static hipdnnBackendDescriptorType_t getStaticType();
 
     std::string toString() const override;
@@ -77,6 +86,8 @@ private:
     {{ op.fbs_namespace }}::DataType _computeDataType
         = {{ op.fbs_namespace }}::DataType::UNSET;
 {% endif %}
+
+    std::string _name;
 {% if op.enum_fields %}
 
     // Private setAttribute helpers
