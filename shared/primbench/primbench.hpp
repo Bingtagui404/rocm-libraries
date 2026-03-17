@@ -47,20 +47,16 @@
 #include <unordered_set>
 #include <variant>
 
-/**
- * \brief Default GPU cache size used for clearing caches.
- *
- * This conservative size is currently used to evict cached data before
- * kernel launches. In the future, introducing HSA as a dependency may
- * allow querying the actual largest GPU cache at runtime.
- */
+/// Default GPU cache size used for clearing caches.
+///
+/// This conservative size is currently used to evict cached data before
+/// kernel launches. In the future, introducing HSA as a dependency may
+/// allow querying the actual largest GPU cache at runtime.
 #ifndef PRIMBENCH_GPU_CACHE_SIZE
     #define PRIMBENCH_GPU_CACHE_SIZE 256 * primbench::MiB
 #endif
 
-/**
- * \brief Registers a custom type name, used by `primbench::name<T>()`.
- */
+/// Registers a custom type name, used by `primbench::name<T>()`.
 #define PRIMBENCH_REGISTER_TYPE(TYPE, NAME)    \
     namespace primbench::detail                \
     {                                          \
@@ -72,10 +68,7 @@
     }
 
 #ifdef __HIP__
-    /**
-    * \brief Exits the program with an error message
-    * if the given API call returns a failure status.
-    */
+    /// Exits the program with an error message if the given API call returns a failure status.
     #define PRIMBENCH_CHECK(status)                                                \
         do {                                                                       \
             if(status != hipSuccess)                                               \
@@ -86,10 +79,7 @@
             }                                                                      \
         } while (0)
 
-    /**
-    * \brief Exits the program with an error message if the given AMD SMI API call returns a
-    * failure status.
-    */
+    /// Exits the program with an error message if the given AMD SMI API call returns a failure status.
     #define PRIMBENCH_AMDSMI_CHECK(status)                                                        \
         do {                                                                                      \
             if(status != AMDSMI_STATUS_SUCCESS)                                                   \
@@ -101,10 +91,7 @@
             }                                                                                     \
         } while (0)
 #else
-    /**
-    * \brief Exits the program with an error message
-    * if the given API call returns a failure status.
-    */
+    /// Exits the program with an error message if the given API call returns a failure status.
     #define PRIMBENCH_CHECK(status)                                                  \
         do {                                                                         \
             if(status != cudaSuccess)                                                \
@@ -115,10 +102,7 @@
             }                                                                        \
         } while (0)
 
-    /**
-    * \brief Exits the program with an error message if the given NVML API call returns a
-    * failure status.
-    */
+    /// Exits the program with an error message if the given NVML API call returns a failure status.
     #define PRIMBENCH_NVML_CHECK(status)                                                                         \
         do {                                                                                                     \
             if (status != NVML_SUCCESS) {                                                                        \
@@ -145,44 +129,40 @@ extern const size_t MiB;
 template<typename... Args>
 void log(Args&&... args);
 
-/**
- * \brief Settings that benchmarks and users can pass.
- */
+/// Settings that benchmarks and users can pass.
 struct settings
 {
-    size_t      size     = 128 * primbench::MiB; /**< Input array size */
-    bool        hot      = false; /**< Hot means not clearing GPU cache between batches */
-    uint32_t    seed     = 42; /**< The seed to use for input array generation */
-    std::string json_out = "results.json"; /**< Output JSON file path */
-    std::string csv_out  = ""; /**< Output CSV file path */
-    std::string filter   = ""; /**< Regex filter of specialization names to benchmark */
-    bool        dry      = false; /**< Flag to perform a dry run */
-    double      min_gpu_ms_per_batch = 10.0; /**< Minimum GPU batch duration */
-    double      min_secs             = 1.0; /**< Minimum benchmark duration */
-    double      noise_timeout_secs   = 10.0; /**< Max duration before noisy benchmark times out */
-    size_t      batch_window_size    = 10; /**< Noise window size for early stopping */
-    double      noise_tolerance_percent = 1.0; /**< Noise tolerance for early stopping */
-    uint16_t    min_gpu_temp            = 50; /**< Minimum GPU temperature */
-    uint16_t    max_gpu_temp            = 60; /**< Maximum GPU temperature */
-    double      max_warming_secs        = 60.0; /**< Max GPU warmup time */
-    double      max_cooling_secs        = 60.0; /**< Max GPU cooldown time */
-    bool     output_batches        = false; /**< Flag to output batch details */
-    uint32_t spaces_per_indent     = 4; /**< JSON indentation spaces */
+    size_t      size     = 128 * primbench::MiB; ///< Input array size.
+    bool        hot      = false; ///< Hot means not clearing GPU cache between batches.
+    uint32_t    seed     = 42; ///< The seed to use for input array generation.
+    std::string json_out = "results.json"; ///< Output JSON file path.
+    std::string csv_out  = ""; ///< Output CSV file path.
+    std::string filter   = ""; ///< Regex filter of specialization names to benchmark.
+    bool        dry      = false; ///< Flag to perform a dry run.
+    double      min_gpu_ms_per_batch = 10.0; ///< Minimum GPU batch duration.
+    double      min_secs             = 1.0; ///< Minimum benchmark duration.
+    double      noise_timeout_secs   = 10.0; ///< Max duration before noisy benchmark times out.
+    size_t      batch_window_size    = 10; ///< Noise window size for early stopping.
+    double      noise_tolerance_percent = 1.0; ///< Noise tolerance for early stopping.
+    uint16_t    min_gpu_temp            = 50; ///< Minimum GPU temperature.
+    uint16_t    max_gpu_temp            = 60; ///< Maximum GPU temperature.
+    double      max_warming_secs        = 60.0; ///< Max GPU warmup time.
+    double      max_cooling_secs        = 60.0; ///< Max GPU cooldown time.
+    bool     output_batches        = false; ///< Flag to output batch details.
+    uint32_t spaces_per_indent     = 4; ///< JSON indentation spaces.
     double   stream_blocking_timeout_secs
-        = 10.0; /**< Max duration before stream blocking times out */
+        = 10.0; ///< Max duration before stream blocking times out.
 
     using custom_arg_value = std::variant<std::string, bool, double, int, unsigned int, size_t>;
     std::map<std::string, custom_arg_value>
-        custom_args; /**< Custom user-registered arguments with types */
+        custom_args; ///< Custom user-registered arguments with types.
 
 }; // struct settings
 
 namespace detail
 {
 
-/**
- * \brief Fallback for primbench::name().
- */
+/// Fallback for primbench::name().
 template<class T>
 struct type_name
 {
@@ -191,11 +171,8 @@ struct type_name
     static inline const char* name = "";
 };
 
-/**
- * \brief Caches whether ANSI color output is enabled.
- *
- * The standard is described at https://bixense.com/clicolors/
- */
+/// Caches whether ANSI color output is enabled.
+/// The standard is described at https://bixense.com/clicolors/
 inline bool use_color()
 {
     static const bool result = []
@@ -209,9 +186,7 @@ inline bool use_color()
     return result;
 }
 
-/**
- * \brief Clears the current line if colors are enabled, otherwise prints a newline.
- */
+/// Clears the current line if colors are enabled, otherwise prints a newline.
 inline std::ostream& clearline(std::ostream& os)
 {
     if(use_color())
@@ -221,9 +196,7 @@ inline std::ostream& clearline(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Resets the output text formatting to default if colors are enabled.
- */
+/// Resets the output text formatting to default if colors are enabled.
 inline std::ostream& reset(std::ostream& os)
 {
     if(use_color())
@@ -231,9 +204,7 @@ inline std::ostream& reset(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Sets the output text color to gray if colors are enabled.
- */
+/// Sets the output text color to gray if colors are enabled.
 inline std::ostream& gray(std::ostream& os)
 {
     if(use_color())
@@ -241,9 +212,7 @@ inline std::ostream& gray(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Sets the output text color to green if colors are enabled.
- */
+/// Sets the output text color to green if colors are enabled.
 inline std::ostream& green(std::ostream& os)
 {
     if(use_color())
@@ -251,9 +220,7 @@ inline std::ostream& green(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Sets the output text color to red if colors are enabled.
- */
+/// Sets the output text color to red if colors are enabled.
 inline std::ostream& red(std::ostream& os)
 {
     if(use_color())
@@ -261,9 +228,7 @@ inline std::ostream& red(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Sets the output text color to yellow if colors are enabled.
- */
+/// Sets the output text color to yellow if colors are enabled.
 inline std::ostream& yellow(std::ostream& os)
 {
     if(use_color())
@@ -271,9 +236,7 @@ inline std::ostream& yellow(std::ostream& os)
     return os;
 }
 
-/**
- * \brief Sets the output text color to blue if colors are enabled.
- */
+/// Sets the output text color to blue if colors are enabled.
 inline std::ostream& blue(std::ostream& os)
 {
     if(use_color())
@@ -424,13 +387,11 @@ inline error_t stream_synchronize(stream_t stream)
 
 }
 
-// Bring GPU backend wrappers into this namespace so we can call
-// functions like gpu_malloc() without the gpu_backend:: prefix.
+/// Bring GPU backend wrappers into this namespace so we can call
+/// functions like gpu_malloc() without the gpu_backend:: prefix.
 using namespace gpu_backend;
 
-/**
- * \brief Interface for querying HIP and CUDA GPU properties.
- */
+/// Interface for querying HIP and CUDA GPU properties.
 class monitor
 {
 public:
@@ -444,7 +405,7 @@ public:
     /// Get GPU temperature in °C.
     virtual uint16_t get_temp() const = 0;
 
-    /// Get GPU info: name, arch, pci_bus_id.
+    /// Get serialized GPU info: name, arch, pci_bus_id.
     virtual std::string serialize_gpu_info() const = 0;
 
     /// Get backend info.
@@ -459,20 +420,18 @@ protected:
 
 #ifdef __HIP__
 
-/**
- * \brief Wrapper for HIP and AMD SMI (System Management Interface) GPU monitoring.
- */
+/// Wrapper for HIP and AMD SMI (System Management Interface) GPU monitoring.
 class hip_monitor : public monitor
 {
 public:
-    // Delete all copy/move constructors and assignment operators
+    // Delete all copy/move constructors and assignment operators.
     hip_monitor(const hip_monitor&)            = delete;
     hip_monitor& operator=(const hip_monitor&) = delete;
     hip_monitor(hip_monitor&&)                 = delete;
     hip_monitor& operator=(hip_monitor&&)      = delete;
 
-    // TODO: Make this an override of the class monitor
-    // Singleton accessor
+    // TODO: Make this an override of the class monitor.
+    /// Singleton accessor.
     static hip_monitor& instance()
     {
         static hip_monitor instance;
@@ -512,14 +471,14 @@ public:
         std::ostringstream ss;
         ss << "{";
 
-        // Backend name
+        // Backend name.
         ss << "\"name\":\"hip\"";
 
-        // HIP version
+        // HIP version.
         ss << ",\"hip_version\":\"" << HIP_VERSION_MAJOR << "." << HIP_VERSION_MINOR
         << "." << HIP_VERSION_PATCH << "-" << HIP_VERSION_GITHASH << "\"";
 
-        // HIP runtime version (integer, e.g., 60443482 -> 6.4.43482)
+        // HIP runtime version (integer, e.g., 60443482 -> 6.4.43482).
         int runtime_ver;
         PRIMBENCH_CHECK(hipRuntimeGetVersion(&runtime_ver));
         int major = runtime_ver / 10000000;
@@ -527,7 +486,7 @@ public:
         int patch = runtime_ver % 100000;
         ss << ",\"runtime_version\":\"" << major << "." << minor << "." << patch << "\"";
 
-        // HIP driver version (integer, same format)
+        // HIP driver version (integer, same format).
         int driver_ver;
         PRIMBENCH_CHECK(hipDriverGetVersion(&driver_ver));
         major = driver_ver / 10000000;
@@ -535,12 +494,12 @@ public:
         patch = driver_ver % 100000;
         ss << ",\"driver_version\":\"" << major << "." << minor << "." << patch << "\"";
 
-        // AMD SMI version
+        // AMD SMI version.
         amdsmi_version_t amdsmi_version;
         PRIMBENCH_AMDSMI_CHECK(amdsmi_get_lib_version(&amdsmi_version));
         ss << ",\"amdsmi_version\":\"" << amdsmi_version.build << "\"";
 
-        // Clang compiler version
+        // Clang compiler version.
         ss << ",\"clang_version\":\"" << __clang_version__ << "\"";
 
         ss << "}";
@@ -569,16 +528,12 @@ private:
         PRIMBENCH_AMDSMI_CHECK(amdsmi_shut_down());
     }
 
-    /**
-     * \brief Determines the first available GPU temperature sensor type.
-     *
-     * Attempts to read temperature from multiple sensor types in priority order.
-     * Returns the first type that successfully provides a temperature reading.
-     *
-     * \return The first successfully queried temperature sensor type.
-     * \note Exits with failure if no temperature sensors are accessible.
-     *       The result is cached as a static variable.
-     */
+    /// Determines the first available GPU temperature sensor type.
+    ///
+    /// Attempts to read temperature from multiple sensor types in priority order.
+    /// Returns the first type that successfully provides a temperature reading.
+    ///
+    /// The result is cached in a static variable.
     amdsmi_temperature_type_t get_temperature_type() const
     {
         static const amdsmi_temperature_type_t temperature_type = [&]
@@ -614,12 +569,7 @@ private:
         return temperature_type;
     }
 
-    /**
-     * \brief Converts a temperature type enum to a string.
-     * \param type Temperature type enum value.
-     * \return String representation of the temperature type.
-     * \note Exits with failure if the temperature type is not recognized.
-     */
+    /// Converts a temperature type enum to a string.
     static const char* get_temperature_type_name(amdsmi_temperature_type_t type)
     {
         switch(type)
@@ -633,18 +583,15 @@ private:
         }
     }
 
-    /**
-     * \brief Finds the AMD SMI processor handle matching the current HIP device.
-     * \return AMD SMI processor handle of the GPU.
-     */
+    /// Finds the AMD SMI processor handle matching the current HIP device.
     amdsmi_processor_handle get_amdsmi_device() const
     {
         hipDeviceProp_t hip_props;
         PRIMBENCH_CHECK(hipGetDeviceProperties(&hip_props, m_hip_device));
 
-        // Build the AMD SMI BDF struct from HIP device properties
+        // Build the AMD SMI BDF struct from HIP device properties.
         amdsmi_bdf_t addr{
-            .function_number = 0, // HIP doesn't expose PCI function ID
+            .function_number = 0, // HIP doesn't expose PCI function ID.
             .device_number   = static_cast<uint8_t>(hip_props.pciDeviceID),
             .bus_number      = static_cast<uint8_t>(hip_props.pciBusID),
             .domain_number   = static_cast<uint16_t>(hip_props.pciDomainID),
@@ -656,26 +603,24 @@ private:
         return amdsmi_device;
     }
 
-    int                     m_hip_device; /**< HIP device. */
-    amdsmi_processor_handle m_amdsmi_device; /**< AMD SMI device. */
+    int                     m_hip_device; ///< HIP device.
+    amdsmi_processor_handle m_amdsmi_device; ///< AMD SMI device.
 
 }; // class hip_monitor
 
 #else // __HIP__
 
-/**
- * \brief Wrapper for CUDA and NVML (NVIDIA Management Library) GPU monitoring.
- */
+/// Wrapper for CUDA and NVML (NVIDIA Management Library) GPU monitoring.
 class cuda_monitor : public monitor
 {
 public:
-    // Delete all copy/move constructors and assignment operators
+    // Delete all copy/move constructors and assignment operators.
     cuda_monitor(const cuda_monitor&)            = delete;
     cuda_monitor& operator=(const cuda_monitor&) = delete;
     cuda_monitor(cuda_monitor&&)                 = delete;
     cuda_monitor& operator=(cuda_monitor&&)      = delete;
 
-    // Singleton accessor
+    /// Singleton accessor.
     static cuda_monitor& instance()
     {
         static cuda_monitor instance;
@@ -716,27 +661,27 @@ public:
         std::ostringstream ss;
         ss << "{";
 
-        // Backend name
+        // Backend name.
         ss << "\"name\":\"cuda\"";
 
-        // CUDA runtime version
+        // CUDA runtime version.
         int major = CUDART_VERSION / 1000;
         int minor = (CUDART_VERSION % 1000) / 10;
         ss << ",\"runtime_version\":\"" << major << "." << minor << "\"";
 
-        // CUDA driver version (integer, e.g., 9020 -> 9.2)
+        // CUDA driver version (integer, e.g., 9020 -> 9.2).
         int driver_ver;
         PRIMBENCH_CHECK(cudaDriverGetVersion(&driver_ver));
         major = driver_ver / 1000;
         minor = (driver_ver % 1000) / 10;
         ss << ",\"driver_version\":\"" << major << "." << minor << "\"";
 
-        // NVML version
+        // NVML version.
         char nvml_ver[NVML_SYSTEM_NVML_VERSION_BUFFER_SIZE];
         PRIMBENCH_NVML_CHECK(nvmlSystemGetNVMLVersion(nvml_ver, sizeof(nvml_ver)));
         ss << ",\"nvml_version\":\"" << nvml_ver << "\"";
 
-        // NVCC compiler version
+        // NVCC compiler version.
         ss << ",\"nvcc_version\":\""
             << __CUDACC_VER_MAJOR__ << "."
             << __CUDACC_VER_MINOR__ << "."
@@ -765,45 +710,39 @@ private:
         PRIMBENCH_NVML_CHECK(nvmlShutdown());
     }
 
-    int          m_cuda_device; /**< CUDA device. */
-    nvmlDevice_t m_nvml_device; /**< NVML device. */
+    int          m_cuda_device; ///< CUDA device.
+    nvmlDevice_t m_nvml_device; ///< NVML device.
 }; // class cuda_monitor
 
 #endif // __HIP__
 
-/**
- * \brief Namespace for flag definitions and utilities.
- */
+/// Namespace for flag definitions and utilities.
 namespace flags
 {
 
-/**
- * \brief Enum representing different flags.
- */
+/// Enum representing different flags.
 enum class Flags : uint32_t
 {
-    none = 0x0, /**< \brief No flags set */
-    sync = 0x1, /**< \brief Synchronization flag */
+    none = 0x0, ///< No flags set.
+    sync = 0x1, ///< Synchronization flag.
 };
 
-/**
- * \brief Wrapper for Flags with utility operations.
- */
+/// Wrapper for Flags with utility operations.
 struct FlagTag
 {
-    Flags value{Flags::none}; /**< \brief Underlying flag value */
+    Flags value{Flags::none}; ///< Underlying flag value.
 
-    /** \brief Construct from a specific flag */
+    /// Construct from a specific flag.
     constexpr FlagTag(Flags v) : value(v) {}
 
-    /** \brief Bitwise OR operator for combining flags */
+    /// Bitwise OR operator for combining flags.
     friend constexpr FlagTag operator|(FlagTag a, FlagTag b)
     {
         return FlagTag(
             static_cast<Flags>(static_cast<uint32_t>(a.value) | static_cast<uint32_t>(b.value)));
     }
 
-    /** \brief Check if a flag is set */
+    /// Check if a flag is set.
     constexpr bool has(FlagTag f) const
     {
         return (static_cast<uint32_t>(value) & static_cast<uint32_t>(f.value)) != 0;
@@ -812,42 +751,32 @@ struct FlagTag
 
 } // namespace flags
 
-/**
- * \brief Logger for saving benchmark results in JSON format.
- *
- * Handles initialization of output, storing batch data, and writing
- * specialization and device information in a structured JSON file.
- *
- * Because the logger writes partial JSON data incrementally
- * and at high volume, a JSON library is not used.
- */
+/// Logger for saving benchmark results in JSON format.
+///
+/// Because the logger writes partial JSON data incrementally, a JSON library is not used.
 class logger
 {
 public:
-    // Delete all copy/move constructors and assignment operators
+    // Delete all copy/move constructors and assignment operators.
     logger(const logger&)            = delete;
     logger& operator=(const logger&) = delete;
     logger(logger&&)                 = delete;
     logger& operator=(logger&&)      = delete;
 
-    // Singleton accessor
+    /// Singleton accessor.
     static logger& instance()
     {
         static logger instance;
         return instance;
     }
 
-    /**
-     * \brief Saves the program start time.
-     */
+    /// Saves the program start time.
     void save_program_start_time()
     {
         m_program_start_time = std::chrono::steady_clock::now();
     }
 
-    /**
-     * \brief Initializes the logger, and opens the output JSON and CSV files.
-     */
+    /// Initializes the logger, and opens the output JSON and CSV files.
     void init(std::string_view algorithm,
               size_t           specialization_count,
               const settings&  settings,
@@ -894,12 +823,7 @@ public:
         m_first_specialization = true;
     }
 
-    /**
-     * \brief Stores a batch of benchmark results.
-     * \param batch_ms Total time for the batch.
-     * \param iterations_ms Times for individual iterations.
-     * \param stats Monitor stats after the batch.
-     */
+    /// Stores a batch of benchmark results.
     void save(double                    batch_ms,
               const std::vector<float>& iterations_ms)
             //   const monitor::stats&     stats) // TODO: Put back
@@ -914,9 +838,7 @@ public:
         m_batches.push_back(batch);
     }
 
-    /**
-     * \brief Outputs JSON and CSV specialization information.
-     */
+    /// Outputs JSON and CSV specialization information.
     void output_specialization(size_t           index,
                                std::string_view name,
                                std::string_view serialized_meta,
@@ -967,9 +889,7 @@ public:
         m_batches.clear();
     }
 
-    /**
-     * \brief Outputs a summary object.
-     */
+    /// Outputs a summary object at the end of the JSON file.
     void output_summary()
     {
         // Close the JSON file's outer array.
@@ -1004,15 +924,14 @@ private:
 
     struct batch
     {
-        double             batch_ms; ///< Total time for the batch
-        std::vector<float> iterations_ms; ///< Time per iteration
+        double             batch_ms; ///< Total time for the batch.
+        std::vector<float> iterations_ms; ///< Time per iteration.
         // monitor::stats     stats; ///< Monitor stats after batch // TODO: Put back
     };
 
-    /**
-     * \brief Serializes the start of the JSON file,
-     * adding the `context` object, and starting the `specializations` array.
-     */
+    /// Serializes the start of the JSON file.
+    ///
+    /// It adds the `context` object, and adds the `specializations` key.
     std::string serialize_json_prologue(std::string_view algorithm,
                                         size_t           specialization_count,
                                         const settings&  settings,
@@ -1034,9 +953,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Serializes the benchmark context into JSON.
-     */
+    /// Serializes the benchmark context into JSON.
     std::string serialize_context(std::string_view algorithm,
                                   size_t           specialization_count,
                                   const settings&  settings,
@@ -1062,12 +979,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Serializes general benchmark context info into JSON.
-     *
-     * If the macros BRANCH_NAME and/or COMMIT_HASH are defined at compile time,
-     * they are output as the JSON keys "branch_name" and "commit_hash" respectively.
-     */
+    /// Serializes general benchmark context info into JSON.
     std::string serialize_general(std::string_view algorithm,
                                   size_t           specialization_count,
                                   const monitor&   monitor) const
@@ -1091,13 +1003,13 @@ private:
 
         ss << ",\"temperature_type\":\"" << monitor.get_used_temperature_type_name() << "\"";
 
-        char host_name[HOST_NAME_MAX + 1]; // +1 for null terminator
+        char host_name[HOST_NAME_MAX + 1]; // +1 for null terminator.
         if(gethostname(host_name, sizeof(host_name)) != 0)
         {
             std::cerr << "Error: Failed to get host name\n";
             exit(EXIT_FAILURE);
         }
-        host_name[sizeof(host_name) - 1] = '\0'; // Ensure null termination
+        host_name[sizeof(host_name) - 1] = '\0'; // Ensure null termination.
         ss << ",\"host_name\":\"" << host_name << "\"";
 
         ss << ",\"date\":\"" << date() << "\"";
@@ -1113,18 +1025,16 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Returns the local date and time as an RFC3339 string (yyyy-mm-ddTHH:MM:SS±HH:MM).
-     */
+    /// Returns the local date and time as an RFC3339 string: `yyyy-mm-ddTHH:MM:SS±HH:MM`.
     std::string date() const
     {
         using namespace std::chrono;
 
-        // Get current time as system_clock::time_point
+        // Get current time as system_clock::time_point.
         auto        now   = system_clock::now();
         std::time_t now_c = system_clock::to_time_t(now);
 
-        // Convert to local time
+        // Convert to local time.
         std::tm local_tm{};
 #if defined(_WIN32)
         localtime_s(&local_tm, &now_c);
@@ -1132,11 +1042,11 @@ private:
         localtime_r(&now_c, &local_tm);
 #endif
 
-        // Format date and time
+        // Format date and time.
         std::ostringstream oss;
         oss << std::put_time(&local_tm, "%Y-%m-%dT%H:%M:%S");
 
-        // Compute timezone offset
+        // Compute timezone offset.
         std::tm utc_tm{};
 #if defined(_WIN32)
         gmtime_s(&utc_tm, &now_c);
@@ -1144,7 +1054,7 @@ private:
         gmtime_r(&now_c, &utc_tm);
 #endif
 
-        // Offset in seconds
+        // Offset in seconds.
         int offset_sec
             = static_cast<int>(std::difftime(std::mktime(&local_tm), std::mktime(&utc_tm)));
         char sign          = offset_sec >= 0 ? '+' : '-';
@@ -1152,16 +1062,14 @@ private:
         int offset_hours   = offset_sec / 3600;
         int offset_minutes = (offset_sec % 3600) / 60;
 
-        // Append timezone
+        // Append timezone.
         oss << sign << std::setw(2) << std::setfill('0') << offset_hours << ':' << std::setw(2)
             << std::setfill('0') << offset_minutes;
 
         return oss.str();
     }
 
-    /**
-     * \brief Serializes CLI settings into JSON.
-     */
+    /// Serializes CLI settings into JSON.
     std::string serialize_settings(const settings& settings) const
     {
         std::ostringstream ss;
@@ -1193,9 +1101,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Serializes custom CLI settings into JSON.
-     */
+    /// Serializes custom CLI settings into JSON.
     std::string serialize_custom_settings(const settings& settings) const
     {
         if(settings.custom_args.empty())
@@ -1236,9 +1142,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Formats a JSON string with indentation.
-     */
+    /// Formats a JSON string with indentation.
     std::string indent(std::string_view str, size_t starting_indent_level)
     {
         if(m_spaces_per_indent == 0)
@@ -1257,7 +1161,7 @@ private:
 
             if(c == '\"')
             {
-                // Detect escaped quotes
+                // Detect escaped quotes.
                 bool   escaped = false;
                 size_t j       = i;
                 while(j > 0 && str[--j] == '\\')
@@ -1302,9 +1206,7 @@ private:
         return out.str();
     }
 
-    /**
-     * \brief Serializes benchmark flags into JSON.
-     */
+    /// Serializes benchmark flags into JSON.
     std::string serialize_flags(flags::FlagTag flags) const
     {
         std::ostringstream ss;
@@ -1314,9 +1216,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Outputs specialization information to JSON.
-     */
+    /// Outputs specialization information to JSON.
     void output_json_specialization(size_t           index,
                                     std::string_view name,
                                     std::string_view serialized_meta,
@@ -1363,9 +1263,7 @@ private:
         m_json_out.flush();
     }
 
-    /**
-     * \brief Outputs specialization information to CSV.
-     */
+    /// Outputs specialization information to CSV.
     void output_csv_specialization(size_t           index,
                                    std::string_view name,
                                    double           bytes_per_sec,
@@ -1379,9 +1277,7 @@ private:
                   << std::flush;
     }
 
-    /**
-     * \brief Serializes a specialization into JSON format.
-     */
+    /// Serializes a specialization into JSON format.
     std::string serialize_specialization(size_t           index,
                                          std::string_view name,
                                          std::string_view serialized_meta,
@@ -1452,9 +1348,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Serializes iteration times into JSON array.
-     */
+    /// Serializes iteration times into JSON array.
     std::string serialize_iterations_ms(const std::vector<float>& iterations_ms) const
     {
         std::ostringstream ss;
@@ -1469,9 +1363,7 @@ private:
         return ss.str();
     }
 
-    /**
-     * \brief Serializes summary info into JSON format.
-     */
+    /// Serializes summary info into JSON format.
     std::string serialize_summary() const
     {
         std::ostringstream ss;
@@ -1495,37 +1387,28 @@ private:
 
     std::chrono::time_point<std::chrono::steady_clock> m_program_start_time;
 
-    std::ofstream      m_json_out; ///< JSON output file stream
-    std::ofstream      m_csv_out; ///< CSV output file stream
-    bool               m_first_specialization; ///< True if first specialization output
-    std::vector<batch> m_batches; ///< Stored batch results
-    bool               m_output_batches; ///< Whether to output each batch
-    uint32_t           m_spaces_per_indent; ///< JSON indentation spaces
-    double             m_total_elapsed_gpu_secs = 0; ///< Number of elapsed GPU seconds
-    uint32_t           m_noise_timeouts         = 0; ///< Number of noise timeouts
-    bool               m_outputting_csv; ///< Whether a CSV file is output
+    std::ofstream      m_json_out; ///< JSON output file stream.
+    std::ofstream      m_csv_out; ///< CSV output file stream.
+    bool               m_first_specialization; ///< True if first specialization output.
+    std::vector<batch> m_batches; ///< Stored batch results.
+    bool               m_output_batches; ///< Whether to output each batch.
+    uint32_t           m_spaces_per_indent; ///< JSON indentation spaces.
+    double             m_total_elapsed_gpu_secs = 0; ///< Number of elapsed GPU seconds.
+    uint32_t           m_noise_timeouts         = 0; ///< Number of noise timeouts.
+    bool               m_outputting_csv; ///< Whether a CSV file is output.
 
 }; // class logger
 
-/**
- * \brief Provides functions for progress display and formatting during GPU benchmarking.
- */
+/// Provides functions for progress display and formatting during GPU benchmarking.
 namespace progress
 {
-/// \brief Column widths and formatting constants.
+// Column widths and formatting constants.
 static constexpr int         noise_col_width         = 5;
 static constexpr int         gpu_temp_col_width      = 6;
 static constexpr int         bytes_per_sec_col_width = 9;
 static constexpr const char* horizontal_bar          = u8"─";
 
-/**
- * \brief Prints the table header for dry-run mode output.
- *
- * \param algo_name Algorithm name to display.
- * \param specialization_col_width Width of the specialization column.
- * \param family_col_width Width of the family column.
- * \param specialization_count Total number of specializations.
- */
+/// Prints the table header for dry-run mode output.
 inline void print_dry_header(std::string_view algo_name,
                              size_t           specialization_col_width,
                              size_t           family_col_width,
@@ -1545,15 +1428,7 @@ inline void print_dry_header(std::string_view algo_name,
     std::cout << "\n";
 }
 
-/**
- * \brief Prints the table header for algorithm progress output.
- *
- * \param algo_name Algorithm name to display.
- * \param specialization_col_width Width of the specialization column.
- * \param family_col_width Width of the family column.
- * \param specialization_count Total number of specializations.
- * \param noise_timeout_secs Duration before noisy timeout.
- */
+/// Prints the table header for algorithm progress output.
 inline void print_header(std::string_view          algo_name,
                          size_t                    specialization_col_width,
                          size_t                    family_col_width,
@@ -1580,36 +1455,21 @@ inline void print_header(std::string_view          algo_name,
     std::cout << "\n";
 }
 
-/**
- * \brief Displays GPU warming progress.
- *
- * \param gpu_temp Current GPU temperature.
- * \param min_gpu_temp Minimum temperature target.
- */
+/// Displays GPU warming progress.
 inline void print_warming(uint16_t gpu_temp, uint16_t min_gpu_temp)
 {
     std::cout << clearline << "Warming GPU from " << blue << gpu_temp << "°C" << reset << " to "
               << green << min_gpu_temp << "°C" << reset << std::flush;
 }
 
-/**
- * \brief Displays GPU cooling progress.
- *
- * \param gpu_temp Current GPU temperature.
- * \param max_gpu_temp Maximum temperature target.
- */
+/// Displays GPU cooling progress.
 inline void print_cooling(uint16_t gpu_temp, uint16_t max_gpu_temp)
 {
     std::cout << clearline << "Cooling GPU from " << red << gpu_temp << "°C" << reset << " to "
               << green << max_gpu_temp << "°C" << reset << std::flush;
 }
 
-/**
- * \brief Prints a single line of output for dry-run mode.
- *
- * Displays only status, specialization and family index.
- * Used when simulating algorithm execution without actually running benchmarks.
- */
+/// Prints a single line of output for dry-run mode, containing the status, specialization and family index.
 inline void print_dry_progress(std::string_view specialization,
                                std::string_view algo_name,
                                size_t           family_index,
@@ -1629,12 +1489,7 @@ inline void print_dry_progress(std::string_view specialization,
     std::cout << line.str() << "\n" << std::flush;
 }
 
-/**
- * \brief Prints real-time progress updates for algorithm execution.
- *
- * Displays bytes per second, temperature, and specialization data.
- * Highlights noisy or timed-out iterations with color-coded output.
- */
+/// Prints real-time progress updates for algorithm execution.
 inline void print_progress(uint64_t         iteration,
                            double           noise_percent,
                            double           bytes_per_sec,
@@ -1670,7 +1525,7 @@ inline void print_progress(uint64_t         iteration,
     std::ostringstream line;
     line << clearline << batch_str;
 
-    // Progress bar (only shown during iteration)
+    // Progress bar (only shown during iteration).
     if(status_msg.empty())
     {
         line << " ";
@@ -1678,7 +1533,7 @@ inline void print_progress(uint64_t         iteration,
         uint64_t capped_iteration = std::min(iteration, batch_window_size);
         size_t   filled           = (bar_width * capped_iteration) / batch_window_size;
 
-        // Compute fraction of the yellow noise timeout overlay
+        // Compute fraction of the yellow noise timeout overlay.
         size_t yellow_chars = 0;
         if(filled >= bar_width)
         {
@@ -1686,7 +1541,7 @@ inline void print_progress(uint64_t         iteration,
             yellow_chars = bar_width * frac;
         }
 
-        // Build the progress bar in one pass
+        // Build the progress bar in one pass.
         for(size_t j = 0; j < bar_width; ++j)
         {
             if(j < yellow_chars)
@@ -1699,12 +1554,12 @@ inline void print_progress(uint64_t         iteration,
         line << reset;
     }
 
-    // Alignment for subsequent columns
+    // Alignment for subsequent columns.
     size_t used = batch_str.size() + status_msg.empty() + (status_msg.empty() ? bar_width : 0);
     if(used < status_col_width)
         line << std::string(status_col_width - used, ' ');
 
-    // Noise %
+    // Noise %.
     std::ostringstream percent_stream;
 
     if(noise_percent >= 100.0)
@@ -1721,18 +1576,18 @@ inline void print_progress(uint64_t         iteration,
     line << "  " << noise_color << std::setw(noise_col_width - sizeof('%')) << std::right
          << percent_stream.str() << "%" << reset;
 
-    // GPU temperature
+    // GPU temperature.
     line << "  " << std::setw(gpu_temp_col_width) << std::right << gpu_temp;
 
-    // Bytes/sec
+    // Bytes/sec.
     line << "  " << std::setw(bytes_per_sec_col_width) << std::right << std::scientific
          << std::setprecision(2) << bytes_per_sec;
 
-    // Specialization and index
+    // Specialization and index.
     line << "  " << std::setw(specialization_col_width) << std::left << specialization;
     line << "  " << std::setw(family_col_width) << std::right << family_index;
 
-    // Colorized status messages
+    // Colorized status messages.
     if(status_msg.find("Success") != std::string::npos)
         std::cout << green;
     else if(status_msg.find("Noisy timed out") != std::string::npos)
@@ -1743,13 +1598,7 @@ inline void print_progress(uint64_t         iteration,
 } // namespace progress
 
 #ifdef __HIP__
-/**
-    * \brief Kernel that blocks the GPU stream until unblocked or timeout occurs.
-    * \param is_blocked Pointer to blocking flag.
-    * \param timeout_flag Pointer to timeout flag.
-    * \param timeout_seconds Timeout duration in seconds.
-    * \param wall_clock_rate Wall clock rate in kHz.
-    */
+/// Kernel that blocks the GPU stream until unblocked or timeout occurs.
 __global__ void block_stream_kernel(volatile int32_t* is_blocked,
                             volatile int32_t* timeout_flag,
                             double            timeout_seconds,
@@ -1763,18 +1612,13 @@ __global__ void block_stream_kernel(volatile int32_t* is_blocked,
     {
         if(wall_clock64() - start_time > timeout_cycles)
         {
-            *timeout_flag = 1; // Signal timeout to host
-            break; // Exit loop
+            *timeout_flag = 1; // Signal timeout to host.
+            break; // Exit loop.
         }
     }
 }
 #else
-/**
-    * \brief Kernel that blocks the GPU stream until unblocked or timeout occurs.
-    * \param is_blocked Pointer to blocking flag.
-    * \param timeout_flag Pointer to timeout flag.
-    * \param timeout_seconds Timeout duration in seconds.
-    */
+/// Kernel that blocks the GPU stream until unblocked or timeout occurs.
 __global__ void block_stream_kernel(volatile int32_t* is_blocked,
                                     volatile int32_t* timeout_flag,
                                     double            timeout_seconds)
@@ -1795,39 +1639,35 @@ __global__ void block_stream_kernel(volatile int32_t* is_blocked,
 }
 #endif
 
-/**
- * \brief Manages synchronization between host and GPU streams by blocking execution
- *        until explicitly unblocked or a timeout occurs.
- */
+/// Manages synchronization between host and GPU streams
+/// by blocking execution, until explicitly unblocked or a timeout occurs.
 class stream_blocker
 {
 public:
     stream_blocker() = delete;
 
-    /**
-     * \brief Constructs a stream_blocker for a given stream.
-     */
+    /// Constructs a stream_blocker for a given stream.
     stream_blocker(stream_t stream, double stream_blocking_timeout_secs)
         : m_stream(stream), m_stream_blocking_timeout_secs(stream_blocking_timeout_secs)
     {
-        // Register host memory for blocking flags
+        // Register host memory for blocking flags.
         PRIMBENCH_CHECK(host_register(&m_host_flag, sizeof(m_host_flag), host_register_mapped));
         PRIMBENCH_CHECK(host_register(&m_host_timeout_flag, sizeof(m_host_timeout_flag), host_register_mapped));
 
-        // Temporary non-volatile pointers
+        // Temporary non-volatile pointers.
         int32_t* temp_device_flag         = nullptr;
         int32_t* temp_device_timeout_flag = nullptr;
 
-        // Get device pointers to mapped host memory
+        // Get device pointers to mapped host memory.
         PRIMBENCH_CHECK(host_get_device_pointer(reinterpret_cast<void**>(&temp_device_flag), &m_host_flag, 0));
         PRIMBENCH_CHECK(host_get_device_pointer(reinterpret_cast<void**>(&temp_device_timeout_flag), &m_host_timeout_flag, 0));
 
-        // Assign temporary pointers to volatile members
+        // Assign temporary pointers to volatile members.
         m_device_flag         = temp_device_flag;
         m_device_timeout_flag = temp_device_timeout_flag;
 
 #ifdef __HIP__
-        // Query wall clock rate once (constant per device)
+        // Query wall clock rate once (constant per device).
         int device_id;
         PRIMBENCH_CHECK(hipGetDevice(&device_id));
         int wall_clk_rate_k_hz = 0;
@@ -1836,18 +1676,14 @@ public:
 #endif
     }
 
-    /**
-     * \brief Destructor that unregisters host memory.
-     */
+    /// Destructor that unregisters host memory.
     ~stream_blocker()
     {
         PRIMBENCH_CHECK(host_unregister(&m_host_flag));
         PRIMBENCH_CHECK(host_unregister(&m_host_timeout_flag));
     }
 
-    /**
-     * \brief Launches a blocking kernel on the stream until unblocked or timed out.
-     */
+    /// Launches a blocking kernel on the stream until unblocked or timed out.
     void block()
     {
         volatile int32_t& flag = m_host_flag;
@@ -1868,19 +1704,16 @@ public:
 #endif
     }
 
-    /**
-     * \brief Unblocks the stream by resetting the blocking flag.
-     */
+    /// Unblocks the stream by resetting the blocking flag.
     void unblock()
     {
         volatile int32_t& flag = m_host_flag;
         flag                   = 0;
     }
 
-    /**
-     * \brief Checks if the GPU timed out during blocking.
-     * \note Should be called after stream synchronization.
-     */
+    /// Checks if the GPU timed out during blocking.
+    ///
+    /// This should be called after stream synchronization.
     void check_timeout()
     {
         if(m_host_timeout_flag)
@@ -1906,12 +1739,10 @@ private:
     volatile int32_t* m_device_timeout_flag = nullptr;
 }; // class stream_blocker
 
-/**
- * \brief Simple JSON-like container.
- *
- * Stores key-value pairs where values can be nested JSON objects,
- * strings, integers, or doubles. Provides basic serialization to JSON and to a human-readable name.
- */
+/// Simple JSON-like container.
+///
+/// Stores key-value pairs where values can be nested JSON objects,
+/// strings, integers, or doubles. Provides basic serialization to JSON and to a human-readable name.
 struct json
 {
     using key_type = std::string;
@@ -1922,15 +1753,14 @@ struct json
     // as we want a deterministic order.
     using map_type = std::map<key_type, value_type>;
 
-    /**
-     * \brief Adds a key-value pair to the JSON object.
-     */
+    /// Adds a key-value pair to the JSON object.
     template<typename T>
     json& add(std::string_view key, T value)
     {
         if constexpr(std::is_same_v<T, json>)
         {
-            m_map[std::string(key)] = std::make_shared<json>(value); // Copy nested JSON.
+            // Copy nested JSON.
+            m_map[std::string(key)] = std::make_shared<json>(value);
         }
         else
         {
@@ -1939,9 +1769,7 @@ struct json
         return *this;
     }
 
-    /**
-     * \brief Serializes the JSON object to a JSON string.
-     */
+    /// Serializes the JSON object to a JSON string.
     std::string serialize() const
     {
         std::ostringstream ss;
@@ -1982,9 +1810,7 @@ struct json
         return ss.str();
     }
 
-    /**
-     * \brief Serializes the JSON object into a human-readable name.
-     */
+    /// Serializes the JSON object into a human-readable name.
     std::string serialize_name() const
     {
         static const std::vector<std::string_view> blacklist         = {"lvl", "algo"};
@@ -2038,7 +1864,8 @@ struct json
                         }
                         else
                         {
-                            // std::to_string(v) wouldn't trim trailing zeros.
+                            // Can't use std::to_string(v),
+                            // as that doesn't trim trailing zeros.
                             std::ostringstream ss;
                             ss << std::boolalpha;
                             ss << v;
@@ -2067,9 +1894,7 @@ struct json
         return fmt(*this, true);
     }
 
-    /**
-     * \brief Retrieves a value by key.
-     */
+    /// Retrieves a value by key.
     template<typename T>
     const T& get(std::string_view key) const
     {
@@ -2123,27 +1948,21 @@ private:
     void*        m_device_ptr;
 }; // struct device_storage
 
-/**
- * \brief Cache thrashing utility to ensure the cache contains irrelevant data.
- */
+/// Cache thrashing utility to ensure the cache contains irrelevant data.
 struct cache_thrasher
 {
 public:
-    /**
-     * \brief Initializes the cache thrasher by allocating the required memory on device.
-     *
-     * Currently, the actual largest GPU cache size cannot be queried via HIP, so this
-     * conservative size is used instead. Future support via HSA could make this runtime-
-     * queryable.
-     */
+    /// Initializes the cache thrasher by allocating the required memory on device.
+    ///
+    /// Currently, the actual largest GPU cache size cannot be queried via HIP, so this
+    /// conservative size is used instead. Future support via HSA could make this runtime-
+    /// queryable.
     cache_thrasher(size_t cache_size = PRIMBENCH_GPU_CACHE_SIZE) : m_device_storage(cache_size) {}
 
-    /**
-     * \brief Clears the cache by thrashing memory on device.
-     *
-     * Zeros a buffer of size `m_cache_size` to evict cached data. Should be called before
-     * each kernel launch.
-     */
+    /// Clears the cache by thrashing memory on device.
+    ///
+    /// Zeros a buffer of size `m_cache_size` to evict cached data. Should be called before
+    /// each kernel launch.
     void clear_cache(stream_t stream)
     {
         PRIMBENCH_CHECK(memset_async(m_device_storage.get_ptr(), 0, m_device_storage.get_size(), stream));
@@ -2158,6 +1977,8 @@ private:
     const device_storage m_device_storage;
 }; // struct cache_thrasher
 
+/// Warms the GPU, using complex enough dummy kernel code
+/// that the compiler can't optimize it away.
 __global__ void warmup_kernel(float* data, int n)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -2233,18 +2054,10 @@ private:
     const device_storage m_device_storage;
 }; // struct gpu_warmer
 
-/**
- * \brief Manages benchmark execution, GPU warm-up/cool-down, timing, and logging.
- *
- * The `state` class coordinates benchmark runs by controlling GPU temperature,
- * iteration timing, throughput calculation, and result logging.
- */
+/// Manages benchmark execution, GPU warm-up/cool-down, timing, and logging.
 class state
 {
 public:
-    /**
-     * \brief Constructs a benchmark state.
-     */
     state(std::string_view algo,
           json             meta,
           size_t           family_index,
@@ -2275,14 +2088,10 @@ public:
         , m_warmer(warmer)
     {}
 
-    /**
-     * \brief Sets the total number of items processed per iteration.
-     *
-     * This must be called exactly once before calling \ref run() or any
-     * memory tracking methods such as \ref add_reads() or \ref add_writes().
-     *
-     * \param items The number of items processed per iteration.
-     */
+    /// Sets the total number of items processed per iteration.
+    ///
+    /// This must be called exactly once before calling \ref run() or any
+    /// memory tracking methods such as \ref add_reads() or \ref add_writes().
     void set_items(size_t items)
     {
         if(m_has_set_items)
@@ -2295,19 +2104,14 @@ public:
         m_items = items;
     }
 
-    /**
-     * \brief Adds an estimate of global memory reads performed by the benchmark.
-     *
-     * Must be called after \ref set_items() and before any call to
-     * \ref add_writes(). Multiple calls accumulate total read bytes.
-     *
-     * The total number of bytes read (from all calls to this function)
-     * is **summed together with the total bytes written** (added via
-     * \ref add_writes()) to compute the reported memory throughput.
-     *
-     * \tparam T The data type of the items being read.
-     * \param items The number of items read.
-     */
+    /// Adds an estimate of global memory reads performed by the benchmark.
+    ///
+    /// Must be called after \ref set_items() and before any call to
+    /// \ref add_writes(). Multiple calls accumulate total read bytes.
+    ///
+    /// The total number of bytes read (from all calls to this function)
+    /// is **summed together with the total bytes written** (added via
+    /// \ref add_writes()) to compute the reported memory throughput.
     template<typename T>
     void add_reads(size_t items)
     {
@@ -2326,19 +2130,14 @@ public:
         m_read_write_bytes += bytes;
     }
 
-    /**
-     * \brief Adds an estimate of global memory writes performed by the benchmark.
-     *
-     * Must be called after \ref set_items(). Multiple calls accumulate total
-     * written bytes.
-     *
-     * The total number of bytes written (from all calls to this function)
-     * is **summed together with the total bytes read** (added via
-     * \ref add_reads()) to compute the reported memory throughput.
-     *
-     * \tparam T The data type of the items being written.
-     * \param items The number of items written.
-     */
+    /// Adds an estimate of global memory writes performed by the benchmark.
+    ///
+    /// Must be called after \ref set_items(). Multiple calls accumulate total
+    /// written bytes.
+    ///
+    /// The total number of bytes written (from all calls to this function)
+    /// is **summed together with the total bytes read** (added via
+    /// \ref add_reads()) to compute the reported memory throughput.
     template<typename T>
     void add_writes(size_t items)
     {
@@ -2353,25 +2152,20 @@ public:
         m_read_write_bytes += bytes;
     }
 
-    /**
-     * \brief Sets a callback to run before each iteration.
-     *
-     * Useful for resetting input data in in-place algorithms.
-     */
+    /// Sets a callback to run before each iteration, which should be used
+    /// to reset the input data of in-place algorithms.
     void run_before_every_iteration(std::function<void()> lambda)
     {
         m_run_before_every_iteration_lambda = lambda;
     }
 
-    /**
-     * \brief Executes the benchmark loop for the provided kernel.
-     *
-     * Handles warm-up, timing, CV-based stopping, and logging.
-     *
-     * The benchmark manages all required stream synchronization internally to
-     * ensure accurate timing and prevent command queue buildup. Users should not
-     * perform any manual synchronization before or during the benchmark run.
-     */
+    /// Executes the benchmark loop for the provided kernel.
+    ///
+    /// Handles warm-up, timing, CV-based stopping, and logging.
+    ///
+    /// The benchmark manages all required stream synchronization internally to
+    /// ensure accurate timing and prevent command queue buildup. Users should not
+    /// perform any manual synchronization before or during the benchmark run.
     void run(std::function<void()> kernel)
     {
         if(!m_has_set_items)
@@ -2417,7 +2211,7 @@ public:
 
             m_logger.save(batch_gpu_ms, iterations_ms);
 
-            // Compute noise (CV) for recent window
+            // Compute noise (CV) for recent window.
             auto window_start = m_times.end() - std::min(iterations, s.batch_window_size);
             std::vector<double> recent_times(window_start, m_times.end());
             double              recent_mean   = get_mean(recent_times);
@@ -2501,25 +2295,19 @@ public:
             PRIMBENCH_CHECK(event_destroy(event));
     }
 
-    /**
-     * \brief Public fields accessed directly by benchmarks.
-     */
+    // Public fields accessed directly by benchmarks.
     const stream_t stream; ///< Stream used by benchmarks for kernel launches.
     const size_t   size; ///< Input size processed per iteration.
     const uint32_t seed; ///< Random seed used for reproducible benchmark inputs.
 
 private:
-    /**
-     * \brief Warms up the GPU until minimum temperature is reached.
-     */
+    /// Warms up the GPU until minimum temperature is reached.
     void warm_up() const
     {
         m_warmer.warm_up(stream);
     }
 
-    /**
-     * \brief Waits for GPU to cool down below maximum temperature.
-     */
+    /// Waits for GPU to cool down below maximum temperature.
     void cool_down() const
     {
         auto start = std::chrono::steady_clock::now();
@@ -2546,16 +2334,14 @@ private:
         }
     }
 
-    /**
-     * \brief Determines number of kernels per batch based on minimum duration.
-     */
+    /// Determines number of kernels per batch based on minimum duration.
     void init_kernels_per_batch(std::function<void()> kernel)
     {
         std::vector<event_t> events(2);
         std::vector<float>      iterations_ms;
         m_kernels_per_batch = 1;
 
-        // Without this, the very first timed batch is very slow.
+        // Without this, the very first timed batch can be very slow.
         log("Running warmup");
         for(auto& event : events)
             PRIMBENCH_CHECK(event_create(&event));
@@ -2593,9 +2379,7 @@ private:
         }
     }
 
-    /**
-     * \brief Executes a batch of kernel iterations with event timing.
-     */
+    /// Executes a batch of kernel iterations with event timing.
     void run_batch(const std::vector<event_t>& events, std::function<void()> kernel)
     {
         for(size_t i = 0; i < m_kernels_per_batch; i++)
@@ -2606,11 +2390,12 @@ private:
             if(!m_settings.hot)
                 clear_gpu_cache(stream);
 
-            // We block the stream to ensure the start event is recorded immediately before the
-            // kernel launch. Without this, event_record() might be queued much earlier, so the
-            // "start" event could capture a timestamp well before the kernel actually begins
-            // executing. block_stream() guarantees there is no time gap between recording the start
-            // event and queuing the kernel on the GPU.
+            // We block the stream to ensure the start event is recorded
+            // immediately before the kernel launch.
+            // Without this, event_record() might be queued much earlier, so the "start" event
+            // could capture a timestamp well before the kernel actually begins executing.
+            // block_stream() guarantees there is no time gap between recording
+            // the start event and queuing the kernel on the GPU.
             if(!m_flags.has(flags::Flags::sync))
                 m_stream_blocker.block();
 
@@ -2632,7 +2417,7 @@ private:
             // We deliberately don't do this right after the kernel() call,
             // since that'd keep the GPU blocked for slightly longer.
             // The kernel lambda is still responsible for catching
-            // host-side algorithm errors using PRIMBENCH_CHECK().
+            // host-side algorithm errors, using say PRIMBENCH_CHECK().
             PRIMBENCH_CHECK(get_last_error());
 
             // Periodically sync to avoid overflowing the stream's command queue.
@@ -2661,9 +2446,7 @@ private:
             m_stream_blocker.check_timeout();
     }
 
-    /**
-     * \brief Fills iteration times (ms) using HIP event timing.
-     */
+    /// Fills iteration times (ms) using HIP event timing.
     void fill_iterations_ms(std::vector<float>&            iterations_ms,
                             const std::vector<event_t>& events) const
     {
@@ -2678,25 +2461,19 @@ private:
         }
     }
 
-    /**
-     * \brief Clears GPU caches.
-     */
+    /// Clears GPU caches.
     void clear_gpu_cache(stream_t stream) const
     {
         m_cache.clear_cache(stream);
     }
 
-    /**
-     * \brief Computes mean of time samples.
-     */
+    /// Computes mean of time samples.
     double get_mean(const std::vector<double>& times) const
     {
         return std::reduce(times.begin(), times.end()) / times.size();
     }
 
-    /**
-     * \brief Computes standard deviation of time samples.
-     */
+    /// Computes standard deviation of time samples.
     double get_stddev(const std::vector<double>& times) const
     {
         const size_t n = times.size();
@@ -2711,9 +2488,7 @@ private:
         return std::sqrt(sum_sq / (n - 1));
     }
 
-    /**
-     * \brief Computes coefficient of variation (CV).
-     */
+    /// Computes coefficient of variation (CV).
     double get_cv(const std::vector<double>& times, double stddev, double mean) const
     {
         return times.size() >= 2 ? stddev / mean : 0.0;
@@ -2748,9 +2523,7 @@ private:
     size_t m_read_write_bytes = 0;
 }; // class state
 
-/**
- * \brief Simple command-line argument parser.
- */
+/// Simple command-line argument parser.
 class cli
 {
 public:
@@ -2777,19 +2550,19 @@ public:
         }
     }
 
-    /// \brief Gets argument value, registering it with default and description if needed.
+    /// Gets argument value, registering it with default and description if needed.
     template<typename T>
     T get(std::string_view name, const T& default_val, std::string_view description)
     {
         std::string key{name};
 
-        // Register if not already registered
+        // Register if not already registered.
         if(_registered.find(key) == _registered.end())
         {
             register_description(key, description);
             std::ostringstream oss;
 
-            // For bools, explicitly output "true" or "false" instead of "0" or "1"
+            // For bools, explicitly output "true" or "false" instead of "0" or "1".
             if constexpr(std::is_same_v<T, bool>)
             {
                 oss << std::boolalpha;
@@ -2822,7 +2595,7 @@ public:
             {
                 std::istringstream ss(default_it->second);
 
-                // For bools, use boolalpha to parse "true"/"false"
+                // For bools, use boolalpha to parse "true"/"false".
                 if constexpr(std::is_same_v<T, bool>)
                 {
                     ss >> std::boolalpha >> out;
@@ -2922,12 +2695,12 @@ public:
         }
     }
 
-    /// \brief Returns all registered arguments with their parsed values.
+    /// Returns all registered arguments with their parsed values.
     std::map<std::string, settings::custom_arg_value> get_all_custom_options() const
     {
         std::map<std::string, settings::custom_arg_value> custom_args;
 
-        // Skip built-in arguments that are already in settings
+        // Skip built-in arguments that are already in settings.
         static const std::unordered_set<std::string> builtin_args
             = {"help",
                "size",
@@ -2954,10 +2727,10 @@ public:
         {
             if(value.empty())
             {
-                return true; // Boolean flag
+                return true; // Boolean flag.
             }
 
-            // Check for boolean strings
+            // Check for boolean strings.
             if(value == "true")
             {
                 return true;
@@ -2967,7 +2740,7 @@ public:
                 return false;
             }
 
-            // Try int
+            // Try int.
             try
             {
                 size_t idx     = 0;
@@ -2980,7 +2753,7 @@ public:
             catch(...)
             {}
 
-            // Try double
+            // Try double.
             try
             {
                 size_t idx        = 0;
@@ -2993,14 +2766,14 @@ public:
             catch(...)
             {}
 
-            // Fall back to string
+            // Fall back to string.
             return value;
         };
 
-        // Process all registered arguments, checking both defaults and parsed values
+        // Process all registered arguments, checking both defaults and parsed values.
         std::unordered_set<std::string> processed;
 
-        // First, add all parsed custom arguments
+        // First, add all parsed custom arguments.
         for(const auto& [key, value] : _parsed)
         {
             if(builtin_args.find(key) == builtin_args.end())
@@ -3010,7 +2783,7 @@ public:
             }
         }
 
-        // Then, add defaults for custom arguments that weren't parsed
+        // Then, add defaults for custom arguments that weren't parsed.
         for(const auto& [key, default_val] : _defaults)
         {
             if(builtin_args.find(key) == builtin_args.end()
@@ -3023,7 +2796,7 @@ public:
         return custom_args;
     }
 
-    /// \brief Prints help if requested and validates all arguments are registered.
+    /// Prints help if requested and validates all arguments are registered.
     void finalize() const
     {
         possibly_print_help();
@@ -3031,7 +2804,7 @@ public:
     }
 
 private:
-    /// \brief Prints help message and exits if --help was requested.
+    /// Prints help message and exits if --help was requested.
     void possibly_print_help() const
     {
         if(_parsed.find("help") == _parsed.end())
@@ -3058,7 +2831,7 @@ private:
         exit(EXIT_SUCCESS);
     }
 
-    /// \brief Validates that all parsed arguments were registered; exits if not.
+    /// Validates that all parsed arguments were registered; exits if not.
     void validate_arguments() const
     {
         for(const auto& [key, value] : _parsed)
@@ -3075,22 +2848,18 @@ private:
         }
     }
 
-    std::string                                  _appname;
-    std::unordered_map<std::string, std::string> _parsed;
+    std::string                                  _appname; ///< Stores argv[0].
+    std::unordered_map<std::string, std::string> _parsed; ///< Stores pairs of passed flag_name+flag_value.
 
-    // Preserves insertion order.
-    std::vector<std::pair<std::string, std::string>> _descriptions;
+    std::vector<std::pair<std::string, std::string>> _descriptions; ///< Preserves insertion order.
 
-    // Prevents duplicate descriptions being printed.
-    std::unordered_set<std::string> _description_keys_set;
+    std::unordered_set<std::string> _description_keys_set; ///< Prevents duplicate descriptions being printed.
 
-    // Store string representation of default values.
-    std::unordered_map<std::string, std::string> _defaults;
+    std::unordered_map<std::string, std::string> _defaults; ///< Stores string representation of default values.
 
-    // Track which arguments were registered with set().
-    std::unordered_set<std::string> _registered;
+    std::unordered_set<std::string> _registered; ///< Tracks which arguments were registered.
 
-    /// \brief Registers a description for an argument; auto-adds trailing period.
+    /// Registers a description for an argument; auto-adds trailing period.
     void register_description(const std::string& key, std::string_view description)
     {
         std::string desc{description};
@@ -3115,35 +2884,27 @@ inline constexpr size_t GiB = 1024 * MiB;
 using json  = detail::json;
 using state = detail::state;
 
-/**
- * \brief Used to retrieve the name of a type
- * that was registered with PRIMBENCH_REGISTER_TYPE().
- */
+/// Used to retrieve the name of a type that was registered with PRIMBENCH_REGISTER_TYPE().
 template<class T>
 std::string name()
 {
     return detail::type_name<T>::name;
 }
 
-/**
- * \brief Logs a gray line of text to stdout, overwriting the previous line.
- *
- * This function is primarily used in benchmarks to display progress or setup messages
- * (for example, "Generating matrix of size 32x64"). It accepts any number of arguments
- * of varying types, concatenates them, and prints them in gray text to the console.
- *
- * This logging is especially helpful for diagnosing **slow setup steps** and
- * **slow computers**.
- *
- * ### Examples
- * ```cpp
- * primbench::log("Loading dataset...");
- * // Output: Loading dataset...
- *
- * primbench::log("Generating matrix of size ", 32, "x", 64);
- * // Output: Generating matrix of size 32x64
- * ```
- */
+/// This function is primarily used in benchmarks to display progress or setup messages
+/// (for example, "Generating matrix of size 32x64"). It accepts any number of arguments
+/// of varying types, concatenates them, and prints them as a gray line.
+///
+/// This logging is especially helpful for diagnosing slow setup steps.
+///
+/// Examples:
+/// ```cpp
+/// primbench::log("Loading dataset...");
+/// // Output: Loading dataset...
+///
+/// primbench::log("Generating matrix of size ", 32, "x", 64);
+/// // Output: Generating matrix of size 32x64
+/// ```
 template<typename... Args>
 void log(Args&&... args)
 {
@@ -3152,63 +2913,52 @@ void log(Args&&... args)
     std::cout << detail::reset << std::flush;
 }
 
-/**
- * \brief Namespace for flag definitions and utilities.
- */
+/// Namespace for flag definitions and utilities.
 namespace flags
 {
 
-/** \brief FlagTag representing no flags */
+/// FlagTag representing no flags.
 inline constexpr detail::flags::FlagTag none{detail::flags::Flags::none};
 
-/** \brief FlagTag representing the sync flag */
+/// FlagTag representing the sync flag.
 inline constexpr detail::flags::FlagTag sync{detail::flags::Flags::sync};
 
 } // namespace flags
 
-/**
- * \brief Base interface for all benchmark specializations.
- *
- * A benchmark implementation describes:
- *   - the algorithm (`meta()["algo"]`),
- *   - a JSON-formatted specialization identifier (other keys in `meta()`),
- *   - and the code that performs the timed measurement (`run()`).
- *
- * The executor uses this interface to:
- *   - validate and sort benchmarks,
- *   - construct per-benchmark state objects,
- *   - run kernels and collect performance data,
- *   - and emit structured JSON results.
- */
+/// Interface for all benchmark specializations.
+///
+/// A benchmark implementation describes:
+///   - the algorithm (`meta()["algo"]`),
+///   - a JSON-formatted specialization identifier (other keys in `meta()`),
+///   - and the code that performs the timed measurement (`run()`).
+///
+/// The executor uses this interface to:
+///   - validate and sort benchmarks,
+///   - construct per-benchmark state objects,
+///   - run kernels and collect performance data,
+///   - and emit structured JSON results.
 struct benchmark_interface
 {
-    /**
-     * \brief Returns a JSON object describing the benchmark.
-     *
-     * The returned JSON must include:
-     *   - "algo": canonical algorithm name,
-     *   - other keys describing the specialization.
-     *
-     * All benchmarks queued for one executor run must have the same "algo".
-     */
+    /// Returns a JSON object describing the benchmark.
+    ///
+    /// The returned JSON must include:
+    ///   - "algo": canonical algorithm name,
+    ///   - other keys describing the specialization.
+    ///
+    /// All benchmarks queued for one executor run must have the same "algo".
     virtual json meta() const = 0;
 
-    /**
-     * \brief Executes the benchmark using the provided state.
-     *
-     * Implementations allocate input/output data, perform any required setup,
-     * and launch the algorithm under test. Timing, iteration control, and
-     * result reporting are handled through the supplied `state` object.
-     */
+    /// Executes the benchmark using the provided state.
+    ///
+    /// Implementations allocate input/output data, perform any required setup,
+    /// and launch the algorithm under test.
     virtual void run(state& state) = 0;
 
     /// Virtual destructor for polymorphic cleanup.
     virtual ~benchmark_interface() = default;
 };
 
-/**
- * \brief Generates and manages `SeedCount` seeds, from a single seed.
- */
+/// Generates and manages `SeedCount` seeds, given a single input seed.
 template<size_t SeedCount>
 class seeds
 {
@@ -3230,25 +2980,16 @@ private:
     std::array<uint32_t, SeedCount> m_seeds;
 }; // class seeds
 
-/**
- * \brief Executes a suite of GPU benchmarks with configurable parameters.
- *
- * The executor class handles command-line parsing, benchmark queueing,
- * execution, and logging of results in JSON format. Supports tuning
- * GPU and benchmark parameters, including batch sizes, durations, and
- * temperature limits.
- */
+/// Executes a suite of GPU benchmarks with configurable parameters.
+///
+/// The executor class handles command-line parsing, benchmark queueing,
+/// execution, and logging of results in JSON format. Supports tuning
+/// GPU and benchmark parameters, including batch sizes, durations, and
+/// temperature limits.
 class executor
 {
 public:
-    /**
-     * \brief Constructs the executor and initializes parsing and logging.
-     * \param argc Argument count from main().
-     * \param argv Argument values from main().
-     * \param settings Optional benchmark-specific settings.
-     * \param flags Optional flags controlling executor behavior.
-     * \param stream Optional stream to run the benchmarks on.
-     */
+    /// Constructs the executor, and runs setup code.
     executor(int                    argc,
              char*                  argv[],
              primbench::settings    settings = {},
@@ -3280,13 +3021,13 @@ public:
             PRIMBENCH_CHECK(detail::stream_destroy(m_stream));
     }
 
-    /**
-     * \brief Queue a benchmark for execution.
-     * \tparam Benchmark Type of benchmark to queue.
-     * \tparam Args Argument types for benchmark constructor.
-     * \param args Arguments to forward to the benchmark constructor.
-     * \return true to allow usage in global static initialization.
-     */
+    /// \brief Queue a benchmark for execution.
+    ///
+    /// \tparam Benchmark Type of benchmark to queue.
+    /// \tparam Args Argument types for benchmark constructor.
+    /// \param args Arguments to forward to the benchmark constructor.
+    ///
+    /// \return true, which allows the function to be called in global scope.
     template<typename Benchmark, typename... Args>
     static bool queue(Args&&... args)
     {
@@ -3294,12 +3035,12 @@ public:
         return true;
     }
 
-    /**
-     * \brief Queue benchmarks using an autotune bulk creation function.
-     * \tparam BulkCreateFunction Callable that populates specializations.
-     * \param fn Function that creates benchmarks.
-     * \return true to allow usage in global static initialization.
-     */
+    /// \brief Queue benchmarks using an autotune bulk creation function.
+    ///
+    /// \tparam BulkCreateFunction Callable that populates specializations.
+    /// \param fn Function that creates benchmarks.
+    ///
+    /// \return true, which allows the function to be called in global scope.
     template<typename BulkCreateFunction>
     static bool queue_autotune(BulkCreateFunction&& fn)
     {
@@ -3307,21 +3048,7 @@ public:
         return true;
     }
 
-    /**
-     * \brief Run all queued benchmarks and print progress/results.
-     *
-     * Performs the following:
-     * - Ensures run() is called only once per algorithm executor.
-     * - Sorts benchmarks to achieve a consistent order.
-     * - Validates that all benchmarks have the same algorithm name (`algo`).
-     * - Verifies that at least one benchmark is queued.
-     * - Ensures that all human-readable specialization names (`name`) are unique.
-     * - Computes output column widths and prints the benchmark header.
-     * - Executes each benchmark and prints progress/results.
-     * - Outputs a summary after all benchmarks are complete.
-     *
-     * \throws Exits the program with EXIT_FAILURE on validation errors.
-     */
+    /// Prepares and runs all queued benchmark specializations.
     void run()
     {
         static bool run_called = false;
@@ -3356,9 +3083,7 @@ public:
         get_logger().output_summary();
     }
 
-    /**
-     * \brief Parses a command-line argument.
-     */
+    /// Parses a command-line argument.
     template<typename T>
     T get(std::string_view name, const T& default_val, std::string_view description)
     {
@@ -3366,9 +3091,7 @@ public:
     }
 
 private:
-    /**
-     * \brief Parse optional arguments.
-     */
+    /// Parse optional arguments.
     void parse()
     {
         auto& cli = m_cli;
@@ -3669,13 +3392,7 @@ private:
         }
     }
 
-    /**
-     * \brief Create a benchmark state object for execution.
-     * \param algo Algorithm name.
-     * \param meta Specialization metadata.
-     * \param family_index Index of benchmark in family.
-     * \return Configured state object for the benchmark.
-     */
+    /// Create a benchmark state object for execution.
     state new_state(std::string_view algo, json meta, size_t family_index)
     {
         return state(algo,
@@ -3693,9 +3410,7 @@ private:
                      m_warmer);
     }
 
-    /**
-     * \brief Outputs a single dry specialization.
-     */
+    /// Outputs a single dry specialization.
     void output_dry_specialization(std::string_view algo, const json& meta, size_t family_index)
     {
         std::string name            = meta.serialize_name();
@@ -3738,17 +3453,13 @@ private:
                                            noise_timeout);
     }
 
-    /**
-     * \brief Returns the logger singleton.
-     */
+    /// Returns the logger singleton.
     detail::logger& get_logger()
     {
         return detail::logger::instance();
     }
 
-    /**
-     * \brief Returns the monitor singleton.
-     */
+    /// Returns the monitor singleton.
     detail::monitor& get_monitor()
     {
         #ifdef __HIP__
@@ -3758,30 +3469,30 @@ private:
         #endif
     }
 
-    /**
-     * This vector is static, allowing queue_autotune()
-     * to register all specializations of autotuned benchmarks in one place.
-     */
-    inline static std::vector<std::unique_ptr<benchmark_interface>> specializations;
+    using specializations_t = std::vector<std::unique_ptr<benchmark_interface>>;
 
-    settings m_settings; /**< CLI user settings */
+    /// This vector is static, as benchmarks can be registered in global scope.
+    inline static specializations_t specializations;
 
-    detail::flags::FlagTag m_flags; /**< Executor flags */
+    settings m_settings; ///< CLI user settings.
 
-    stream_t m_stream; /**< Stream used for execution */
-    bool     m_own_stream; /** Whether primbench should create its own stream */
+    detail::flags::FlagTag m_flags; ///< Executor flags.
 
-    detail::cli m_cli; /**< Command-line argument parser */
+    stream_t m_stream; ///< Stream used for execution.
+    bool     m_own_stream; ///< Whether primbench should create its own stream.
+
+    detail::cli m_cli; ///< Command-line argument parser.
 
     std::unique_ptr<detail::stream_blocker>
-        m_stream_blocker; /**< Stream blocker to serialize output */
+        m_stream_blocker; ///< Stream blocker to serialize output.
 
-    size_t m_specialization_col_width; /**< Column width for specialization names */
-    size_t m_family_col_width; /**< Column width for family index */
+    size_t m_specialization_col_width; ///< Column width for specialization names.
+    size_t m_family_col_width; ///< Column width for family index.
 
-    detail::cache_thrasher m_cache = detail::cache_thrasher(); /**< Cache clearing utility */
-    detail::gpu_warmer     m_warmer
-        = detail::gpu_warmer(m_settings, get_monitor()); /**< GPU warm-up utility */
+    detail::cache_thrasher m_cache = detail::cache_thrasher(); ///< Cache clearing utility.
+
+    /// GPU warm-up utility.
+    detail::gpu_warmer m_warmer = detail::gpu_warmer(m_settings, get_monitor());
 }; // class executor
 
 } // namespace primbench
