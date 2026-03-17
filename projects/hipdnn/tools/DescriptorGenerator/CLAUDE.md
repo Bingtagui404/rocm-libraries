@@ -325,7 +325,7 @@ Apply these rules:
 |---|---|---|
 | `*_tensor_uid: long` | `tensor_fields` | (implicit — tensors are always UIDs) |
 | `field: [long]` | `data_fields` | `vector_int64` |
-| `field: SomeEnum` | `data_fields` | `enum` (set `cpp_enum` to fully-qualified enum type) |
+| `field: SomeEnum` | `data_fields` | `mode` (preferred; see "Enum Field Types" section) |
 | `field: float` | `data_fields` | `scalar_float` |
 | `field: long` (non-UID) | `data_fields` | `scalar_int64` |
 | `field: bool` | `data_fields` | `bool` |
@@ -406,6 +406,128 @@ tensor_array_fields:
 - **Shared attributes**: Convolution ops all share `HIPDNN_ATTR_CONVOLUTION_*` attributes. Matmul, pointwise, and batchnorm each have their own attribute namespaces. Use `shared: true` on data fields and `compute_data_type_shared: true` at operation level for operations that reuse another operation's attribute enums.
 - **Frontend naming**: The packer function, node class, and attributes class names must match the existing frontend code. Check `frontend/include/hipdnn_frontend/` for the actual class names
 - **Enum fields**: Set `cpp_enum` to the fully-qualified FBS enum type (e.g., `hipdnn_data_sdk::data_objects::ConvMode`). Set `required: false` if the FBS has a default value. Always set `test_enum_value` to a valid enum constant.
+
+---
+
+## Enum Field Types: `mode` vs `enum` (Legacy)
+
+### `mode` Type — REQUIRED for All Enum Fields in New Operations
+
+Every enum field in a new operation MUST use the `mode` type. The `mode` pattern provides:
+- A dedicated backend C-API enum (e.g., `hipdnnConvolutionMode_t`)
+- A dedicated type tag (e.g., `HIPDNN_TYPE_CONVOLUTION_MODE`)
+- Bidirectional conversion functions in `DataTypeConversion.hpp/.cpp`
+- Shared setter/getter helpers in `DescriptorAttributeUtils`
+- A frontend converter function
+
+All enums on develop already follow this pattern:
+- ConvMode — `HIPDNN_TYPE_CONVOLUTION_MODE` (= 24)
+- PointwiseMode — `HIPDNN_TYPE_POINTWISE_MODE` (= 25)
+- DiagonalAlignment — `HIPDNN_TYPE_DIAGONAL_ALIGNMENT` (= 26)
+- AttentionImplementation — `HIPDNN_TYPE_ATTENTION_IMPLEMENTATION` (= 27)
+- NormFwdPhase — `HIPDNN_TYPE_NORM_FWD_PHASE`
+
+### `enum` Type — LEGACY, Do NOT Use for New Operations
+
+The `enum` type uses `HIPDNN_TYPE_INT64` with raw `static_cast`. It exists only for backward compatibility with older configs. Do not use it in new operation YAML configs.
+
+### Checklist: Adding a New Mode Enum Type
+
+When an operation introduces an enum value not already in the backend, add these in order:
+
+1. **Backend C-API enum header** — `backend/include/Hipdnn<Foo>Mode.h` defining the C enum type
+2. **Type tag** — New entry in `HipdnnBackendAttributeType.h` (e.g., `HIPDNN_TYPE_FOO_MODE`)
+3. **SDK conversions** — `toSdkFooMode()`/`fromSdkFooMode()` in `DataTypeConversion.hpp/.cpp`
+4. **Shared helpers** — `setFooMode()`/`getFooMode()` in `DescriptorAttributeUtils.hpp/.cpp`
+5. **String utility case** — Switch case for the new type tag in `BackendEnumStringUtils.hpp`
+6. **Frontend converter** — `toBackendFooMode()` in `Types.hpp`
+
+---
+
+## Post-Generation Refactoring: TEST_P
+
+The code generator produces `TEST_F`-based tests as a baseline. After generation, refactor tests into parameterized `TEST_P` suites where doing so reduces duplication. The templates do not generate TEST_P directly; this is a manual post-generation step.
+
+### When to Refactor to TEST_P
+
+1. **Compute data type variations** — Instead of separate test cases per type (e.g., `BuildNodeWithHalfComputeType`, `BuildNodeWithBfloat16ComputeType`), parameterize over `{backendType, sdkType}` pairs.
+
+2. **Tensor set/get round-trips** — When multiple tensor fields follow the same pattern, parameterize over a struct with `{attr_name, member_ptr, test_uid}`.
+
+3. **Enum value round-trips** — Test each valid enum value via TEST_P instead of one-per-test-case.
+
+4. **Error cases by attribute** — When multiple attributes share the same error pattern (e.g., wrong type, null pointer), parameterize over the attribute name.
+
+### Example: Compute Type Round-Trip
+
+```cpp
+struct ComputeTypeParam
+{
+    hipdnnDataType_t backendType;
+    DataType sdkType;
+};
+
+class TestComputeTypeRoundTrip : public Test<Op>OperationDescriptor,
+                                  public ::testing::WithParamInterface<ComputeTypeParam>
+{};
+
+TEST_P(TestComputeTypeRoundTrip, BuildNodePreservesComputeType)
+{
+    auto [backendType, sdkType] = GetParam();
+    // ... set up, finalize, buildNode, verify sdkType ...
+}
+
+INSTANTIATE_TEST_SUITE_P(ComputeTypes, TestComputeTypeRoundTrip,
+    ::testing::Values(
+        ComputeTypeParam{HIPDNN_DATA_FLOAT, DataType::FLOAT},
+        ComputeTypeParam{HIPDNN_DATA_HALF, DataType::HALF},
+        ComputeTypeParam{HIPDNN_DATA_BFLOAT16, DataType::BFLOAT16}
+    ));
+```
+
+---
+
+## Required Utilities and Patterns
+
+Generated code and post-generation edits MUST use existing utilities rather than reimplementing equivalent logic.
+
+### Test Utilities — Use, Do Not Reimplement
+
+| Utility | Header | Purpose |
+|---------|--------|---------|
+| `createDescriptor<T>()` | `DescriptorTestUtils.hpp` | Create typed backend descriptors |
+| `createFinalizedTensor()` | `TensorDescriptorTestUtils.hpp` | Create finalized tensor descriptors |
+| `ASSERT_THROW_HIPDNN_STATUS()` | `TestMacros.hpp` | Assert specific `hipdnnStatus_t` errors |
+| `toVec()` | `test_sdk/utilities/ToVec.hpp` | Convert `std::array` constants to `std::vector` |
+| Constants (e.g., `K_TENSOR_X_UID`) | `test_sdk/constants/` | Shared test values |
+
+### Descriptor Attribute Utilities — Use Shared Helpers
+
+| Helper | Purpose |
+|--------|---------|
+| `setInt64Vector()` / `getInt64Vector()` | Vector fields |
+| `setDataType()` / `getDataType()` | Compute data type |
+| `setScalar<T>()` / `getScalar<T>()` | Scalar fields |
+| Mode-specific (e.g., `setConvMode()` / `getConvMode()`) | Mode enum fields |
+| `checkSetArgs()` / `checkGetArgs()` | Type validation |
+
+### Reference Patterns in Graph Tests
+
+| Pattern | Location | Purpose |
+|---------|----------|---------|
+| `findTensorByUid()` + `verifyTensor()` | `TestGraphDescriptorOps.cpp:64-90` | Locate and validate tensors in deserialized graphs |
+| `verify<Op>Node()` helpers | `TestGraphDescriptorOps.cpp:93-116` | Validate operation node attributes |
+| Bundle pattern (`ConvOpBundle`) | `TestGraphDescriptorOps.cpp:118-137` | Composite test setup for multi-descriptor operations |
+| `UnPackGraph()` | Graph test utils | FlatBuffer deserialization (use instead of `->UnPack()`) |
+| `std::unique_ptr<HipdnnBackendDescriptor>` | getAttribute results | Safe ownership wrapping |
+
+### Anti-Patterns to Avoid
+
+- **Raw owning pointers** from `UnPack()` or `getAttribute()` — always wrap in `unique_ptr`
+- **Reimplementing existing helpers** — check `DescriptorAttributeUtils` and test utility headers first
+- **Using `HIPDNN_TYPE_INT64` for enum fields** — use proper `mode` types with dedicated type tags
+- **Inline test values when shared constants exist** — use `test_sdk/constants/` headers
+- **Duplicating test logic** that could be parameterized with TEST_P
 
 ---
 
