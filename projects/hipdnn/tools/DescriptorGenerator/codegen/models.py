@@ -9,6 +9,45 @@ from typing import Optional
 
 
 @dataclass
+class EnumValue:
+    """A single value in a mode enum."""
+
+    name: str  # Backend C-API suffix (e.g., "CROSS_CORRELATION", "TOP_LEFT_EXT")
+    value: int  # Numeric value for the backend C-API enum
+    sentinel: bool = False  # True for UNSET/NOT_SET (excluded from backend C-API enum)
+    sdk_name: str = (
+        ""  # Override SDK enum name if different from name (e.g., "MAX_OP" for "MAX")
+    )
+    frontend_name: str = (
+        ""  # Override frontend enum name if different from name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
+    )
+
+    @property
+    def effective_sdk_name(self) -> str:
+        """SDK enum constant name (defaults to frontend_name, then name)."""
+        return self.sdk_name or self.frontend_name or self.name
+
+    @property
+    def effective_frontend_name(self) -> str:
+        """Frontend enum class member name (defaults to name)."""
+        return self.frontend_name or self.name
+
+
+@dataclass
+class EnumDef:
+    """Full enum definition for code generation."""
+
+    backend_header: str = ""  # Output header filename (e.g., "HipdnnPointwiseMode.h")
+    backend_prefix: str = ""  # C-API constant prefix (e.g., "HIPDNN_POINTWISE_")
+    values: list[EnumValue] = field(default_factory=list)
+
+    @property
+    def non_sentinel_values(self) -> list[EnumValue]:
+        """Values excluding sentinel entries (for backend C-API enum)."""
+        return [v for v in self.values if not v.sentinel]
+
+
+@dataclass
 class TensorField:
     """A tensor field stored as shared_ptr<TensorDescriptor> + UID in _data."""
 
@@ -113,6 +152,14 @@ class DataField:
 
     # Lifting support (unpacker)
     frontend_inverse_converter: str = ""
+
+    # Mode enum definition (for generating new enum plumbing)
+    enum_def: Optional[EnumDef] = None
+
+    @property
+    def has_enum_def(self) -> bool:
+        """Whether this field has a generatable enum definition."""
+        return self.enum_def is not None and len(self.enum_def.values) > 0
 
     @property
     def camel_name(self) -> str:
@@ -610,6 +657,15 @@ class OperationConfig:
     @property
     def has_tensor_array_fields(self) -> bool:
         return len(self.tensor_array_fields) > 0
+
+    @property
+    def generatable_mode_fields(self) -> list[DataField]:
+        """Mode data fields with enum_def set and shared == False."""
+        return [
+            df
+            for df in self.data_fields
+            if df.is_mode and df.has_enum_def and not df.shared
+        ]
 
     @property
     def tensor_field_frontend_map(self) -> dict:

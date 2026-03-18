@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from .models import OperationConfig
+from .models import DataField, OperationConfig
 
 
 class DescriptorGenerator:
@@ -243,6 +243,10 @@ class DescriptorGenerator:
             out_path.write_text(content)
             written.append(f"fragments/{filename}")
 
+        # Mode enum plumbing (only for fields with enum_def)
+        if config.generatable_mode_fields:
+            written += self.render_mode_enums(config, output_dir)
+
         return written
 
     def render_frontend(self, config: OperationConfig, output_dir: Path) -> list[str]:
@@ -306,6 +310,41 @@ class DescriptorGenerator:
         written += self.render_frontend(config, output_dir)
         return written
 
+    def render_mode_enums(self, config: OperationConfig, output_dir: Path) -> list[str]:
+        """Render mode enum templates for fields with enum_def. Returns list of written files."""
+        written = []
+
+        for df in config.generatable_mode_fields:
+            # Backend header (new file)
+            header_path = (
+                output_dir / "backend" / "include" / df.enum_def.backend_header
+            )
+            header_path.parent.mkdir(parents=True, exist_ok=True)
+            content = self._render_mode_template("mode_backend_header.j2", config, df)
+            header_path.write_text(content)
+            written.append(f"backend/include/{df.enum_def.backend_header}")
+
+            # Backend plumbing fragment
+            fragments_dir = output_dir / "fragments"
+            fragments_dir.mkdir(parents=True, exist_ok=True)
+
+            backend_frag = fragments_dir / f"mode_backend_plumbing_{df.name}.txt"
+            content = self._render_mode_template(
+                "fragments/mode_backend_plumbing.j2", config, df
+            )
+            backend_frag.write_text(content)
+            written.append(f"fragments/mode_backend_plumbing_{df.name}.txt")
+
+            # Frontend plumbing fragment
+            frontend_frag = fragments_dir / f"mode_frontend_plumbing_{df.name}.txt"
+            content = self._render_mode_template(
+                "fragments/mode_frontend_plumbing.j2", config, df
+            )
+            frontend_frag.write_text(content)
+            written.append(f"fragments/mode_frontend_plumbing_{df.name}.txt")
+
+        return written
+
     def _render_template(self, template_name: str, config: OperationConfig) -> str:
         try:
             template = self.env.get_template(template_name)
@@ -314,4 +353,16 @@ class DescriptorGenerator:
             raise RuntimeError(
                 f"Failed to render template '{template_name}' for "
                 f"operation '{config.name}': {e}"
+            ) from e
+
+    def _render_mode_template(
+        self, template_name: str, config: OperationConfig, df: DataField
+    ) -> str:
+        try:
+            template = self.env.get_template(template_name)
+            return template.render(op=config, df=df)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to render template '{template_name}' for "
+                f"mode field '{df.name}' in operation '{config.name}': {e}"
             ) from e

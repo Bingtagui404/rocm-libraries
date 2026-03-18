@@ -97,6 +97,59 @@ operation:
       test_backend_value: "HIPDNN_POINTWISE_MODE_ADD"
       test_c_type: "hipdnnPointwiseMode_t"
       test_default_value: "HIPDNN_POINTWISE_MODE_ABS"
+      # Verification: enum_def for PointwiseMode (matches existing hand-written code)
+      enum_def:
+        backend_header: "HipdnnPointwiseMode.h"
+        backend_prefix: "HIPDNN_POINTWISE_"
+        values:
+          - { name: "NOT_SET", value: 0, sentinel: true }
+          - { name: "ABS", value: 1 }
+          - { name: "ADD", value: 2 }
+          - { name: "ADD_SQUARE", value: 3 }
+          - { name: "BINARY_SELECT", value: 4 }
+          - { name: "CEIL", value: 5 }
+          - { name: "CMP_EQ", value: 6 }
+          - { name: "CMP_GE", value: 7 }
+          - { name: "CMP_GT", value: 8 }
+          - { name: "CMP_LE", value: 9 }
+          - { name: "CMP_LT", value: 10 }
+          - { name: "CMP_NEQ", value: 11 }
+          - { name: "DIV", value: 12 }
+          - { name: "ELU_BWD", value: 13 }
+          - { name: "ELU_FWD", value: 14 }
+          - { name: "ERF", value: 15 }
+          - { name: "EXP", value: 16 }
+          - { name: "FLOOR", value: 17 }
+          - { name: "GELU_APPROX_TANH_BWD", value: 18 }
+          - { name: "GELU_APPROX_TANH_FWD", value: 19 }
+          - { name: "GELU_BWD", value: 20 }
+          - { name: "GELU_FWD", value: 21 }
+          - { name: "GEN_INDEX", value: 22 }
+          - { name: "IDENTITY", value: 23 }
+          - { name: "LOG", value: 24 }
+          - { name: "LOGICAL_AND", value: 25 }
+          - { name: "LOGICAL_NOT", value: 26 }
+          - { name: "LOGICAL_OR", value: 27 }
+          - { name: "MAX", value: 28, sdk_name: "MAX_OP" }
+          - { name: "MIN", value: 29, sdk_name: "MIN_OP" }
+          - { name: "MUL", value: 30 }
+          - { name: "NEG", value: 31 }
+          - { name: "RECIPROCAL", value: 32 }
+          - { name: "RELU_BWD", value: 33 }
+          - { name: "RELU_FWD", value: 34 }
+          - { name: "RSQRT", value: 35 }
+          - { name: "SIGMOID_BWD", value: 36 }
+          - { name: "SIGMOID_FWD", value: 37 }
+          - { name: "SIN", value: 38 }
+          - { name: "SOFTPLUS_BWD", value: 39 }
+          - { name: "SOFTPLUS_FWD", value: 40 }
+          - { name: "SQRT", value: 41 }
+          - { name: "SUB", value: 42 }
+          - { name: "SWISH_BWD", value: 43 }
+          - { name: "SWISH_FWD", value: 44 }
+          - { name: "TAN", value: 45 }
+          - { name: "TANH_BWD", value: 46 }
+          - { name: "TANH_FWD", value: 47 }
 
     - name: "relu_lower_clip"
       fbs_field: "relu_lower_clip"

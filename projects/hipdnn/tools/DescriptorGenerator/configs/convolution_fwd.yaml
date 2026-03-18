@@ -148,6 +148,13 @@ operation:
       test_backend_value: "HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION"
       test_c_type: "hipdnnConvolutionMode_t"
       test_default_value: "HIPDNN_CONVOLUTION_MODE_CONVOLUTION"
+      # Verification: enum_def for ConvMode (matches existing hand-written code)
+      enum_def:
+        backend_header: "HipdnnConvolutionMode.h"
+        backend_prefix: "HIPDNN_CONVOLUTION_MODE_"
+        values:
+          - { name: "CONVOLUTION", value: 0 }
+          - { name: "CROSS_CORRELATION", value: 1 }
 
   tensor_array_fields: []
 

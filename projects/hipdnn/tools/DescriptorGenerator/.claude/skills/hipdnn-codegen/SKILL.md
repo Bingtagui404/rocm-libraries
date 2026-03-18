@@ -85,38 +85,71 @@ Write the config to `$CODEGEN/configs/<operation>.yaml`.
 
 Use `$CODEGEN/configs/convolution_fwd.yaml` as the reference template for all config fields.
 
-### 4. Handle Mode Enum Fields and Generate Inverse Converters
+#### 3a. Populate `enum_def` for New Enum Types
 
-If the YAML config has `mode` data fields, check whether the required infrastructure already exists:
+For each `mode` data field, check if the backend enum infrastructure already exists:
+```bash
+grep -l "HIPDNN_TYPE_" $HIPDNN_SRC/backend/include/HipdnnBackendAttributeType.h | head -1
+grep "<EnumShortType>" $HIPDNN_SRC/backend/include/Hipdnn*.h
+```
 
-**4a. Check backend enum infrastructure:**
+If the enum type is **new** (no existing backend header), populate the `enum_def` block by reading the FBS enum values:
+
+```yaml
+    enum_def:
+      backend_header: "Hipdnn<Foo>Mode.h"     # Output C-API header filename
+      backend_prefix: "HIPDNN_<FOO>_"          # Prefix for C-API enum constants
+      values:
+        - { name: "VALUE_A", value: 0 }        # name = backend C-API suffix
+        - { name: "VALUE_B", value: 1 }
+        # Optional fields per value:
+        #   sentinel: true       — marks UNSET/NOT_SET values excluded from backend C-API enum
+        #   sdk_name: "ALT"      — override SDK enum name if different (e.g., "MAX_OP" for "MAX")
+        #   frontend_name: "X"   — override frontend enum name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
+```
+
+**Rules for populating values:**
+- Read the FBS enum definition for the list of values
+- `name` is the backend C-API suffix: `backend_prefix + name` = full C-API constant (e.g., `HIPDNN_POINTWISE_` + `ABS` = `HIPDNN_POINTWISE_ABS`)
+- `value` is the backend C-API numeric value (may differ from FBS value)
+- Mark FBS sentinel values (UNSET, NOT_SET) with `sentinel: true` — these are excluded from the backend C-API enum but included in the frontend enum as `NOT_SET = 0`
+- Use `sdk_name` when the SDK enum name differs from the backend name (e.g., FBS `MAX_OP` but backend `MAX`)
+- Use `frontend_name` when the frontend enum member name differs from the backend suffix (e.g., backend `TOP_LEFT_EXT` but frontend `TOP_LEFT`)
+- Set `shared: false` on the data field so the generator produces the mode enum plumbing
+
+If the enum type **already exists** in the backend, do NOT include `enum_def` (or set `shared: true` on the data field). The generator will reference the existing enum infrastructure.
+
+### 4. Handle Mode Enum Fields
+
+If the YAML config has `mode` data fields, determine whether the enum is new or existing:
+
+**4a. If `enum_def` is present on the data field (new enum):**
+
+The generator automatically produces all mode enum plumbing:
+- `backend/include/<header>.h` — Complete C-API enum header (new file)
+- `fragments/mode_backend_plumbing_<field>.txt` — Combined backend fragment with sections for:
+  - `HipdnnBackendAttributeType.h` (type tag entry)
+  - `DataTypeConversion.hpp/.cpp` (toSdk/fromSdk converters)
+  - `DescriptorAttributeUtils.hpp/.cpp` (set/get helpers)
+  - `BackendEnumStringUtils.hpp` (string case)
+  - `hipdnn_backend.h` (#include directive)
+- `fragments/mode_frontend_plumbing_<field>.txt` — Combined frontend fragment with sections for:
+  - `Types.hpp` (frontend enum class, toSdkType, fromSdkType, toBackend, fromHipdnn converters)
+
+Insert each section from the fragment files into the corresponding target file, just like other fragments. The type tag `PLACEHOLDER_VALUE` must be replaced with the next available value in `HipdnnBackendAttributeType.h`.
+
+**4b. If `enum_def` is NOT present (existing enum):**
+
+Check whether the required infrastructure exists manually:
 ```bash
 grep -r "HIPDNN_TYPE_" $HIPDNN_SRC/backend/include/HipdnnBackendAttributeType.h
 ```
 
-For each new enum type not already in the backend, create the following (derive from existing patterns like ConvMode):
-1. Backend C-API enum header (`backend/include/Hipdnn<Foo>Mode.h`)
-2. Type tag entry in `HipdnnBackendAttributeType.h`
-3. SDK conversion functions in `DataTypeConversion.hpp/.cpp`
-4. Shared helpers in `DescriptorAttributeUtils.hpp/.cpp`
-5. String utility case in `BackendEnumStringUtils.hpp`
-6. Frontend forward converter in `Types.hpp` (e.g., `toBackendPointwiseMode`)
+If missing, create the plumbing by hand following existing patterns (ConvMode, PointwiseMode).
 
-**4b. Generate inverse converter for unpacker (REQUIRED for lift-only and full modes):**
+**4c. Generate inverse converter (REQUIRED for lift-only and full modes):**
 
-For each mode field with a `frontend_inverse_converter` in the YAML config, check if the inverse converter function already exists in `$HIPDNN_SRC/frontend/include/hipdnn_frontend/Types.hpp`. If it does NOT exist, generate it by **reading the existing forward converter and inverting the mapping**:
-
-1. Read the forward converter (e.g., `toBackendPointwiseMode`) from Types.hpp
-2. For each `case FrontendEnum::VALUE: return BACKEND_VALUE;`, create the inverse: `case BACKEND_VALUE: return {FrontendEnum::VALUE, {}};`
-3. Add a `default:` case returning `{FrontendEnum::NOT_SET, {ErrorCode::HIPDNN_BACKEND_ERROR, "Unknown ... value: " + ...}}`
-4. Place the function in Types.hpp, right after the forward converter
-
-The function signature follows the pattern of `fromHipdnnConvMode`:
-```cpp
-inline std::pair<FrontendType, Error> fromHipdnn<Foo>Mode(hipdnn<Foo>Mode_t mode)
-```
-
-This step is critical — the generated unpacker calls this function and will not compile without it.
+For each mode field with a `frontend_inverse_converter` in the YAML config, check if the function already exists in `$HIPDNN_SRC/frontend/include/hipdnn_frontend/Types.hpp`. If `enum_def` is present, the inverse converter is included in `mode_frontend_plumbing_<field>.txt` — just insert it. Otherwise, generate it by reading the existing forward converter and inverting the mapping.
 
 ### 5. Run the Generator
 
@@ -188,6 +221,15 @@ Read each fragment file from the output and insert it into the correct shared fi
 | `fragments/operation_unpacker_case.txt` | `$HIPDNN_SRC/frontend/include/hipdnn_frontend/detail/OperationUnpacker.hpp` | In the `createNodeForType()` switch. |
 | `fragments/operation_type_enum.txt` | `$HIPDNN_SRC/backend/include/HipdnnOperationType.h` | Before the closing brace of the enum. |
 | `fragments/node_unpack_override.txt` | Frontend node header | Add method to the node class. |
+
+**Mode enum fragments** (for `backend` or `full` mode, only when `enum_def` is present):
+
+| Fragment | Target Files | Insertion |
+|----------|-------------|-----------|
+| `fragments/mode_backend_plumbing_<field>.txt` | Multiple backend files | Read the fragment — it has clearly labeled sections for each target file. Insert each section into the corresponding file. Replace `PLACEHOLDER_VALUE` in the type tag section. |
+| `fragments/mode_frontend_plumbing_<field>.txt` | `$HIPDNN_SRC/frontend/include/hipdnn_frontend/Types.hpp` | Read the fragment — it has sections for the enum class, toSdkType, fromSdkType, toBackend, and fromHipdnn. Insert each near existing similar code. |
+
+The generated `backend/include/<header>.h` file is a complete file — copy it directly to `$HIPDNN_SRC/backend/include/`.
 
 **Frontend fragments** (for `frontend` or `full` mode):
 

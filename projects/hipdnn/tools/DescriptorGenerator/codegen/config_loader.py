@@ -11,6 +11,8 @@ import yaml
 from .models import (
     DataField,
     DescriptorTypeConfig,
+    EnumDef,
+    EnumValue,
     FrontendConfig,
     FrontendTensorConfig,
     GraphMethodParam,
@@ -68,6 +70,7 @@ def load_config(path: Path) -> OperationConfig:
     # Data fields
     data_fields = []
     for df in op.get("data_fields", []):
+        enum_def = _parse_enum_def(df.get("enum_def"))
         data_fields.append(
             DataField(
                 name=df["name"],
@@ -95,6 +98,7 @@ def load_config(path: Path) -> OperationConfig:
                 test_default_value=df.get("test_default_value", ""),
                 test_alt_enum_value=df.get("test_alt_enum_value", ""),
                 frontend_inverse_converter=df.get("frontend_inverse_converter", ""),
+                enum_def=enum_def,
             )
         )
 
@@ -245,6 +249,29 @@ def _parse_frontend_tensors(
         )
 
     return tensors
+
+
+def _parse_enum_def(raw: dict | None) -> EnumDef | None:
+    """Parse the enum_def block from a data field entry."""
+    if raw is None:
+        return None
+
+    values = [
+        EnumValue(
+            name=v["name"],
+            value=v["value"],
+            sentinel=v.get("sentinel", False),
+            sdk_name=v.get("sdk_name", ""),
+            frontend_name=v.get("frontend_name", ""),
+        )
+        for v in raw.get("values", [])
+    ]
+
+    return EnumDef(
+        backend_header=raw.get("backend_header", ""),
+        backend_prefix=raw.get("backend_prefix", ""),
+        values=values,
+    )
 
 
 def _parse_infer_properties(raw: dict | None) -> InferPropertiesConfig | None:
