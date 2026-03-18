@@ -693,6 +693,21 @@ double compute_memory_latency(const problem_t& problem,
                            L_mem_mem_mall * heuristic.weight_mem_mall,
                            L_mem_mem_dram * heuristic.weight_mem_dram});
 
+  OLOG_CSV("Ld_CU_bytes", Ld_CU_bytes);
+  OLOG_CSV("total_Ld", total_Ld);
+  OLOG_CSV("H_mem_l2", H_mem_l2);
+  OLOG_CSV("H_mem_l2_global", H_mem_l2_global);
+  OLOG_CSV("H_mem_mall", H_mem_mall);
+  OLOG_CSV("Ld_mem_dram", Ld_mem_dram);
+  OLOG_CSV("Ld_mem_mall", Ld_mem_mall);
+  OLOG_CSV("bw_limited", bw_limited);
+  OLOG_CSV("L_mem_mem_l2", L_mem_mem_l2);
+  OLOG_CSV("L_mem_mem_mall", L_mem_mem_mall);
+  OLOG_CSV("L_mem_mem_dram", L_mem_mem_dram);
+  OLOG_CSV("L_mem", L_mem);
+  OLOG_CSV("grid_m", grid_m);
+  OLOG_CSV("grid_n", grid_n);
+
   if(debug)
   {
     OLOG_DEBUG("Ld_CU_bytes: " << Ld_CU_bytes);
@@ -879,7 +894,24 @@ double compute_tile_latency(const problem_t& problem,
 
   // Apply final tile total weight
   L_tile_total *= heuristic.weight_tile_total;
-  
+
+  OLOG_CSV("L_compute", L_compute);
+  OLOG_CSV("L_cvt", L_cvt);
+  OLOG_CSV("utilization", utilization);
+  OLOG_CSV("output_utilization", output_utilization);
+  OLOG_CSV("effective_tile_penalty", effective_tile_penalty);
+  OLOG_CSV("output_utilization_penalty", output_utilization_penalty);
+  OLOG_CSV("real_occupancy", real_occupancy);
+  OLOG_CSV("occupancy_factor", occupancy_factor);
+  OLOG_CSV("mem_bw_occ", mem_bw_occ);
+  OLOG_CSV("mem_bw_occ_limited", mem_bw_occ_limited);
+  OLOG_CSV("L_prologue", L_prologue);
+  OLOG_CSV("L_epilogue", L_epilogue);
+  OLOG_CSV("L_tile_single", L_tile_single);
+  OLOG_CSV("k_per_split", k_per_split);
+  OLOG_CSV("num_iter", num_iter);
+  OLOG_CSV("L_tile_total", L_tile_total);
+
   if(debug)
   {
     OLOG_DEBUG("L_mem: " << L_mem);
@@ -974,6 +1006,21 @@ double compute_total_latency(const problem_t& problem,
       return std::numeric_limits<double>::max();
     }
   }
+
+  OLOG_CSV_BEGIN();
+  OLOG_CSV("M", M);
+  OLOG_CSV("N", N);
+  OLOG_CSV("K", K);
+  OLOG_CSV("batch", batch);
+  OLOG_CSV("MT_M", MT_M);
+  OLOG_CSV("MT_N", MT_N);
+  OLOG_CSV("MT_K", MT_K);
+  OLOG_CSV("MI_M", MI_M);
+  OLOG_CSV("MI_N", MI_N);
+  OLOG_CSV("MI_K", MI_K);
+  OLOG_CSV("a_bits", a_bits);
+  OLOG_CSV("b_bits", b_bits);
+
   if(debug)
   {
     OLOG_DEBUG("======== Origami Debug Info ========");
@@ -994,12 +1041,21 @@ double compute_total_latency(const problem_t& problem,
   auto [num_wgs, num_active_cus, num_timesteps, splitting_factor] = compute_cu_occupancy(
       problem, hardware, config_with_default_wgm, config_with_default_wgm.grid_selection, max_cus);
 
+  OLOG_CSV("num_wgs", num_wgs);
+  OLOG_CSV("num_active_cus", num_active_cus);
+  OLOG_CSV("num_timesteps", num_timesteps);
+  OLOG_CSV("splitting_factor", splitting_factor);
+
   // 2) Compute latency of a timestep
   double L_timestep = compute_timestep_latency(
       problem, hardware, config_with_default_wgm, num_active_cus, splitting_factor);
 
   // Compute latency for all timesteps and return it as the latency for the MT/problem
   double total_latency = L_timestep * num_timesteps;
+
+  OLOG_CSV("total_latency", total_latency);
+  OLOG_CSV_FLUSH();
+
   if (debug)
   {
     OLOG_DEBUG("num_timesteps: " << num_timesteps);
