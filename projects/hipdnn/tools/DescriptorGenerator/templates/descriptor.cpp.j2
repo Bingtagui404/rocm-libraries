@@ -462,8 +462,16 @@ std::shared_ptr<{{ op.class_name }}> {{ op.class_name }}::fromNode(
 {% endif %}
     desc->_name = nodeT.name;
 {% for tf in op.tensor_fields %}
+{% if tf.required %}
     desc->{{ tf.member_name }} = findTensorInMap(
         tensorMap, attrs->{{ tf.uid_field }}, "{{ op.class_name }}::fromNode: {{ tf.pascal_name }}");
+{% else %}
+    if(attrs->{{ tf.uid_field }})
+    {
+        desc->{{ tf.member_name }} = findTensorInMap(
+            tensorMap, attrs->{{ tf.uid_field }}, "{{ op.class_name }}::fromNode: {{ tf.pascal_name }}");
+    }
+{% endif %}
 {% endfor %}
 {% for taf in op.tensor_array_fields %}
     for(auto uid : attrs->{{ taf.fbs_field }})
