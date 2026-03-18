@@ -300,7 +300,13 @@ struct CShuffleEpilogue
     {
         constexpr auto DataTypeSize      = sizeof(ODataType);
         constexpr index_t BaseVectorLen  = GetVectorSizeC();
-        constexpr index_t banks          = get_n_lds_banks();
+        // Use compile-time constant for banks since get_n_lds_banks() depends on
+        // __gfx950__ which is only defined during device compilation, not host.
+#if defined(CK_GFX950_SUPPORT)
+        constexpr index_t banks          = 64;  // gfx950 has 64 LDS banks
+#else
+        constexpr index_t banks          = 32;  // gfx942 and others have 32 LDS banks
+#endif
 
         constexpr index_t BytesPerBank = 4;
 
@@ -469,7 +475,7 @@ struct CShuffleEpilogue
             constexpr index_t VectorLen = BaseVectorLen;
 
             constexpr index_t NLdsLayerRequired =
-                get_n_lds_banks() * BytesPerBank / MPerIterationShuffle / DataTypeSize;
+                banks * BytesPerBank / MPerIterationShuffle / DataTypeSize;
             constexpr auto NLdsLayer = max(1, NLdsLayerRequired);
 
             constexpr index_t BaseStrideElems = MPerIterationShuffle * NLdsLayer;
