@@ -310,7 +310,10 @@ struct CShuffleEpilogue
             // For 16x16 XDL with narrow N (e.g., FP8 2x2), reduce VectorLen to enable
             // XOR swizzle. XOR requires NPerIterationShuffle >= 2^(log2_vec + 2).
             // With VectorLen=16, this requires N>=64, but FP8 2x2 has N=32.
-            // Reducing to VectorLen=8 requires only N>=32, enabling XOR swizzle.
+            // Reducing to VectorLen=8 requires only N>=32, enabling 2-bit XOR swizzle.
+            //
+            // For gfx950 (64-bank LDS), 2-bit XOR is insufficient - we need 3-bit XOR
+            // which requires VectorLen=4 (col_bit_start=2, need N>=32 for 3 col bits).
             constexpr index_t log2_base_vec = [] {
                 index_t v = BaseVectorLen, l = 0;
                 while(v > 1)
@@ -320,11 +323,21 @@ struct CShuffleEpilogue
                 }
                 return l;
             }();
+#if defined(__gfx950__)
+            // gfx950: 64-bank LDS needs 3-bit XOR, which requires VectorLen=4
+            constexpr bool needs_vec_reduction_to_4 =
+                (MPerXdl == 16) &&
+                ((1 << (log2_base_vec + 3)) > NPerIterationShuffle) &&  // +3 for 3-bit XOR
+                (BaseVectorLen > 4);
+            constexpr index_t VectorLen = needs_vec_reduction_to_4 ? 4 : BaseVectorLen;
+#else
+            // gfx942: 32-bank LDS works with 2-bit XOR, VectorLen=8 is sufficient
             constexpr bool needs_vec_reduction =
                 (MPerXdl == 16) &&
                 ((1 << (log2_base_vec + 2)) > NPerIterationShuffle) &&
                 (BaseVectorLen > 8);
             constexpr index_t VectorLen = needs_vec_reduction ? 8 : BaseVectorLen;
+#endif
             constexpr index_t MLdsLayerRequired =
                 banks * BytesPerBank / NPerIterationShuffle / DataTypeSize;
             constexpr auto MLdsLayer = max(1, MLdsLayerRequired);
@@ -397,17 +410,28 @@ struct CShuffleEpilogue
             constexpr index_t col_bit_start = log2_vec;
 
             // Check if we have enough column bits for the XOR transform
-            // We need col bits [col_bit_start, col_bit_start+1], so max bit is col_bit_start+1
-            // This requires NPerIterationShuffle >= 2^(col_bit_start+2)
+            // gfx950 (64 banks) needs 3-bit XOR, others need 2-bit XOR
+#if defined(__gfx950__)
+            constexpr index_t xor_bits = 3;  // 8-way spread for 64-bank LDS
+#else
+            constexpr index_t xor_bits = 2;  // 4-way spread for 32-bank LDS
+#endif
             constexpr bool has_enough_col_bits =
-                (1 << (col_bit_start + 2)) <= NPerIterationShuffle;
+                (1 << (col_bit_start + xor_bits)) <= NPerIterationShuffle;
 
             if constexpr(MPerXdl == 16 && has_enough_col_bits)
             {
-                // 16x16 XDL: rows 0,4,8,12 conflict - XOR row bits 2,3
+#if defined(__gfx950__)
+                // 16x16 XDL on gfx950: use 3-bit XOR for 64-bank LDS
+                // Row bits 1,2,3 give 8-way spread across 64 banks
+                using RowBits = sequence<1, 2, 3>;
+                using ColBits = sequence<col_bit_start, col_bit_start + 1, col_bit_start + 2>;
+#else
+                // 16x16 XDL on gfx942: use 2-bit XOR for 32-bank LDS
+                // Row bits 2,3 give 4-way spread across 32 banks
                 using RowBits = sequence<2, 3>;
                 using ColBits = sequence<col_bit_start, col_bit_start + 1>;
-
+#endif
                 constexpr auto lds_block_desc = transform_tensor_descriptor(
                     lds_block_desc_2,
                     make_tuple(make_xor_bits_transform<RowBits, ColBits, MPerXdl>(
