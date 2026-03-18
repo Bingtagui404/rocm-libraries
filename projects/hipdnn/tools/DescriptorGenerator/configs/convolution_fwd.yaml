@@ -135,6 +135,7 @@ operation:
       type: "mode"
       cpp_enum: "hipdnn_data_sdk::data_objects::ConvMode"
       frontend_type: "ConvolutionMode"
+      default_value: "ConvolutionMode::CROSS_CORRELATION"
       required: false
       frontend_getter: "get_convolution_mode()"
       backend_setter: "setConvMode"

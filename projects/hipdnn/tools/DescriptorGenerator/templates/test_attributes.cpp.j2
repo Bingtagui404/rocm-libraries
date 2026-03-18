@@ -104,7 +104,10 @@ TEST(Test{{ op.frontend.attributes_class }}, PackAttributes)
 
     // Verify packed tensor UIDs
 {% for tf in op.tensor_fields %}
-    EXPECT_EQ(attrsFb->{{ tf.fbs_field }}(), {{ op.test_data.tensor_uids.get(tf.name, loop.index) }});
+{% set ft = op.tensor_field_frontend_map.get(tf.name) %}
+{% if ft %}
+    EXPECT_EQ(attrsFb->{{ tf.fbs_field }}(), {{ ft.name }}Tensor->get_uid());
+{% endif %}
 {% endfor %}
 
     // Verify packed data fields
