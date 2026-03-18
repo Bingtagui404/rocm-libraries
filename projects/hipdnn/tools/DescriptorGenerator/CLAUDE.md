@@ -1,5 +1,17 @@
 # Post-Generation Integration Guide
 
+## Purpose and Philosophy
+
+This tool bulk-generates the boilerplate code needed to push a new operation type all the way through hipDNN — from FBS schema to backend descriptor, packer/unpacker, frontend attributes/node, tests, and all the plumbing fragments (enum entries, factory cases, CMake entries, mode enum infrastructure). It replaces hours of copy-paste-adapt work with a single command.
+
+The tool generates; the agent integrates. Generated code is a starting point, not a final product. Before placing any generated file, review the current state of hipDNN. Files, enums, converters, or plumbing may already exist — partially or fully. When a target file already exists, compare the generated version with the existing code and decide whether to use, keep, or merge. Fragment snippets show what to insert, but the exact insertion point, surrounding whitespace, and adjacent code must be verified by reading the target file. Small adjustments — fixing naming mismatches, adjusting value mappings, adding missing includes — are expected as part of a clean integration. The agent owns correctness end-to-end: if a generated file does not compile or a fragment conflicts with existing code, the agent fixes it.
+
+Flexibility over rigidity. hipDNN is an evolving codebase. The generator templates capture common patterns, but not every operation fits the mold perfectly. Treat generated code as intelligent scaffolding and adapt where needed, rather than forcing generated output to fit or skipping integration because the generated code does not match exactly.
+
+Existing code takes precedence. When generated code conflicts with hand-written code that is already correct and tested, prefer the existing code. The generator's value is in creating the 80% of boilerplate that does not exist yet, not in overwriting code that works.
+
+---
+
 ## End-to-End Workflow
 
 Adding a new operation follows this sequence:
@@ -502,16 +514,19 @@ All enums on develop already follow this pattern:
 
 The `enum` type uses `HIPDNN_TYPE_INT64` with raw `static_cast`. It exists only for backward compatibility with older configs. Do not use it in new operation YAML configs.
 
-### Checklist: Adding a New Mode Enum Type
+### Adding a New Mode Enum Type
 
-When an operation introduces an enum value not already in the backend, add these in order:
+When an operation introduces an enum not already in the backend, the `enum_def` block in the YAML config automates all plumbing. When `enum_def` is present on a `mode` field, the generator produces:
 
-1. **Backend C-API enum header** — `backend/include/Hipdnn<Foo>Mode.h` defining the C enum type
-2. **Type tag** — New entry in `HipdnnBackendAttributeType.h` (e.g., `HIPDNN_TYPE_FOO_MODE`)
-3. **SDK conversions** — `toSdkFooMode()`/`fromSdkFooMode()` in `DataTypeConversion.hpp/.cpp`
-4. **Shared helpers** — `setFooMode()`/`getFooMode()` in `DescriptorAttributeUtils.hpp/.cpp`
-5. **String utility case** — Switch case for the new type tag in `BackendEnumStringUtils.hpp`
-6. **Frontend converter** — `toBackendFooMode()` in `Types.hpp`
+- **Backend C-API header** — `backend/include/<header>.h` (complete file with the C enum typedef)
+- **Backend plumbing fragment** — `fragments/mode_backend_plumbing_<field>.txt` containing 7 labeled sections: type tag entry, SDK-to-backend converter, backend-to-SDK converter, attribute utils setter, attribute utils getter, string utils case, and backend include directive
+- **Frontend plumbing fragment** — `fragments/mode_frontend_plumbing_<field>.txt` containing 5 labeled sections: frontend-to-backend converter, backend-to-frontend converter, frontend enum string converter, frontend include directive, and attribute conversion case
+
+The `enum_def` block supports the following properties: `backend_header` (output header filename), `backend_prefix` (C enum value prefix), and a `values` list where each entry has `name` and `value` (numeric). Optional overrides per value: `sentinel` (exclude from backend C-API, used for count/sentinel entries), `sdk_name` (when the SDK enum name differs from the backend name), `frontend_name` (when the frontend name differs from the backend suffix), and `frontend_value` (when the frontend numeric value differs from the backend value).
+
+When `enum_def` is absent, the enum already exists in the codebase and the manual steps apply: add the backend C-API enum header, type tag in `HipdnnBackendAttributeType.h`, SDK conversions in `DataTypeConversion.hpp/.cpp`, shared helpers in `DescriptorAttributeUtils.hpp/.cpp`, string utility case in `BackendEnumStringUtils.hpp`, and frontend converter in `Types.hpp`.
+
+The `mode` type is REQUIRED for all enum fields — both when using `enum_def` and when referencing pre-existing enums.
 
 ---
 
@@ -613,3 +628,4 @@ Generated code and post-generation edits MUST use existing utilities rather than
 - The unpacker `.hpp` file is complete and ready to use as-is
 - The fromNode test file is complete and ready to compile
 - Fragment files for lifting (NodeFactory, OperationUnpacker, operation type enum, node unpack override) contain comments indicating where to insert each snippet
+- When `enum_def` is present on a mode field, the generator produces a backend C-API header, a backend plumbing fragment, and a frontend plumbing fragment. Fragment sections are labeled with their target file for easy insertion.

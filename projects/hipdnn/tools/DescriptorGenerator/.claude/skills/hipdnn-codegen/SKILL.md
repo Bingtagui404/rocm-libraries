@@ -9,6 +9,16 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, AskUserQuestion
 
 Generate all boilerplate code needed to add a new operation to hipDNN from a FlatBuffer schema.
 
+## Philosophy
+
+The code generator produces boilerplate -- the scaffolding to push a new operation through hipDNN's full stack (backend descriptor, packer, unpacker, frontend attributes/node, tests, enum plumbing, CMake entries). The generated output is a starting point, not a finished product. The agent executing this skill is responsible for landing the integration correctly.
+
+Before copying any generated file or inserting any fragment, check if the target already exists in hipDNN. If it does, compare the generated version with the existing code. Use whichever is more correct, or merge them if each covers different parts. If a fragment's insertion point has changed (e.g., a switch statement was refactored), adapt the fragment to the current code structure rather than forcing the generated version in.
+
+Generated code is not always correct. The generator captures common patterns from existing operations, but not every operation fits the mold. Enum value numbering may differ between the backend C-API, SDK, and frontend -- use `frontend_value` and `sdk_name` overrides in `enum_def` to handle mismatches. Test patterns may need adjustment for operations with unusual field types or optional tensor combinations. Fragment insertion points are guidelines; always read the target file to find the right location.
+
+The agent is accountable for the result. The goal is a clean, building, tested integration. If generated code needs tweaks to compile, make them. If a fragment conflicts with existing code, resolve it. This skill provides structure, but judgment and adaptation are required at every step.
+
 ## Arguments
 
 - `$ARGUMENTS` can contain:
@@ -106,6 +116,7 @@ If the enum type is **new** (no existing backend header), populate the `enum_def
         #   sentinel: true       — marks UNSET/NOT_SET values excluded from backend C-API enum
         #   sdk_name: "ALT"      — override SDK enum name if different (e.g., "MAX_OP" for "MAX")
         #   frontend_name: "X"   — override frontend enum name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
+        #   frontend_value: N    — override frontend enum numeric value when it differs from backend value
 ```
 
 **Rules for populating values:**
@@ -115,6 +126,7 @@ If the enum type is **new** (no existing backend header), populate the `enum_def
 - Mark FBS sentinel values (UNSET, NOT_SET) with `sentinel: true` — these are excluded from the backend C-API enum but included in the frontend enum as `NOT_SET = 0`
 - Use `sdk_name` when the SDK enum name differs from the backend name (e.g., FBS `MAX_OP` but backend `MAX`)
 - Use `frontend_name` when the frontend enum member name differs from the backend suffix (e.g., backend `TOP_LEFT_EXT` but frontend `TOP_LEFT`)
+- Use `frontend_value` when the frontend enum has different numeric values than the backend C-API (e.g., ConvolutionMode has `CROSS_CORRELATION=1, CONVOLUTION=2` in the frontend but `CONVOLUTION=0, CROSS_CORRELATION=1` in the backend). Check the existing frontend enum class in `Types.hpp` to determine if overrides are needed.
 - Set `shared: false` on the data field so the generator produces the mode enum plumbing
 
 If the enum type **already exists** in the backend, do NOT include `enum_def` (or set `shared: true` on the data field). The generator will reference the existing enum infrastructure.
@@ -171,6 +183,8 @@ find $OUTPUT_DIR -type f | sort
 ```
 
 ### 6. Place Generated Files
+
+Before copying each generated file, check if the target already exists. If it does, read the existing file and compare. For new operations, the generated files are typically placed directly. For operations that already have partial implementations, merge generated code with existing code -- keeping what works and adding what's missing.
 
 Copy each generated file to its target location in the project tree.
 
@@ -350,3 +364,5 @@ Summarize what was generated and placed:
 - Read `$CODEGEN/CLAUDE.md` for the full detailed post-generation workflow if you need additional context on any step.
 - Always use `convolution_fwd.yaml` as the reference config when creating new configs.
 - Do NOT ask the user questions about config fields, enum names, UIDs, or other derivable information. The only user-facing questions should be about `infer_properties` strategy and custom validation rules.
+- Generated mode enum plumbing (`enum_def`) supports `frontend_value` for cases where frontend and backend enum values differ. Always verify against existing `Types.hpp` when populating `enum_def`.
+- The generated code is a starting point. Review each file and fragment against the current state of hipDNN before placing. Prefer existing code when it's correct; merge when each covers different parts; use generated code when the target doesn't exist yet.
