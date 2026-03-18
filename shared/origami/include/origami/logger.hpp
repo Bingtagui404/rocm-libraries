@@ -26,7 +26,7 @@ public:
         if (!enabled_) return;
         std::ostringstream oss;
         if constexpr (std::is_floating_point_v<T>) {
-            oss << std::setprecision(15) << value;
+            oss << std::scientific << std::setprecision(6) << value;
         } else {
             oss << value;
         }
