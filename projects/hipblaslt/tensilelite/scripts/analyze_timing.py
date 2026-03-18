@@ -92,9 +92,11 @@ TIMING_HIERARCHY = {
             },
             "validate_warmups": {
                 "validate_gpu_sync": {},
-                "validate_gpu_readback": {},
-                "validate_element_comparison": {},
-                "validate_mismatch_printing": {},
+                "validate_reference": {
+                    "validate_gpu_readback": {},
+                    "validate_element_comparison": {},
+                    "validate_mismatch_printing": {},
+                },
             },
             "gpu_input_preparation": {},
             "gpu_input_reset": {},
@@ -129,10 +131,13 @@ TIMING_HIERARCHY = {
                 "post_solution_lib_update": {},
                 "post_solution_perf_reset": {},
                 "post_solution_sol_advance": {},
+                "post_solution_profiler": {},
             },
             "post_problem": {},
             "finalize_report": {},
+            "timing_overhead": {},
         },
+        "python_timing_overhead": {},
     },
     "python_library_logic": {
         "python_logic_parse_solutions": {},
@@ -179,6 +184,9 @@ CPP_PHASE_GROUPS = {
         "post_solution",
         "post_problem",
         "finalize_report",
+    ],
+    "Timing Overhead": [
+        "timing_overhead",
     ],
 }
 

@@ -4,6 +4,7 @@
 #include "Profiler.hpp"
 
 #include "ResultReporter.hpp"
+#include "TimingInstrumentation.hpp"
 
 namespace TensileLite
 {
@@ -39,6 +40,7 @@ namespace TensileLite
 
         void Profiler::postSolution()
         {
+            ScopedTimer timer("post_solution_profiler");
             if (m_currentDone)
             {
                 auto counters = RocProfiler::getInstance().fetch(m_currentSolutionIdx);

@@ -198,6 +198,7 @@ namespace TensileLite
         {
             if(m_enabled && !m_validatedSolution)
             {
+                ScopedTimer timer("validate_reference");
                 validateSolution(inputs);
                 m_validatedSolution = true;
             }
