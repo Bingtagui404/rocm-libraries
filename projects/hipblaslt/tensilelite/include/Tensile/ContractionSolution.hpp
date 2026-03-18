@@ -76,8 +76,9 @@ namespace TensileLite
         StrideB0Bytes,     // 21
         StrideC0Bytes,     // 22
         StrideD0Bytes,     // 23
-        DebugPattern,      // 24
-        CustomArgSemantic_Count,      // 25
+        Padding,           // 24
+        DebugPattern,      // 25
+        CustomArgSemantic_Count,      // 26
     };
     
     std::string toString(CustomArgSemantic arg);
@@ -89,6 +90,7 @@ namespace TensileLite
     {
         CustomArgType type;
         CustomArgSemantic semantic;
+        size_t padding = 0;
     };
 
     std::string toString(CustomArgDefinition arg);

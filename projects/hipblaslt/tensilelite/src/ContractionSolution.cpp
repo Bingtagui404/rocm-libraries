@@ -105,6 +105,8 @@ namespace TensileLite
             return "StrideC0Bytes";
         case CustomArgSemantic::StrideD0Bytes:
             return "StrideD0Bytes";
+        case CustomArgSemantic::Padding:
+            return "Padding";
         case CustomArgSemantic::DebugPattern:
             return "DebugPattern";
         case CustomArgSemantic::CustomArgSemantic_Count:
@@ -166,6 +168,8 @@ namespace TensileLite
             return CustomArgSemantic::StrideC0Bytes;
         else if(str == toString(CustomArgSemantic::StrideD0Bytes))
             return CustomArgSemantic::StrideD0Bytes;
+        else if(str == toString(CustomArgSemantic::Padding))
+            return CustomArgSemantic::Padding;
         else if(str == toString(CustomArgSemantic::DebugPattern))
             return CustomArgSemantic::DebugPattern;
         else
@@ -188,7 +192,10 @@ namespace TensileLite
 
     std::string toString(CustomArgDefinition arg)
     {
-        return toString(arg.type) + " " + toString(arg.semantic);
+        auto s = toString(arg.type) + " " + toString(arg.semantic);
+        if(arg.padding > 0)
+            s += " padding:" + std::to_string(arg.padding);
+        return s;
     }
 
     std::ostream& operator<<(std::ostream& stream, const CustomArgDefinition& t)
@@ -1820,6 +1827,9 @@ namespace TensileLite
                     rv.args.appendCustomType("StrideD0Bytes",
                         problem.d().strides()[1] * problem.d().elementBytes(), arg.type);
                     break;
+                case CustomArgSemantic::Padding:
+                    rv.args.template append<uint32_t>("Padding", 0);
+                    break;
                 case CustomArgSemantic::DebugPattern:
                     rv.args.template append<uint32_t>("DebugPattern", debugPattern);
                     ++debugPattern;
@@ -1827,6 +1837,9 @@ namespace TensileLite
                 default:
                     throw std::runtime_error(concatenate("Invalid kernel argument type: ", arg));
             }
+
+            if(arg.padding > 0)
+                rv.args.appendPadding(arg.padding);
         }
         return rv;
     }
