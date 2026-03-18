@@ -3,6 +3,7 @@
 
 """Data models for descriptor code generation."""
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -70,6 +71,13 @@ def _to_camel_case(snake: str) -> str:
     """Convert snake_case to camelCase."""
     parts = snake.split("_")
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+def _to_snake_case(pascal: str) -> str:
+    """Convert PascalCase to snake_case (e.g., 'ConvolutionFwd' -> 'convolution_fwd')."""
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", pascal)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    return s.lower()
 
 
 @dataclass
@@ -217,6 +225,62 @@ class TestData:
 
 
 @dataclass
+class FrontendTensorConfig:
+    """An input or output tensor for the frontend Attributes class."""
+
+    name: str
+    enum_name: str = ""
+    enum_value: int = -1
+    required: bool = True
+    getter_name: str = ""
+    setter_name: str = ""
+
+    @property
+    def effective_enum_name(self) -> str:
+        """Enum value name (default: uppercase of name)."""
+        return self.enum_name or self.name.upper()
+
+    @property
+    def effective_getter_name(self) -> str:
+        """Getter method name (default: get_<name>)."""
+        return self.getter_name or f"get_{self.name}"
+
+    @property
+    def effective_setter_name(self) -> str:
+        """Setter method name (default: set_<name>)."""
+        return self.setter_name or f"set_{self.name}"
+
+
+@dataclass
+class GraphMethodParam:
+    """A parameter in the Graph class method signature."""
+
+    name: str
+    tensor_name: str = ""
+    type: str = "std::shared_ptr<TensorAttributes>"
+    optional: bool = False
+
+
+@dataclass
+class InferPropertiesConfig:
+    """Configuration for infer_properties_node() code generation."""
+
+    strategy: str = "stub"
+    reference_input: str = ""
+    dimension_formula: str = ""
+
+
+@dataclass
+class ValidationConfig:
+    """Configuration for pre_validate_node() code generation."""
+
+    required_input_tensors: list[str] = field(default_factory=list)
+    required_input_dims: list[str] = field(default_factory=list)
+    dim_consistency_checks: list[dict] = field(default_factory=list)
+    custom_checks: list[str] = field(default_factory=list)
+
+
+@dataclass
 class FrontendConfig:
     """Frontend-specific configuration."""
 
@@ -228,6 +292,17 @@ class FrontendConfig:
     # Lifting support (unpacker)
     unpacker_function: str = ""
     unpacker_include: str = ""
+
+    # Frontend generation fields
+    inputs: list[FrontendTensorConfig] = field(default_factory=list)
+    outputs: list[FrontendTensorConfig] = field(default_factory=list)
+    graph_method_name: str = ""
+    graph_method_params: list[GraphMethodParam] = field(default_factory=list)
+    graph_return_type: str = "single"
+    graph_return_outputs: list[str] = field(default_factory=list)
+    node_type_enum: str = ""
+    node_attributes_union_type: str = ""
+    compatibility_typedef: str = ""
 
     @property
     def effective_attributes_include(self) -> str:
@@ -243,6 +318,46 @@ class FrontendConfig:
             )
             return f"{base}Attributes"
         return self.attributes_class
+
+    @property
+    def required_inputs(self) -> list[FrontendTensorConfig]:
+        """Input tensors that are required."""
+        return [t for t in self.inputs if t.required]
+
+    @property
+    def optional_inputs(self) -> list[FrontendTensorConfig]:
+        """Input tensors that are optional."""
+        return [t for t in self.inputs if not t.required]
+
+    @property
+    def required_outputs(self) -> list[FrontendTensorConfig]:
+        """Output tensors that are required."""
+        return [t for t in self.outputs if t.required]
+
+    @property
+    def optional_outputs(self) -> list[FrontendTensorConfig]:
+        """Output tensors that are optional."""
+        return [t for t in self.outputs if not t.required]
+
+    @property
+    def all_tensors(self) -> list[FrontendTensorConfig]:
+        """All input and output tensors combined."""
+        return self.inputs + self.outputs
+
+    @property
+    def deserialization_accessor(self) -> str:
+        """FBS accessor method for deserializeFromFlatBuffer() switch case.
+
+        Derives from node_attributes_union_type by stripping the
+        'NodeAttributes_' prefix: e.g.,
+        'NodeAttributes_ConvolutionFwdAttributes' -> 'attributes_as_ConvolutionFwdAttributes'
+        """
+        if self.node_attributes_union_type:
+            variant = self.node_attributes_union_type
+            if variant.startswith("NodeAttributes_"):
+                variant = variant[len("NodeAttributes_") :]
+            return f"attributes_as_{variant}"
+        return ""
 
 
 @dataclass
@@ -283,6 +398,10 @@ class OperationConfig:
     test_params_method_name: str = ""
     data_fields_section_label: str = ""
     build_node_attrs_var: str = ""
+
+    # Frontend generation support
+    infer_properties: Optional[InferPropertiesConfig] = None
+    validation: Optional[ValidationConfig] = None
 
     test_data: TestData = field(default_factory=TestData)
 
@@ -477,3 +596,57 @@ class OperationConfig:
     @property
     def has_tensor_array_fields(self) -> bool:
         return len(self.tensor_array_fields) > 0
+
+    # --- Frontend filename computed properties ---
+
+    @property
+    def _frontend_base_name(self) -> str:
+        """Base name for frontend files, derived from attributes_class or name.
+
+        Examples:
+            attributes_class='ConvFpropAttributes' -> 'ConvFprop'
+            attributes_class='' with name='ConvolutionFwd' -> 'ConvolutionFwd'
+        """
+        if self.frontend.attributes_class:
+            cls = self.frontend.attributes_class
+            if cls.endswith("Attributes"):
+                return cls[: -len("Attributes")]
+            return cls
+        if self.frontend.node_class:
+            cls = self.frontend.node_class
+            if cls.endswith("Node"):
+                return cls[: -len("Node")]
+            return cls
+        return self.name
+
+    @property
+    def attributes_header_filename(self) -> str:
+        """Filename for the frontend Attributes header (e.g., 'ConvFpropAttributes.hpp')."""
+        return f"{self._frontend_base_name}Attributes.hpp"
+
+    @property
+    def node_header_filename(self) -> str:
+        """Filename for the frontend Node header (e.g., 'ConvFpropNode.hpp')."""
+        return f"{self._frontend_base_name}Node.hpp"
+
+    @property
+    def test_attributes_filename(self) -> str:
+        """Filename for the frontend Attributes test (e.g., 'TestConvFpropAttributes.cpp')."""
+        return f"Test{self._frontend_base_name}Attributes.cpp"
+
+    @property
+    def test_node_filename(self) -> str:
+        """Filename for the frontend Node test (e.g., 'TestConvFpropNode.cpp')."""
+        return f"Test{self._frontend_base_name}Node.cpp"
+
+    @property
+    def test_frontend_graph_filename(self) -> str:
+        """Filename for the frontend Graph test (e.g., 'TestGraphConvFprop.cpp')."""
+        return f"TestGraph{self._frontend_base_name}.cpp"
+
+    @property
+    def effective_graph_method_name(self) -> str:
+        """Graph method name, defaulting to snake_case of operation name."""
+        if self.frontend.graph_method_name:
+            return self.frontend.graph_method_name
+        return _to_snake_case(self.name)
