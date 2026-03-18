@@ -298,15 +298,33 @@ struct CShuffleEpilogue
     template <typename Problem>
     CK_TILE_HOST_DEVICE static constexpr auto MakeLdsBlockDescriptor()
     {
-        constexpr auto DataTypeSize = sizeof(ODataType);
-        constexpr index_t VectorLen = GetVectorSizeC();
-        constexpr index_t banks     = get_n_lds_banks();
+        constexpr auto DataTypeSize      = sizeof(ODataType);
+        constexpr index_t BaseVectorLen  = GetVectorSizeC();
+        constexpr index_t banks          = get_n_lds_banks();
 
         constexpr index_t BytesPerBank = 4;
 
         // N is contiguous dimension
         if constexpr(std::is_same_v<ELayout, tensor_layout::gemm::RowMajor>)
         {
+            // For 16x16 XDL with narrow N (e.g., FP8 2x2), reduce VectorLen to enable
+            // XOR swizzle. XOR requires NPerIterationShuffle >= 2^(log2_vec + 2).
+            // With VectorLen=16, this requires N>=64, but FP8 2x2 has N=32.
+            // Reducing to VectorLen=8 requires only N>=32, enabling XOR swizzle.
+            constexpr index_t log2_base_vec = [] {
+                index_t v = BaseVectorLen, l = 0;
+                while(v > 1)
+                {
+                    v >>= 1;
+                    ++l;
+                }
+                return l;
+            }();
+            constexpr bool needs_vec_reduction =
+                (MPerXdl == 16) &&
+                ((1 << (log2_base_vec + 2)) > NPerIterationShuffle) &&
+                (BaseVectorLen > 8);
+            constexpr index_t VectorLen = needs_vec_reduction ? 8 : BaseVectorLen;
             constexpr index_t MLdsLayerRequired =
                 banks * BytesPerBank / NPerIterationShuffle / DataTypeSize;
             constexpr auto MLdsLayer = max(1, MLdsLayerRequired);
@@ -423,6 +441,9 @@ struct CShuffleEpilogue
         // M is contiguous dimension
         else if constexpr(std::is_same_v<ELayout, tensor_layout::gemm::ColumnMajor>)
         {
+            // Use base vector size for ColumnMajor (no XOR swizzle reduction needed)
+            constexpr index_t VectorLen = BaseVectorLen;
+
             constexpr index_t NLdsLayerRequired =
                 get_n_lds_banks() * BytesPerBank / MPerIterationShuffle / DataTypeSize;
             constexpr auto NLdsLayer = max(1, NLdsLayerRequired);
