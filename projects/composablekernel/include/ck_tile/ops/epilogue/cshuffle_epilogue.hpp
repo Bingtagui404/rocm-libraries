@@ -307,45 +307,25 @@ struct CShuffleEpilogue
         // N is contiguous dimension
         if constexpr(std::is_same_v<ELayout, tensor_layout::gemm::RowMajor>)
         {
-            // For 16x16 XDL, use MLdsLayer=1 with 4-element padding to avoid bank conflicts.
-            // The MFMA output distribution has 4 row groups (0,4,8,12) that would otherwise
-            // all hit the same 8 banks. With stride = NPerIterationShuffle + 4, each row
-            // group hits different banks (0-7, 8-15, 16-23, 24-31), achieving optimal
-            // 2 threads per bank instead of 8.
-            // For 32x32 XDL, the original MLdsLayer calculation works fine (no conflicts).
             constexpr index_t MLdsLayerRequired =
                 banks * BytesPerBank / NPerIterationShuffle / DataTypeSize;
-            constexpr auto MLdsLayer = (MPerXdl == 16) ? 1 : max(1, MLdsLayerRequired);
+            constexpr auto MLdsLayer = max(1, MLdsLayerRequired);
 
             constexpr index_t BaseStrideElems = NPerIterationShuffle * MLdsLayer;
             static_assert((BaseStrideElems * DataTypeSize) % BytesPerBank == 0,
                           "LDS row stride must be 4B-aligned for bank-word padding logic");
-
-            // Calculate padding to avoid LDS bank conflicts.
-            // For 16x16 XDL: add 4 elements to spread row groups across different banks.
-            // For 32x32 XDL: use existing gfx950 padding logic (or 0 for other archs).
+            // calculate how many elements to pad to avoid bank conflict
+#if defined(__gfx950__)
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
-            constexpr index_t BaseWords = ToWords(BaseStrideElems);
-
-            constexpr auto PaddingAmount = [&]() constexpr {
-                if constexpr(MPerXdl == 16)
-                {
-                    // 4 elements of padding for 16x16 XDL to achieve optimal bank distribution
-                    return index_t{4};
-                }
-                else
-                {
-#if defined(__gfx950__)
-                    // Original gfx950 padding logic for 32x32 XDL
-                    return ((BaseWords % 2) == 0) ? ElemsPer4B : index_t{0};
+            constexpr index_t BaseWords  = ToWords(BaseStrideElems);
+            constexpr index_t PadWords   = ((BaseWords % 2) == 0) ? 1 : 0;
+            constexpr auto PaddingAmount = PadWords * ElemsPer4B;
 #else
-                    return index_t{0};
+            constexpr auto PaddingAmount = 0;
 #endif
-                }
-            }();
 
             constexpr auto lds_block_desc_0 = make_naive_tensor_descriptor(
                 make_tuple(number<MPerIterationShuffle / MLdsLayer>{},
