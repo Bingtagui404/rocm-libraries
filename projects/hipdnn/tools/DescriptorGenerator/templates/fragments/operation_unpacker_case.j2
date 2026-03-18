@@ -7,5 +7,7 @@
 // Add case in createNodeForType() switch:
 {% if op.operation_type_enum %}
     case {{ op.operation_type_enum }}:
-        return std::make_unique<graph::{{ op.frontend.node_class }}>(graphAttrs);
+        return {
+            std::make_shared<graph::{{ op.frontend.node_class }}>(graph::{{ op.frontend.attributes_class }}{}, graphAttrs),
+            {}};
 {% endif %}

@@ -77,12 +77,6 @@ operation:
       required: false
       frontend_getter: "get_in_2()"
 
-    - name: "axis"
-      fbs_field: "axis_tensor_uid"
-      attr_suffix: "AXIS"
-      required: false
-      frontend_getter: "get_axis()"
-
   data_fields:
     - name: "operation"
       fbs_field: "operation"
@@ -145,6 +139,13 @@ operation:
       type: "scalar_float"
       required: false
       frontend_getter: "get_softplus_beta()"
+
+    - name: "axis"
+      fbs_field: "axis_tensor_uid"
+      attr_name: "HIPDNN_ATTR_POINTWISE_AXIS"
+      type: "scalar_int64"
+      required: false
+      frontend_getter: "get_axis()"
 
   tensor_array_fields: []
 
