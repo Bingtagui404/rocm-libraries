@@ -14,23 +14,24 @@ namespace ck_tile::core::arch::mma {
 /**
  * @class SparseMfmaDefaultSelector
  * @brief Implements a default sparse MFMA selector strategy. The SelectedOp can be unsupported.
- * @tparam ADataType Data type of matrix A
- * @tparam BDataType Data type of matrix B
- * @tparam CDataType Data type of the accumulator
- * @tparam ChunkM Size of the M dimension
- * @tparam ChunkN Size of the N dimension
- * @tparam ChunkKTest Size of the K dimension
+ * @tparam ADataType      Data type of matrix A
+ * @tparam BDataType      Data type of matrix B
+ * @tparam CDataType      Data type of the accumulator
+ * @tparam WaveTileM      Size of the M dimension
+ * @tparam WaveTileN      Size of the N dimension
+ * @tparam WaveTileKTest  Size of the K dimension
  * @tparam CompilerTarget The compiler target
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t ChunkM,
-          uint32_t ChunkN,
-          uint32_t ChunkKTest,
+          uint32_t WaveTileM,
+          uint32_t WaveTileN,
+          uint32_t WaveTileKTest,
           typename CompilerTarget>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
-// TODO: c++20 requires(is_target_arch_cdna(CompilerTarget) && is_power_of_two_integer(ChunkKTest))
+// TODO: c++20 requires(is_target_arch_cdna(CompilerTarget) &&
+// is_power_of_two_integer(WaveTileKTest))
 struct SparseMfmaDefaultSelector
 {
     private:
@@ -38,9 +39,9 @@ struct SparseMfmaDefaultSelector
     using CandidateOp = amdgcn_mma<ADataType,
                                    BDataType,
                                    CDataType,
-                                   ChunkM,
-                                   ChunkN,
-                                   ChunkKTest,
+                                   WaveTileM,
+                                   WaveTileN,
+                                   WaveTileKTest,
                                    DefaultSparseMfmaCtrlFlags,
                                    CompilerTarget,
                                    MmaOpFamily::SPARSE>;
@@ -53,9 +54,9 @@ struct SparseMfmaDefaultSelector
                                           amdgcn_mma<ADataType,
                                                      BDataType,
                                                      CDataType,
-                                                     ChunkM,
-                                                     ChunkN,
-                                                     ChunkKTest,
+                                                     WaveTileM,
+                                                     WaveTileN,
+                                                     WaveTileKTest,
                                                      void,
                                                      amdgcn_target<>,
                                                      MmaOpFamily::UNDEFINED>>;
@@ -65,21 +66,21 @@ struct SparseMfmaDefaultSelector
  * @struct MmaDefaultSelector
  * @brief Implements the CDNA default MMA selector strategy for sparse MFMA.
  * If no supported instruction is found, falls back to an unsupported pass-through implementation.
- * @tparam ADataType Data type of matrix A
- * @tparam BDataType Data type of matrix B
- * @tparam CDataType Data type of the accumulator
- * @tparam ChunkM Size of the M dimension of the chunk to decompose
- * @tparam ChunkN Size of the N dimension of the chunk to decompose
- * @tparam ChunkK Size of the K dimension of the chunk to decompose
+ * @tparam ADataType      Data type of matrix A
+ * @tparam BDataType      Data type of matrix B
+ * @tparam CDataType      Data type of the accumulator
+ * @tparam WaveTileM      Size of the M dimension of the WaveTile to decompose
+ * @tparam WaveTileN      Size of the N dimension of the WaveTile to decompose
+ * @tparam WaveTileK      Size of the K dimension of the WaveTile to decompose
  * @tparam CompilerTarget The compiler target
- * @tparam OpFamily The MMA operation family
+ * @tparam OpFamily       The MMA operation family
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t ChunkM,
-          uint32_t ChunkN,
-          uint32_t ChunkK,
+          uint32_t WaveTileM,
+          uint32_t WaveTileN,
+          uint32_t WaveTileK,
           typename CompilerTarget,
           MmaOpFamily OpFamily>
 // TODO: c++20 amdgcn_target_arch_id CompilerTarget>
@@ -87,9 +88,9 @@ template <typename ADataType,
 struct MmaDefaultSelector<ADataType,
                           BDataType,
                           CDataType,
-                          ChunkM,
-                          ChunkN,
-                          ChunkK,
+                          WaveTileM,
+                          WaveTileN,
+                          WaveTileK,
                           CompilerTarget,
                           OpFamily,
                           enable_if_all<std::enable_if_t<is_any_value_of(CompilerTarget::TARGET_ID,
@@ -124,17 +125,17 @@ struct MmaDefaultSelector<ADataType,
                                                          1u,
                                                          CompilerTarget>::SelectedOp;
 
-    // Check if each candidate is supported for the given chunk sizes
-    // For this case, we require the chunk sizes to be multiples of the MFMA shape
+    // Check if each candidate is supported for the given WaveTile sizes
+    // For this case, we require the WaveTile sizes to be multiples of the MFMA shape
     static constexpr bool IsSupported16x16 =
-        MmaOpTraits<CandidateOp16x16>::IsSupported && (ChunkM % CandidateOp16x16::kM == 0u) &&
-        (ChunkN % CandidateOp16x16::kN == 0u) && (ChunkK % CandidateOp16x16::kK == 0u);
+        MmaOpTraits<CandidateOp16x16>::IsSupported && (WaveTileM % CandidateOp16x16::kM == 0u) &&
+        (WaveTileN % CandidateOp16x16::kN == 0u) && (WaveTileK % CandidateOp16x16::kK == 0u);
     static constexpr bool IsSupported32x32 =
-        MmaOpTraits<CandidateOp32x32>::IsSupported && (ChunkM % CandidateOp32x32::kM == 0u) &&
-        (ChunkN % CandidateOp32x32::kN == 0u) && (ChunkK % CandidateOp32x32::kK == 0u);
+        MmaOpTraits<CandidateOp32x32>::IsSupported && (WaveTileM % CandidateOp32x32::kM == 0u) &&
+        (WaveTileN % CandidateOp32x32::kN == 0u) && (WaveTileK % CandidateOp32x32::kK == 0u);
 
     public:
-    // Select the largest supported MFMA operation for the given chunk shape
+    // Select the largest supported MFMA operation for the given WaveTile shape
     using SelectedOp =
         std::conditional_t<IsSupported32x32,
                            CandidateOp32x32,

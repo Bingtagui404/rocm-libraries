@@ -9,32 +9,31 @@ namespace ck_tile::core::arch::mma {
 
 /**
  * @class MmaDefaultSelector
- * @brief Implements a default mma selector strategy for the current target architecture.
- * This is simply intended as a default selection strategy for mma instruction operations.
- * Given the particular datatypes and Chunk dimensions, the selector will attempt to
- * select the instruction with the largest K dimension that is supported on the current target
- * architecture.
+ * @brief Implements a default mma selector strategy for the current target architecture. This is
+ * simply intended as a default selection strategy for mma instruction operations. Given the
+ * particular datatypes and WaveTile dimensions, the selector will attempt to select the instruction
+ * with the largest K dimension that is supported on the current target architecture.
  * @tparam ADataType       Data type of matrix A
  * @tparam BDataType       Data type of matrix B
  * @tparam CDataType       Data type of the accumulator
- * @tparam ChunkM          Chunk M dimension
- * @tparam ChunkN          Chunk N dimension
- * @tparam ChunkK          Chunk K dimension
+ * @tparam WaveTileM       WaveTile M dimension
+ * @tparam WaveTileN       WaveTile N dimension
+ * @tparam WaveTileK       WaveTile K dimension
  * @tparam CompilerTarget  The compiler target
  * @tparam OpFamily        The MMA operation family
  * @tparam Enable          SFINAE enabler
- * @note Here we distinguish that Chunk MNK sizes from Fragment MNK sizes used in the actual MMA
- * operation. Chunk sizes correspond to the overall tile size being computed, while Fragment sizes
- * correspond to the size of the individual MMA instructions being used to compute the overall in
- * fragment-wise. The Chunk sizes must be multiples of the Fragment sizes and in general larger than
- * or equal to the Fragment sizes.
+ * @note Here we distinguish that WaveTile MNK sizes from Fragment MNK sizes used in the actual MMA
+ * operation. WaveTile sizes correspond to the overall tile size being computed, while Fragment
+ * sizes correspond to the size of the individual MMA instructions being used to compute the overall
+ * in fragment-wise. The WaveTile sizes must be multiples of the Fragment sizes and in general
+ * larger than or equal to the Fragment sizes.
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t ChunkM,
-          uint32_t ChunkN,
-          uint32_t ChunkK,
+          uint32_t WaveTileM,
+          uint32_t WaveTileN,
+          uint32_t WaveTileK,
           typename CompilerTarget,
           MmaOpFamily OpFamily,
           typename Enable = void>
@@ -46,9 +45,9 @@ struct MmaDefaultSelector
     using SelectedOp = amdgcn_mma<ADataType,
                                   BDataType,
                                   CDataType,
-                                  ChunkM,
-                                  ChunkN,
-                                  ChunkK,
+                                  WaveTileM,
+                                  WaveTileN,
+                                  WaveTileK,
                                   void,
                                   amdgcn_target<>,
                                   MmaOpFamily::UNDEFINED>;
