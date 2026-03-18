@@ -8,7 +8,6 @@
 #include "origami/gemm.hpp"
 #include "origami/hardware.hpp"
 #include "origami/heuristics.hpp"
-#include "origami/logger.hpp"
 #include "origami/types.hpp"
 
 namespace origami {
@@ -190,10 +189,6 @@ heuristic_params_t heuristics_database_t::lookup(const problem_t& problem,
 
     auto it = hand_optimized_map_.find(fast_key);
     if (it != hand_optimized_map_.end()) {
-      if (origami::runtime_options::get().debug_enabled) {
-        OLOG_DEBUG("Hand-optimized kernel " << fast_key.to_string() << ", efficiency: "
-                   << it->second.main_loop_efficiency);
-      }
       result = it->second;
     }
   }
