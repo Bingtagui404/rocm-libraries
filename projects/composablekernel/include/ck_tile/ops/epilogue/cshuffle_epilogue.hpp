@@ -419,17 +419,6 @@ struct CShuffleEpilogue
             constexpr bool has_enough_col_bits =
                 (1 << (col_bit_start + xor_bits)) <= NPerIterationShuffle;
 
-            // DEBUG: Print XOR swizzle parameters (thread 0 only)
-            if(threadIdx.x == 0 && blockIdx.x == 0)
-            {
-                printf("DEBUG MakeLdsBlockDescriptor: MPerXdl=%d, NPerIterShuffle=%d, "
-                       "BaseVectorLen=%d, VectorLen=%d, log2_vec=%d, col_bit_start=%d, "
-                       "xor_bits=%d, has_enough_col_bits=%d\n",
-                       (int)MPerXdl, (int)NPerIterationShuffle,
-                       (int)BaseVectorLen, (int)VectorLen, (int)log2_vec, (int)col_bit_start,
-                       (int)xor_bits, (int)has_enough_col_bits);
-            }
-
             if constexpr(MPerXdl == 16 && has_enough_col_bits)
             {
 #if defined(CK_GFX950_SUPPORT)
@@ -437,15 +426,11 @@ struct CShuffleEpilogue
                 // Row bits 1,2,3 give 8-way spread across 64 banks
                 using RowBits = sequence<1, 2, 3>;
                 using ColBits = sequence<col_bit_start, col_bit_start + 1, col_bit_start + 2>;
-                if(threadIdx.x == 0 && blockIdx.x == 0)
-                    printf("DEBUG: Applying 3-bit XOR swizzle for gfx950 16x16 XDL\n");
 #else
                 // 16x16 XDL on gfx942: use 2-bit XOR for 32-bank LDS
                 // Row bits 2,3 give 4-way spread across 32 banks
                 using RowBits = sequence<2, 3>;
                 using ColBits = sequence<col_bit_start, col_bit_start + 1>;
-                if(threadIdx.x == 0 && blockIdx.x == 0)
-                    printf("DEBUG: Applying 2-bit XOR swizzle for gfx942 16x16 XDL\n");
 #endif
                 constexpr auto lds_block_desc = transform_tensor_descriptor(
                     lds_block_desc_2,
@@ -474,9 +459,6 @@ struct CShuffleEpilogue
             else
             {
                 // Fallback: no XOR swizzle (either unsupported XDL size or narrow N)
-                if(threadIdx.x == 0 && blockIdx.x == 0)
-                    printf("DEBUG: NO XOR swizzle (MPerXdl=%d, has_enough_col_bits=%d)\n",
-                           (int)MPerXdl, (int)has_enough_col_bits);
                 return lds_block_desc_2;
             }
         }
