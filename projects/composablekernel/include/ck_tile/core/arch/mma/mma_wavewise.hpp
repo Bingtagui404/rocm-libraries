@@ -86,7 +86,7 @@ struct WaveWiseMma : public MmaPipelineBase<static_cast<int>(MmaPipelineOptionFl
     constexpr static uint32_t FragM = MmaOp::kM;
     constexpr static uint32_t FragN = MmaOp::kN;
     constexpr static uint32_t FragK = MmaOp::kK;
-    
+
     using BlockWiseMmaOp       = MmaOp;
     using BlockWiseMmaOpTraits = MmaOpTraits<BlockWiseMmaOp>;
 
@@ -174,7 +174,7 @@ struct WaveWiseMma : public MmaPipelineBase<static_cast<int>(MmaPipelineOptionFl
                 }
             }
         }
-        else
+        else if constexpr(AccumPolicy == MmaAccumPolicy::COL_MAJOR)
         {
             // "Col-major" accumulation over the M-dimension blocks first.
             // Pseudo code here, but we would basically iterate over the blocks in col-major order
@@ -189,6 +189,10 @@ struct WaveWiseMma : public MmaPipelineBase<static_cast<int>(MmaPipelineOptionFl
                     }
                 }
             }
+        }
+        else
+        {
+            static_assert(false);
         }
     }
 };
