@@ -144,29 +144,29 @@ TEST(SparseMMATrait, SparseSelector)
 template <typename AType,
           typename BType,
           typename CType,
-          uint32_t ChunkM,
-          uint32_t ChunkN,
-          uint32_t ChunkK>
+          uint32_t WaveTileM,
+          uint32_t WaveTileN,
+          uint32_t WaveTileK>
 __global__ void test_sparse_accum_over_k(void* a, void* b, void* c, void* out)
 {
     using CompilerTarget = decltype(get_compiler_target());
     using Selector       = MmaDefaultSelector<AType,
                                               BType,
                                               CType,
-                                              ChunkM,
-                                              ChunkN,
-                                              ChunkK,
+                                              WaveTileM,
+                                              WaveTileN,
+                                              WaveTileK,
                                               CompilerTarget,
                                               MmaOpFamily::SPARSE>;
     using MmaOp          = typename Selector::SelectedOp;
     using CVecType       = typename MmaOp::CVecType;
 
-    static constexpr uint32_t kIters = ChunkK / MmaOp::kK;
+    static constexpr uint32_t kIters = WaveTileK / MmaOp::kK;
 
     // Initialize the accumulator
     CVecType result = *reinterpret_cast<typename MmaOp::CVecType*>(c);
 
-    // Accumulate input AxB over ChunkK/FragK iterations
+    // Accumulate input AxB over WaveTileK/FragK iterations
     for(uint32_t i = 0; i < kIters; ++i)
     {
         result = MmaOp::exec(*reinterpret_cast<typename MmaOp::AVecType*>(a),
@@ -207,16 +207,16 @@ TEST(SparseMMATrait, MmaSelector_Sparse_F16_F16_F32_16x16x32_Real)
     using BType = fp16_t;
     using CType = fp32_t;
 
-    // Chunk size, also the expected fragment size from the selector.
+    // WaveTile size, also the expected fragment size (MmaTile) from the selector.
     // Note: Actual FragK might be slightly different due to hardware implementation, but the
     // test_accum_over_k kernel will loop over the K dimension to ensure that the total K is
     // correct.
-    static constexpr uint32_t ChunkM = 16;
-    static constexpr uint32_t ChunkN = 16;
-    static constexpr uint32_t ChunkK = 32;
-    static constexpr uint32_t FragM  = ChunkM;
-    static constexpr uint32_t FragN  = ChunkN;
-    static constexpr uint32_t FragK  = ChunkK;
+    static constexpr uint32_t WaveTileM = 16;
+    static constexpr uint32_t WaveTileN = 16;
+    static constexpr uint32_t WaveTileK = 32;
+    static constexpr uint32_t FragM     = WaveTileM;
+    static constexpr uint32_t FragN     = WaveTileN;
+    static constexpr uint32_t FragK     = WaveTileK;
 
     // The number of elements per thread
     uint32_t AElements = FragM * FragK / deviceWarpSize;
