@@ -26,6 +26,7 @@
 
 #include "DataInitialization.hpp"
 #include "TensorDataManipulation.hpp"
+#include "TimingInstrumentation.hpp"
 #include "Utility.hpp"
 // #include "DataInitializationTyped.hpp"
 
@@ -2767,10 +2768,25 @@ namespace TensileLite
                 kind = hipMemcpyHostToDevice;
             }
 
+            if(asyncStream && g_timingInstrumentationEnabled)
+            {
+                if(!m_gpuInit)
+                    std::clog << "ASYNC_RESET_SLOWPATH: m_gpuInit=false\n";
+                if(m_curBoundsCheck != BoundsCheckMode::Disable)
+                    std::clog << "ASYNC_RESET_SLOWPATH: m_curBoundsCheck="
+                              << static_cast<int>(m_curBoundsCheck) << "\n";
+                if(m_problemDependentData)
+                    std::clog << "ASYNC_RESET_SLOWPATH: m_problemDependentData=true\n";
+                if(needSwizzle)
+                    std::clog << "ASYNC_RESET_SLOWPATH: needSwizzle=true\n";
+            }
+
             if(m_gpuInit && m_curBoundsCheck == BoundsCheckMode::Disable
                && !m_problemDependentData && !needSwizzle)
             {
                 if(m_elementsToValidate)
+                {
+                    ScopedTimer t("async_reset_resetoutput");
                     resetOutput(m_gpuPtrs,
                                 m_gpuBatchPtrs,
                                 m_maxElements,
@@ -2778,24 +2794,40 @@ namespace TensileLite
                                 problem,
                                 kind,
                                 asyncStream);
+                }
                 return m_cachedGPUInputs;
             }
             else
             {
-                if(m_cpuPtrs.empty() && m_problemDependentData)
-                    initializeCPUInputs(problem);
-                if(m_problemDependentData)
-                    copyValidToGPUBuffer(problem, asyncStream);
-                if(needSwizzle)
-                    copySwizzledToGPUBuffer(problem);
+                {
+                    ScopedTimer t("async_reset_probdep");
+                    if(m_cpuPtrs.empty() && m_problemDependentData)
+                    {
+                        ScopedTimer t2("async_reset_cpuinit");
+                        initializeCPUInputs(problem);
+                    }
+                    if(m_problemDependentData)
+                    {
+                        ScopedTimer t2("async_reset_copyvalid");
+                        copyValidToGPUBuffer(problem, asyncStream);
+                    }
+                    if(needSwizzle)
+                    {
+                        ScopedTimer t2("async_reset_swizzle");
+                        copySwizzledToGPUBuffer(problem);
+                    }
+                }
 
-                copyInputs(m_gpuPtrs,
-                           m_gpuBatchPtrs,
-                           m_maxElements,
-                           m_groupedOffsets,
-                           problem,
-                           hipMemcpyDeviceToDevice,
-                           asyncStream);
+                {
+                    ScopedTimer t("async_reset_copyinputs");
+                    copyInputs(m_gpuPtrs,
+                               m_gpuBatchPtrs,
+                               m_maxElements,
+                               m_groupedOffsets,
+                               problem,
+                               hipMemcpyDeviceToDevice,
+                               asyncStream);
+                }
                 if(m_rotatingMode == 1 && m_rotatingBuffer > 0)
                 {
                     auto mem = m_rm->getRotatingMemory();
@@ -2816,7 +2848,10 @@ namespace TensileLite
                         }
                 }
                 m_gpuInit = true;
-                initializeGPUBatchedInputs(problem, asyncStream);
+                {
+                    ScopedTimer t("async_reset_batchedinit");
+                    initializeGPUBatchedInputs(problem, asyncStream);
+                }
             }
 
             if(m_cpuPtrs.empty())

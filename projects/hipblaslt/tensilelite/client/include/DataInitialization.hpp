@@ -322,14 +322,17 @@ namespace TensileLite
                     }
 
                 // Async-prepare into target slot
-                if(auto gemmProblem
-                   = dynamic_cast<ContractionProblemGemm const*>(problem))
-                    prepareGPUInputsInternal(*gemmProblem, m_copyStream);
-                else if(auto groupedProblem
-                        = dynamic_cast<ContractionProblemGroupedGemm const*>(
-                            problem))
-                    prepareGPUInputsInternal(
-                        groupedProblem->gemms[0], m_copyStream);
+                {
+                    ScopedTimer prepTimer("async_reset_prepare");
+                    if(auto gemmProblem
+                       = dynamic_cast<ContractionProblemGemm const*>(problem))
+                        prepareGPUInputsInternal(*gemmProblem, m_copyStream);
+                    else if(auto groupedProblem
+                            = dynamic_cast<ContractionProblemGroupedGemm const*>(
+                                problem))
+                        prepareGPUInputsInternal(
+                            groupedProblem->gemms[0], m_copyStream);
+                }
 
                 // Store results in target ring slot
                 m_gpuPtrsRing[targetIdx]      = std::move(m_gpuPtrs);

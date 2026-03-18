@@ -98,7 +98,18 @@ TIMING_HIERARCHY = {
             },
             "gpu_input_preparation": {},
             "gpu_input_reset": {},
-            "async_reset_submit": {},
+            "async_reset_submit": {
+                "async_reset_prepare": {
+                    "async_reset_resetoutput": {},
+                    "async_reset_probdep": {
+                        "async_reset_cpuinit": {},
+                        "async_reset_copyvalid": {},
+                        "async_reset_swizzle": {},
+                    },
+                    "async_reset_copyinputs": {},
+                    "async_reset_batchedinit": {},
+                },
+            },
             "rotating_buffer_preparation": {},
             "sync_copy_stream": {},
             "wait_copy_done": {},
