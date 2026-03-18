@@ -149,12 +149,14 @@ operation:
       test_c_type: "hipdnnConvolutionMode_t"
       test_default_value: "HIPDNN_CONVOLUTION_MODE_CONVOLUTION"
       # Verification: enum_def for ConvMode (matches existing hand-written code)
+      # Note: ConvMode has no UNSET in the backend C-API, but the frontend has NOT_SET = 0
       enum_def:
         backend_header: "HipdnnConvolutionMode.h"
         backend_prefix: "HIPDNN_CONVOLUTION_MODE_"
         values:
-          - { name: "CONVOLUTION", value: 0 }
-          - { name: "CROSS_CORRELATION", value: 1 }
+          - { name: "UNSET", value: 0, sentinel: true }
+          - { name: "CROSS_CORRELATION", value: 1, frontend_value: 1 }
+          - { name: "CONVOLUTION", value: 0, frontend_value: 2 }
 
   tensor_array_fields: []
 

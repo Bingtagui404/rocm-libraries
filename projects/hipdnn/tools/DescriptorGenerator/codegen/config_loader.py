@@ -263,6 +263,7 @@ def _parse_enum_def(raw: dict | None) -> EnumDef | None:
             sentinel=v.get("sentinel", False),
             sdk_name=v.get("sdk_name", ""),
             frontend_name=v.get("frontend_name", ""),
+            frontend_value=v.get("frontend_value", -1),
         )
         for v in raw.get("values", [])
     ]

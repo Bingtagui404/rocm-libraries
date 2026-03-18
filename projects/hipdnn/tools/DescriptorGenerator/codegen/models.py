@@ -21,6 +21,9 @@ class EnumValue:
     frontend_name: str = (
         ""  # Override frontend enum name if different from name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
     )
+    frontend_value: int = (
+        -1  # Override frontend enum numeric value (-1 = use backend value)
+    )
 
     @property
     def effective_sdk_name(self) -> str:
@@ -31,6 +34,11 @@ class EnumValue:
     def effective_frontend_name(self) -> str:
         """Frontend enum class member name (defaults to name)."""
         return self.frontend_name or self.name
+
+    @property
+    def effective_frontend_value(self) -> int:
+        """Frontend enum numeric value (defaults to backend value)."""
+        return self.frontend_value if self.frontend_value >= 0 else self.value
 
 
 @dataclass

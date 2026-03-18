@@ -16,9 +16,9 @@ enum class {{ fe_type }}
 {% endif %}
 {% for v in df.enum_def.non_sentinel_values %}
 {% if not loop.last %}
-    {{ v.effective_frontend_name }} = {{ v.value }},
+    {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }},
 {% else %}
-    {{ v.effective_frontend_name }} = {{ v.value }}
+    {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }}
 {% endif %}
 {% endfor %}
 };
