@@ -132,7 +132,7 @@ python generate_instances.py \
 For each instance, the script generates:
 
 1. **Individual C++ files** (one per instance)
-   - Location: `instances/{direction}/{config}/{instance_name}.cpp`
+   - Location: `build/experimental/grouped_convolution_tile_instances/{direction}/{config}/{instance_name}.cpp`
    - Contains instance-specific kernel wrapper
 
 2. **Include files** (`.inc` headers)
@@ -245,7 +245,7 @@ DeviceGroupedConvBwdWeight_Xdl_CShuffleV3<256, 128, 128, 64, Default, 32, 32, 2,
 
 #### Template System
 
-**Template**: `instances/grouped_convolution_tile.cpp.in`
+**Template**: `include/grouped_convolution_tile.cpp.in`
 
 **Placeholders**:
 - `gen_signature` → Signature constant name
@@ -256,7 +256,7 @@ DeviceGroupedConvBwdWeight_Xdl_CShuffleV3<256, 128, 128, 64, Default, 32, 32, 2,
 - `gen_block_transfer` → Transfer parameters
 - `gen_optimizations` → Optimization settings
 
-**Generated Output**: `instances/{direction}/{config}/{instance_name}.cpp`
+**Generated Output**: `build/experimental/grouped_convolution_tile_instances/{direction}/{config}/{instance_name}.cpp`
 
 #### Command-Line Arguments
 
@@ -276,10 +276,10 @@ python generate_instances.py \
 
 ## Generated Artifacts
 
-### Directory Structure
+### Directory Structure (in build/experimental/grouped_convolution_tile_instances)
 
 ```
-instances/
+grouped_convolution_tile_instances/
 ├── forward/
 │   ├── nhwgc_fp16/
 │   │   ├── grouped_convolution_forward_tile_nhwgc_fp16_0.cpp
@@ -427,22 +427,10 @@ projects/composablekernel/
 │       │   └── backward_data/
 │       │       └── profiler/
 │       │
-│       └── instances/                      # Generated C++ files
+│       └── include/                        # Inc files
 │           ├── instance_includes.inc       # Shared headers and signatures
 │           ├── instance_run.inc            # Shared execution logic
-│           ├── grouped_convolution_tile.cpp.in  # Template file
-│           │
-│           ├── forward/                    # Forward instances
-│           │   ├── nhwgc_fp16/
-│           │   │   ├── grouped_convolution_forward_tile_nhwgc_fp16_0.cpp
-│           │   │   ├── grouped_convolution_forward_tile_nhwgc_fp16_1.cpp
-│           │   │   └── ...
-│           │   ├── grouped_convolution_forward_tile_nhwgc_fp16.inc
-│           │   ├── grouped_convolution_forward_tile_nhwgc_fp16_calls.inc
-│           │   └── ...
-│           │
-│           └── backward_weight/            # Backward weight instances
-│               └── ...
+│           └── grouped_convolution_tile.cpp.in  # Template file
 │
 └── profiler/
     ├── include/profiler/
