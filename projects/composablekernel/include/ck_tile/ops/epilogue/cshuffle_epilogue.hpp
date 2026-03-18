@@ -315,16 +315,22 @@ struct CShuffleEpilogue
             static_assert((BaseStrideElems * DataTypeSize) % BytesPerBank == 0,
                           "LDS row stride must be 4B-aligned for bank-word padding logic");
             // calculate how many elements to pad to avoid bank conflict
-#if defined(__gfx950__)
+            //
+            // For 16x16 XDL with FP16 output, the MLdsLayer=4 interleaving combined with
+            // VectorLen=8 column grouping causes 2.0 store conflicts (8 threads/bank).
+            // Adding 16 elements (32 bytes = 8 banks) of padding shifts row groups to
+            // different bank regions while preserving the load-friendly interleaved layout.
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
+            constexpr bool needs_16x16_padding = (MPerXdl == 16);
+#if defined(__gfx950__)
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
             constexpr index_t BaseWords  = ToWords(BaseStrideElems);
-            constexpr index_t PadWords   = ((BaseWords % 2) == 0) ? 1 : 0;
+            constexpr index_t PadWords   = needs_16x16_padding ? 8 : (((BaseWords % 2) == 0) ? 1 : 0);
             constexpr auto PaddingAmount = PadWords * ElemsPer4B;
 #else
-            constexpr auto PaddingAmount = 0;
+            constexpr auto PaddingAmount = needs_16x16_padding ? (8 * ElemsPer4B) : 0;
 #endif
 
             constexpr auto lds_block_desc_0 = make_naive_tensor_descriptor(
