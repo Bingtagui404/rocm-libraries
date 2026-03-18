@@ -2768,19 +2768,6 @@ namespace TensileLite
                 kind = hipMemcpyHostToDevice;
             }
 
-            if(asyncStream && g_timingInstrumentationEnabled)
-            {
-                if(!m_gpuInit)
-                    std::clog << "ASYNC_RESET_SLOWPATH: m_gpuInit=false\n";
-                if(m_curBoundsCheck != BoundsCheckMode::Disable)
-                    std::clog << "ASYNC_RESET_SLOWPATH: m_curBoundsCheck="
-                              << static_cast<int>(m_curBoundsCheck) << "\n";
-                if(m_problemDependentData)
-                    std::clog << "ASYNC_RESET_SLOWPATH: m_problemDependentData=true\n";
-                if(needSwizzle)
-                    std::clog << "ASYNC_RESET_SLOWPATH: needSwizzle=true\n";
-            }
-
             if(m_gpuInit && m_curBoundsCheck == BoundsCheckMode::Disable
                && !m_problemDependentData && !needSwizzle)
             {
@@ -2932,6 +2919,8 @@ namespace TensileLite
                               m_gpuPtrsRing[slot],
                               m_gpuBatchPtrsRing[slot],
                               m_cachedInputsRing[slot]);
+
+            m_ringBufferWarm = true;
         }
 
         DataInitialization::~DataInitialization()

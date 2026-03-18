@@ -272,6 +272,7 @@ namespace TensileLite
                     m_gpuBatchPtrsRing[i].clear();
                     m_cachedInputsRing[i].reset();
                 }
+                m_ringBufferWarm = false;
             }
 
             void syncCopyStream()
@@ -303,6 +304,19 @@ namespace TensileLite
 
                 size_t targetIdx
                     = (m_activeIdx + m_pendingResets + 1) % m_numActiveBuffers;
+
+                // When the ring buffer is warm, all slots already have correct
+                // data from initializeAltBufferSets.  Input tensors are never
+                // modified by kernels, and output D is completely overwritten
+                // (D = alpha*A*B + beta*C), so no reset is needed.  Just
+                // advance the slot tracking and record an event.
+                if(m_ringBufferWarm)
+                {
+                    HIP_CHECK_EXC(
+                        hipEventRecord(m_copyDoneEvents[targetIdx], m_copyStream));
+                    m_pendingResets++;
+                    return;
+                }
 
                 // Save current working state
                 auto savePtrs    = std::move(m_gpuPtrs);
@@ -1047,6 +1061,12 @@ namespace TensileLite
             /// This will improve performance as we don't have to copy from the CPU
             /// with each kernel launch, but it will use extra memory.
             bool m_keepPristineCopyOnGPU = true;
+
+            /// True after initializeAltBufferSets fills all ring slots for the
+            /// current problem.  Cleared by cancelAsyncReset on problem change.
+            /// When set, beginAsyncReset can skip the full re-copy and use the
+            /// fast path (resetOutput only) even with problem-dependent data.
+            bool m_ringBufferWarm = false;
 
             /// If set "::NaN", we will initialize all out-of-bounds inputs to NaN, and
             /// all out-of-bounds outputs to a known value. This allows us to
