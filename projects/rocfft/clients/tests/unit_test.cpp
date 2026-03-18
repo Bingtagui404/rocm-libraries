@@ -124,7 +124,7 @@ TEST(rocfft_UnitTest, plan_description)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -239,7 +239,7 @@ TEST(rocfft_UnitTest, plan_description_reuse)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -353,7 +353,7 @@ TEST(rocfft_UnitTest, log_levels)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -435,7 +435,7 @@ TEST(rocfft_UnitTest, log_multithreading)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -535,7 +535,7 @@ TEST(rocfft_UnitTest, workmem_missing)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -567,7 +567,7 @@ TEST(rocfft_UnitTest, workmem_small)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -598,7 +598,7 @@ TEST(rocfft_UnitTest, workmem_big)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -631,7 +631,7 @@ TEST(rocfft_UnitTest, workmem_null)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -812,7 +812,7 @@ TEST(rocfft_UnitTest, rtc_cache_iter_1)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -836,7 +836,7 @@ TEST(rocfft_UnitTest, rtc_cache_iter_2)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -873,7 +873,7 @@ TEST(rocfft_UnitTest, rtc_cache_null)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -964,7 +964,7 @@ TEST(rocfft_UnitTest, rtc_helper_crash)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -1140,7 +1140,7 @@ TEST(rocfft_UnitTest, rtc_test_harness)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }

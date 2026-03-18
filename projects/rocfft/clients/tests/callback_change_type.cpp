@@ -228,7 +228,7 @@ TEST_P(change_type, short_to_float)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }

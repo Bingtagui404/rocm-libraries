@@ -1983,7 +1983,7 @@ namespace
                         plan_execution_output.alloc(output_data_size);
                 }
             }
-            catch(const HOSTBUF_MEM_USAGE& e)
+            catch(const SYS_MEM_USAGE& e)
             {
                 GTEST_SKIP() << e.what();
             }
@@ -2739,7 +2739,7 @@ namespace
                 else
                     GTEST_FAIL() << e.what() << "\nError code: " << e.hip_error << ".";
             }
-            catch(const HOSTBUF_MEM_USAGE& e)
+            catch(const SYS_MEM_USAGE& e)
             {
                 GTEST_SKIP() << e.what();
             }

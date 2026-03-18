@@ -623,7 +623,7 @@ TEST_P(multiStreamTest, impulseSignalOnOutput)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }

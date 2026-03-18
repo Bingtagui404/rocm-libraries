@@ -195,7 +195,7 @@ TEST(rocfft_UnitTest, 1D_hermitian_single_small)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -226,7 +226,7 @@ TEST(rocfft_UnitTest, 1D_hermitian_single_large)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -412,7 +412,7 @@ TEST(rocfft_UnitTest, gpu_symmetrizer)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -552,7 +552,7 @@ TEST(rocfft_UnitTest, compare_cpu_gpu_symmetrizers)
     {
         GTEST_FAIL() << e.what();
     }
-    catch(const HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }

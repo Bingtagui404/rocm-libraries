@@ -61,7 +61,7 @@ TEST(bitwise_repro_test, compare_precisions)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -106,7 +106,7 @@ TEST(bitwise_repro_test, compare_lengths)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -151,7 +151,7 @@ TEST(bitwise_repro_test, compare_transform_types)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }
@@ -199,7 +199,7 @@ TEST_P(bitwise_repro_test, compare_to_reference)
     {
         GTEST_SKIP() << "host memory allocation failure";
     }
-    catch(HOSTBUF_MEM_USAGE& e)
+    catch(const SYS_MEM_USAGE& e)
     {
         GTEST_SKIP() << e.what();
     }

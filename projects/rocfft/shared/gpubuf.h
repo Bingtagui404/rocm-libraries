@@ -22,7 +22,9 @@
 #define ROCFFT_GPUBUF_H
 
 #include "rocfft_hip.h"
+#include "sys_mem.h"
 #include <cstdlib>
+#include <sstream>
 
 // Simple RAII class for GPU buffers.  T is the type of pointer that
 // data() returns
@@ -74,6 +76,19 @@ public:
 
     hipError_t alloc(const size_t size, bool make_it_shared = false)
     {
+        free();
+        const auto dev_prop = get_curr_device_prop();
+        if(dev_prop.integrated && size > system_memory::singleton().get_usable_bytes())
+        {
+            std::stringstream msg;
+            msg << "Unauthorized (integrated) device allocation.\n"
+                << "\tRequested byte size is " << size << "\n"
+                << "\tUsable byte size is " << system_memory::singleton().get_usable_bytes() << "\n"
+                << "\tFree system memory: " << system_memory::singleton().get_free_bytes() << "\n"
+                << "\tUsed system memory: " << system_memory::singleton().get_used_bytes() << "\n"
+                << "\tEnforced usage limit: " << system_memory::singleton().get_limit_bytes();
+            throw SYS_MEM_USAGE{msg.str()};
+        }
         // remember the device that was current as of alloc, so we can
         // free on the correct device
         auto ret = hipGetDevice(&device);
@@ -82,13 +97,16 @@ public:
 
         bsize             = size;
         is_managed_memory = use_alloc_managed() || make_it_shared;
-        free();
         ret = is_managed_memory ? hipMallocManaged(&buf, bsize) : hipMalloc(&buf, bsize);
         if(ret != hipSuccess)
         {
             buf   = nullptr;
             bsize = 0;
         }
+
+        if(dev_prop.integrated)
+            system_memory::singleton().record_used_bytes(bsize);
+
         return ret;
     }
 
@@ -106,6 +124,10 @@ public:
                 // free on the device we allocated on
                 rocfft_scoped_device dev(device);
                 (void)hipFree(buf);
+
+                const auto dev_prop = get_curr_device_prop();
+                if(dev_prop.integrated)
+                    system_memory::singleton().release_used_bytes(bsize);
             }
             buf   = nullptr;
             bsize = 0;

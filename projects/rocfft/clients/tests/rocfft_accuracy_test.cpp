@@ -123,7 +123,7 @@ TEST_P(accuracy_test, vs_fftw)
             last_cpu_fft_data = last_cpu_fft_cache();
             GTEST_SKIP() << "host memory allocation failure";
         }
-        catch(const HOSTBUF_MEM_USAGE& e)
+        catch(const SYS_MEM_USAGE& e)
         {
             // explicitly clear cache
             last_cpu_fft_data = last_cpu_fft_cache();

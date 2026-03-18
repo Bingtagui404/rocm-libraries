@@ -23,21 +23,16 @@
 
 #include "arithmetic.h"
 #include "sys_mem.h"
-#include <atomic>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
+#include <sstream>
+
 #include <new>
 
 #ifndef _WIN32
 #include <stdlib.h>
 #include <sys/mman.h>
 #endif
-
-struct HOSTBUF_MEM_USAGE : public std::runtime_error
-{
-    using std::runtime_error::runtime_error;
-};
 
 // Simple RAII class for host buffers.  T is the type of pointer that
 // data() returns
@@ -87,18 +82,19 @@ public:
     {
         free();
 
-        bsize = size;
-
-        auto usable_mem = host_memory::singleton().get_usable_bytes();
-        if(total_used_mem + size > usable_mem)
+        if(size > system_memory::singleton().get_usable_bytes())
         {
             std::stringstream msg;
-            msg << "Host memory usage limit exceed (used mem: "
-                << bytes_to_GiB(total_used_mem + size)
-                << "GiB, free mem: " << bytes_to_GiB(usable_mem) << " GiB)";
-            throw HOSTBUF_MEM_USAGE{msg.str()};
+            msg << "Unauthorized host allocation.\n"
+                << "\tRequested byte size is " << size << "\n"
+                << "\tUsable byte size is " << system_memory::singleton().get_usable_bytes() << "\n"
+                << "\tFree system memory: " << system_memory::singleton().get_free_bytes() << "\n"
+                << "\tUsed system memory: " << system_memory::singleton().get_used_bytes() << "\n"
+                << "\tEnforced usage limit: " << system_memory::singleton().get_limit_bytes();
+            throw SYS_MEM_USAGE{msg.str()};
         }
 
+        bsize = size;
         if(make_it_pinned)
         {
             if(hipHostMalloc(&buf, size) != hipSuccess)
@@ -142,7 +138,7 @@ public:
 
         is_pinned_memory = make_it_pinned;
         bsize_track      = size;
-        total_used_mem += bsize_track;
+        system_memory::singleton().record_used_bytes(bsize_track);
     }
 
     size_t size() const
@@ -161,7 +157,6 @@ public:
         {
             if(owned)
             {
-                total_used_mem -= bsize_track;
                 if(is_pinned_memory)
                 {
                     (void)hipHostFree(buf);
@@ -174,6 +169,7 @@ public:
                     std::free(buf);
 #endif
                 }
+                system_memory::singleton().release_used_bytes(bsize_track);
             }
             buf   = nullptr;
             bsize = bsize_track = 0;
@@ -238,9 +234,6 @@ private:
     // Buffer size for tracking total memory usage.
     // When buffer is shrunk in place, bsize_track is not changed.
     size_t bsize_track = 0;
-
-    // Keeps track of total used memory for all hostbufs
-    inline static std::atomic<size_t> total_used_mem = 0;
 };
 
 // default hostbuf that gives out void* pointers
