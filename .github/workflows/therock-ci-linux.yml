@@ -13,6 +13,9 @@ on:
         type: string
       test_runs_on:
         type: string
+      therock_ref:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -43,7 +46,7 @@ jobs:
         with:
           repository: "ROCm/TheRock"
           path: TheRock
-          ref: 1408a826dc2c3446a0295c0ef0c71c4d92f0f4f9 # 2026-03-16
+          ref: ${{ inputs.therock_ref }}
 
       - name: Install python deps
         run: |
