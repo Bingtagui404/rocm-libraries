@@ -85,23 +85,38 @@ Write the config to `$CODEGEN/configs/<operation>.yaml`.
 
 Use `$CODEGEN/configs/convolution_fwd.yaml` as the reference template for all config fields.
 
-### 4. Handle Mode Enum Fields
+### 4. Handle Mode Enum Fields and Generate Inverse Converters
 
-If the FBS schema references enum types, check whether each enum already exists in the backend:
+If the YAML config has `mode` data fields, check whether the required infrastructure already exists:
 
+**4a. Check backend enum infrastructure:**
 ```bash
 grep -r "HIPDNN_TYPE_" $HIPDNN_SRC/backend/include/HipdnnBackendAttributeType.h
 ```
 
-For each new enum type not already in the backend, inform the user that additional files must be created:
+For each new enum type not already in the backend, create the following (derive from existing patterns like ConvMode):
 1. Backend C-API enum header (`backend/include/Hipdnn<Foo>Mode.h`)
 2. Type tag entry in `HipdnnBackendAttributeType.h`
 3. SDK conversion functions in `DataTypeConversion.hpp/.cpp`
 4. Shared helpers in `DescriptorAttributeUtils.hpp/.cpp`
 5. String utility case in `BackendEnumStringUtils.hpp`
-6. Frontend converter in `Types.hpp`
+6. Frontend forward converter in `Types.hpp` (e.g., `toBackendPointwiseMode`)
 
-Ask the user if they want to create these now or handle them separately.
+**4b. Generate inverse converter for unpacker (REQUIRED for lift-only and full modes):**
+
+For each mode field with a `frontend_inverse_converter` in the YAML config, check if the inverse converter function already exists in `$HIPDNN_SRC/frontend/include/hipdnn_frontend/Types.hpp`. If it does NOT exist, generate it by **reading the existing forward converter and inverting the mapping**:
+
+1. Read the forward converter (e.g., `toBackendPointwiseMode`) from Types.hpp
+2. For each `case FrontendEnum::VALUE: return BACKEND_VALUE;`, create the inverse: `case BACKEND_VALUE: return {FrontendEnum::VALUE, {}};`
+3. Add a `default:` case returning `{FrontendEnum::NOT_SET, {ErrorCode::HIPDNN_BACKEND_ERROR, "Unknown ... value: " + ...}}`
+4. Place the function in Types.hpp, right after the forward converter
+
+The function signature follows the pattern of `fromHipdnnConvMode`:
+```cpp
+inline std::pair<FrontendType, Error> fromHipdnn<Foo>Mode(hipdnn<Foo>Mode_t mode)
+```
+
+This step is critical — the generated unpacker calls this function and will not compile without it.
 
 ### 5. Run the Generator
 
