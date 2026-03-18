@@ -163,8 +163,35 @@ class DescriptorGenerator:
 
         return "\n".join(lines) + "\n"
 
-    def render(self, config: OperationConfig, output_dir: Path) -> list[str]:
-        """Render all templates and write to output_dir. Returns list of written files."""
+    def render(
+        self, config: OperationConfig, output_dir: Path, mode: str = "backend"
+    ) -> list[str]:
+        """Render templates based on the specified mode.
+
+        Args:
+            config: The operation configuration.
+            output_dir: Root directory for generated output.
+            mode: One of 'backend', 'frontend', 'full', or 'lift-only'.
+
+        Returns:
+            List of relative paths for all written files.
+        """
+        dispatch = {
+            "backend": self.render_backend,
+            "frontend": self.render_frontend,
+            "full": self.render_full,
+            "lift-only": self.render_lift_only,
+        }
+        renderer = dispatch.get(mode)
+        if renderer is None:
+            raise ValueError(
+                f"Unknown render mode '{mode}'. "
+                f"Valid modes: {', '.join(dispatch.keys())}"
+            )
+        return renderer(config, output_dir)
+
+    def render_backend(self, config: OperationConfig, output_dir: Path) -> list[str]:
+        """Render backend templates and write to output_dir. Returns list of written files."""
         written = []
 
         # Template -> output path mapping
@@ -216,6 +243,66 @@ class DescriptorGenerator:
             out_path.write_text(content)
             written.append(f"fragments/{filename}")
 
+        return written
+
+    def render_frontend(self, config: OperationConfig, output_dir: Path) -> list[str]:
+        """Render frontend templates and write to output_dir. Returns list of written files."""
+        written = []
+
+        # Frontend file templates
+        file_templates = {
+            "attributes.hpp.j2": Path("frontend/include/hipdnn_frontend/attributes")
+            / config.attributes_header_filename,
+            "node.hpp.j2": Path("frontend/include/hipdnn_frontend/node")
+            / config.node_header_filename,
+        }
+
+        for template_name, rel_path in file_templates.items():
+            out_path = output_dir / rel_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            content = self._render_template(template_name, config)
+            out_path.write_text(content)
+            written.append(str(rel_path))
+
+        # Frontend test templates
+        test_templates = {
+            "test_attributes.cpp.j2": Path("frontend/tests")
+            / config.test_attributes_filename,
+            "test_node.cpp.j2": Path("frontend/tests") / config.test_node_filename,
+            "test_frontend_graph.cpp.j2": Path("frontend/tests")
+            / config.test_frontend_graph_filename,
+        }
+
+        for template_name, rel_path in test_templates.items():
+            out_path = output_dir / rel_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            content = self._render_template(template_name, config)
+            out_path.write_text(content)
+            written.append(str(rel_path))
+
+        # Frontend fragment templates
+        fragment_templates = {
+            "fragments/graph_method.j2": "graph_method.txt",
+            "fragments/graph_includes.j2": "graph_includes.txt",
+            "fragments/deserialize_case.j2": "deserialize_case.txt",
+            "fragments/frontend_cmake_entries.j2": "frontend_cmake_entries.txt",
+        }
+
+        fragments_dir = output_dir / "fragments"
+        fragments_dir.mkdir(parents=True, exist_ok=True)
+
+        for template_name, filename in fragment_templates.items():
+            out_path = fragments_dir / filename
+            content = self._render_template(template_name, config)
+            out_path.write_text(content)
+            written.append(f"fragments/{filename}")
+
+        return written
+
+    def render_full(self, config: OperationConfig, output_dir: Path) -> list[str]:
+        """Render all backend and frontend templates. Returns list of written files."""
+        written = self.render_backend(config, output_dir)
+        written += self.render_frontend(config, output_dir)
         return written
 
     def _render_template(self, template_name: str, config: OperationConfig) -> str:

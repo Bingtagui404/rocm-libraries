@@ -25,6 +25,51 @@ operation:
     attributes_class: "ConvFpropAttributes"
     attributes_include: "ConvolutionFpropAttributes"
 
+    inputs:
+      - name: "x"
+        enum_name: "X"
+        required: true
+        getter_name: "get_x"
+        setter_name: "set_x"
+      - name: "w"
+        enum_name: "W"
+        required: true
+        getter_name: "get_w"
+        setter_name: "set_w"
+    outputs:
+      - name: "y"
+        enum_name: "Y"
+        required: true
+        getter_name: "get_y"
+        setter_name: "set_y"
+    graph_method_name: "conv_fprop"
+    graph_method_params:
+      - name: "x"
+        tensor_name: "x"
+      - name: "w"
+        tensor_name: "w"
+    graph_return_type: "single"
+    graph_return_outputs:
+      - "y"
+    node_type_enum: "NodeType::CONVOLUTION_FPROP"
+    node_attributes_union_type: "ConvolutionFwdAttributes"
+    compatibility_typedef: "Conv_fprop_attributes"
+
+  infer_properties:
+    strategy: "stub"
+    dimension_formula: "output = (input + pre_padding + post_padding - dilated_kernel) / stride + 1"
+
+  validation:
+    required_input_tensors:
+      - "x"
+      - "w"
+    required_input_dims:
+      - "x"
+      - "w"
+    custom_checks:
+      - "Validate stride > 0 and dilation > 0 for each spatial dimension"
+      - "Validate input channels match weight channels (or divisible for grouped conv)"
+
   tensor_fields:
     - name: "x"
       fbs_field: "x_tensor_uid"

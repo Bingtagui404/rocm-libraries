@@ -117,27 +117,10 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        if args.mode == MODE_LIFT_ONLY:
-            written = generator.render_lift_only(config, args.output_dir)
-        elif args.mode == MODE_BACKEND:
-            written = generator.render(config, args.output_dir)
-        elif args.mode == MODE_FRONTEND:
-            written = generator.render_frontend(config, args.output_dir)
-        elif args.mode == MODE_FULL:
-            written = generator.render_full(config, args.output_dir)
-        else:
-            print(f"Error: Unknown mode '{args.mode}'", file=sys.stderr)
-            sys.exit(1)
-    except AttributeError as e:
-        # render_frontend/render_full not yet implemented in generator
-        if "render_frontend" in str(e) or "render_full" in str(e):
-            print(
-                f"Error: Mode '{args.mode}' requires frontend template "
-                f"support that is not yet implemented in the generator.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        raise
+        written = generator.render(config, args.output_dir, args.mode)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
         print(f"Template rendering error: {e}", file=sys.stderr)
         sys.exit(1)
