@@ -140,6 +140,8 @@ def parse_instance_string(instance_string):
 
 def copy_includes(instances_path):
     inc_dir = Path(__file__).resolve().parent
+    output_dir = Path(instances_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(f"{inc_dir}/include/instance_includes.inc", instances_path)
     shutil.copy(f"{inc_dir}/include/instance_run.inc", instances_path)
 
