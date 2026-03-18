@@ -318,26 +318,19 @@ struct CShuffleEpilogue
             //
             // For 16x16 XDL with FP16 output, the MLdsLayer=4 interleaving combined with
             // VectorLen=8 column grouping causes 2.0 store conflicts (8 threads/bank).
-            // Adding padding shifts row groups to different bank regions while preserving
-            // the load-friendly interleaved layout.
-            //
-            // The padding amount scales with wave layout:
-            // - 1x4 wave (MPerIterShuffle=16): 16 elements (8 banks) is sufficient
-            // - 2x2 wave (MPerIterShuffle=32): 16 elements works
-            // - 4x1 wave (MPerIterShuffle=64): needs 32 elements (16 banks) for gfx950's 64-bank LDS
+            // Adding 16 elements (32 bytes = 8 banks) of padding shifts row groups to
+            // different bank regions while preserving the load-friendly interleaved layout.
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
             constexpr bool needs_16x16_padding = (MPerXdl == 16);
-            constexpr index_t WaveMultiplier = MPerIterationShuffle / MPerXdl;  // 1, 2, or 4
 #if defined(__gfx950__)
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
             constexpr index_t BaseWords  = ToWords(BaseStrideElems);
-            // Scale padding with wave layout: 8 words base * WaveMultiplier
-            constexpr index_t PadWords   = needs_16x16_padding ? (8 * WaveMultiplier) : (((BaseWords % 2) == 0) ? 1 : 0);
+            constexpr index_t PadWords   = needs_16x16_padding ? 8 : (((BaseWords % 2) == 0) ? 1 : 0);
             constexpr auto PaddingAmount = PadWords * ElemsPer4B;
 #else
-            constexpr auto PaddingAmount = needs_16x16_padding ? (8 * WaveMultiplier * ElemsPer4B) : 0;
+            constexpr auto PaddingAmount = needs_16x16_padding ? (8 * ElemsPer4B) : 0;
 #endif
 
             constexpr auto lds_block_desc_0 = make_naive_tensor_descriptor(
