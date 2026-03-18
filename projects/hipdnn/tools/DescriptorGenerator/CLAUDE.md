@@ -458,9 +458,41 @@ operation:
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `shared` | bool | `false` | If `true`, the attribute enum already exists (defined by another operation). Fragment templates skip shared fields to avoid duplicate enum entries. Core templates still include them for setAttribute/getAttribute. |
+| `shared` | bool | `false` | If `true`, the attribute enum already exists (defined by another operation). Fragment templates skip shared fields to avoid duplicate enum entries. Core templates still include them for setAttribute/getAttribute. Note: `enum_def` can be present alongside `shared: true` -- see below. |
 | `test_enum_value` | string | `""` | **Required for enum fields.** The enum constant to use in generated tests (e.g., `CROSS_CORRELATION` for ConvMode, `ADD` for PointwiseMode). |
+| `test_label` | string | `""` | Label used in generated test case names (e.g., `"Convolution"`). |
+| `test_constant_name` | string | `""` | Named constant reference for test values (e.g., `"K_CONV_PADDING"`). |
+| `build_node_check` | bool | `true` | Whether this field is verified in the buildNode round-trip test. |
+| `default_value` | string | `""` | Default value expression for the field (e.g., `"ConvolutionMode::CROSS_CORRELATION"`). |
 | `frontend_inverse_converter` | string | `""` | Conversion function from backend C-API value back to frontend enum (used in unpacker). Only needed for `mode` fields. Example: `toFrontendConvMode` |
+
+#### `shared` and `enum_def` Coexistence
+
+The `enum_def` block can be present on both `shared: true` and `shared: false` fields:
+
+- **When `shared: false`**: the generator produces all mode enum plumbing from `enum_def` (backend C-API header, backend plumbing fragment, frontend plumbing fragment).
+- **When `shared: true`**: the `enum_def` serves as documentation and reference only -- the generator skips plumbing generation because another operation already defined this enum. The practical benefit is that `enum_def` documents the enum values inline in the config and enables the skill agent to verify the enum infrastructure without searching the codebase.
+
+For example, `convolution_bwd.yaml` has `shared: true` AND `enum_def` on its conv_mode field because the ConvMode enum was already created by convolution_fwd. The `enum_def` is present purely to document the enum values for reference.
+
+### Mode Field Properties
+
+Mode fields (data fields with `type: mode`) require additional properties to wire up the enum plumbing. All mode fields must include:
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `cpp_enum` | string | Yes | Fully-qualified SDK enum type (e.g., `hipdnn_data_sdk::data_objects::ConvMode`) |
+| `frontend_type` | string | No | Frontend enum name when different from SDK short name (e.g., `ConvolutionMode` for SDK `ConvMode`) |
+| `backend_type_name` | string | Yes | Backend type tag (e.g., `HIPDNN_TYPE_CONVOLUTION_MODE`) |
+| `backend_setter` | string | Yes | Setter helper name (e.g., `setConvMode`) |
+| `backend_getter` | string | Yes | Getter helper name (e.g., `getConvMode`) |
+| `backend_converter` | string | Yes | Frontend-to-backend converter (e.g., `toBackendConvMode`) |
+| `frontend_inverse_converter` | string | Yes (for lifting) | Backend-to-frontend converter (e.g., `fromHipdnnConvMode`) |
+| `test_c_type` | string | Yes | C-API typedef name (e.g., `hipdnnConvolutionMode_t`) |
+| `test_backend_value` | string | Yes | C-API constant for test default (e.g., `HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION`) |
+| `test_default_value` | string | No | Alternative C-API constant for default-value tests |
+| `test_alt_enum_value` | string | No | Alternative SDK enum value for round-trip tests (e.g., `CONVOLUTION`) |
+| `default_value` | string | No | Frontend default value expression (e.g., `ConvolutionMode::CROSS_CORRELATION`) |
 
 ### Operation-Level Shared Properties
 
@@ -522,7 +554,25 @@ When an operation introduces an enum not already in the backend, the `enum_def` 
 - **Backend plumbing fragment** — `fragments/mode_backend_plumbing_<field>.txt` containing 7 labeled sections: type tag entry, SDK-to-backend converter, backend-to-SDK converter, attribute utils setter, attribute utils getter, string utils case, and backend include directive
 - **Frontend plumbing fragment** — `fragments/mode_frontend_plumbing_<field>.txt` containing 5 labeled sections: frontend-to-backend converter, backend-to-frontend converter, frontend enum string converter, frontend include directive, and attribute conversion case
 
-The `enum_def` block supports the following properties: `backend_header` (output header filename), `backend_prefix` (C enum value prefix), and a `values` list where each entry has `name` and `value` (numeric). Optional overrides per value: `sentinel` (exclude from backend C-API, used for count/sentinel entries), `sdk_name` (when the SDK enum name differs from the backend name), `frontend_name` (when the frontend name differs from the backend suffix), and `frontend_value` (when the frontend numeric value differs from the backend value).
+#### `enum_def` Block Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `backend_header` | string | Output filename for the C-API enum header (e.g., `HipdnnPointwiseMode.h`) |
+| `backend_prefix` | string | Prefix for backend enum constants (e.g., `HIPDNN_POINTWISE_`) |
+| `values` | list | Enum values (see below) |
+
+#### `enum_def` Values Entry Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `name` | string | (required) | Backend C-API suffix. Combined with `backend_prefix` to form the full constant name |
+| `value` | int | (required) | Backend C-API numeric value |
+| `sentinel` | bool | `false` | If true, excluded from backend C-API enum. Appears as `NOT_SET = 0` in frontend |
+| `description` | string | `""` | Doxygen description rendered as `///< text` on enum members |
+| `sdk_name` | string | `""` | SDK enum constant name when it differs from `name` (e.g., `MAX_OP` for backend `MAX`) |
+| `frontend_name` | string | `""` | Frontend enum member name when it differs from `name` (e.g., `TOP_LEFT` for backend `TOP_LEFT_EXT`) |
+| `frontend_value` | int or null | `null` | Frontend numeric value when it differs from `value`. Omit when frontend matches backend (the common case). Example: ConvMode backend `CONVOLUTION=0` but frontend `CONVOLUTION=2` |
 
 When `enum_def` is absent, the enum already exists in the codebase and the manual steps apply: add the backend C-API enum header, type tag in `HipdnnBackendAttributeType.h`, SDK conversions in `DataTypeConversion.hpp/.cpp`, shared helpers in `DescriptorAttributeUtils.hpp/.cpp`, string utility case in `BackendEnumStringUtils.hpp`, and frontend converter in `Types.hpp`.
 

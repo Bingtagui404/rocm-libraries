@@ -261,18 +261,27 @@ def _parse_enum_def(raw: dict | None) -> EnumDef | None:
             name=v["name"],
             value=v["value"],
             sentinel=v.get("sentinel", False),
+            description=v.get("description", ""),
             sdk_name=v.get("sdk_name", ""),
             frontend_name=v.get("frontend_name", ""),
-            frontend_value=v.get("frontend_value", -1),
+            frontend_value=v.get("frontend_value"),
         )
         for v in raw.get("values", [])
     ]
 
-    return EnumDef(
+    enum_def = EnumDef(
         backend_header=raw.get("backend_header", ""),
         backend_prefix=raw.get("backend_prefix", ""),
         values=values,
     )
+
+    if not values:
+        print(
+            f"Warning: enum_def has no values. " f"The enum_def block will be ignored.",
+            file=sys.stderr,
+        )
+
+    return enum_def
 
 
 def _parse_infer_properties(raw: dict | None) -> InferPropertiesConfig | None:

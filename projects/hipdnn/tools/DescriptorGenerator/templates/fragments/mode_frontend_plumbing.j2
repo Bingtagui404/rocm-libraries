@@ -12,13 +12,21 @@
 enum class {{ fe_type }}
 {
 {% if has_sentinel %}
-    NOT_SET = 0,
+    NOT_SET = 0, ///< Mode not specified
 {% endif %}
 {% for v in df.enum_def.non_sentinel_values %}
+{% if v.description %}
+{% if not loop.last %}
+    {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }}, ///< {{ v.description }}
+{% else %}
+    {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }} ///< {{ v.description }}
+{% endif %}
+{% else %}
 {% if not loop.last %}
     {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }},
 {% else %}
     {{ v.effective_frontend_name }} = {{ v.effective_frontend_value }}
+{% endif %}
 {% endif %}
 {% endfor %}
 };

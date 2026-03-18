@@ -18,10 +18,18 @@
 typedef enum
 {
 {% for v in df.enum_def.non_sentinel_values %}
+{% if v.description %}
+{% if not loop.last %}
+    {{ df.enum_def.backend_prefix }}{{ v.name }} = {{ v.value }}, ///< {{ v.description }}
+{% else %}
+    {{ df.enum_def.backend_prefix }}{{ v.name }} = {{ v.value }} ///< {{ v.description }}
+{% endif %}
+{% else %}
 {% if not loop.last %}
     {{ df.enum_def.backend_prefix }}{{ v.name }} = {{ v.value }},
 {% else %}
     {{ df.enum_def.backend_prefix }}{{ v.name }} = {{ v.value }}
+{% endif %}
 {% endif %}
 {% endfor %}
 } {{ df.test_c_type }};

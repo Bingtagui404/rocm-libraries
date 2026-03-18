@@ -472,8 +472,8 @@ operation:
         backend_header: "HipdnnDiagonalAlignment.h"
         backend_prefix: "HIPDNN_DIAGONAL_ALIGNMENT_"
         values:
-          - { name: "TOP_LEFT_EXT", value: 0, frontend_name: "TOP_LEFT" }
-          - { name: "BOTTOM_RIGHT_EXT", value: 1, frontend_name: "BOTTOM_RIGHT" }
+          - { name: "TOP_LEFT_EXT", value: 0, frontend_name: "TOP_LEFT", description: "Anchor mask diagonal to the top-left corner of the attention matrix" }
+          - { name: "BOTTOM_RIGHT_EXT", value: 1, frontend_name: "BOTTOM_RIGHT", description: "Anchor mask diagonal to the bottom-right corner of the attention matrix" }
 
     - name: "implementation"
       fbs_field: "implementation"
@@ -499,9 +499,9 @@ operation:
         backend_header: "HipdnnAttentionImplementation.h"
         backend_prefix: "HIPDNN_ATTENTION_IMPLEMENTATION_"
         values:
-          - { name: "AUTO_EXT", value: 0, frontend_name: "AUTO" }
-          - { name: "COMPOSITE_EXT", value: 1, frontend_name: "COMPOSITE" }
-          - { name: "UNIFIED_EXT", value: 2, frontend_name: "UNIFIED" }
+          - { name: "AUTO_EXT", value: 0, frontend_name: "AUTO", description: "Let the backend choose the best strategy for the given configuration" }
+          - { name: "COMPOSITE_EXT", value: 1, frontend_name: "COMPOSITE", description: "Decompose attention into separate matmul, softmax, and matmul kernels" }
+          - { name: "UNIFIED_EXT", value: 2, frontend_name: "UNIFIED", description: "Use a single fused kernel for the entire attention computation" }
 
   tensor_array_fields: []
 

@@ -103,53 +103,53 @@ operation:
         backend_prefix: "HIPDNN_POINTWISE_"
         values:
           - { name: "NOT_SET", value: 0, sentinel: true }
-          - { name: "ABS", value: 1 }
-          - { name: "ADD", value: 2 }
-          - { name: "ADD_SQUARE", value: 3 }
-          - { name: "BINARY_SELECT", value: 4 }
-          - { name: "CEIL", value: 5 }
-          - { name: "CMP_EQ", value: 6 }
-          - { name: "CMP_GE", value: 7 }
-          - { name: "CMP_GT", value: 8 }
-          - { name: "CMP_LE", value: 9 }
-          - { name: "CMP_LT", value: 10 }
-          - { name: "CMP_NEQ", value: 11 }
-          - { name: "DIV", value: 12 }
-          - { name: "ELU_BWD", value: 13 }
-          - { name: "ELU_FWD", value: 14 }
-          - { name: "ERF", value: 15 }
-          - { name: "EXP", value: 16 }
-          - { name: "FLOOR", value: 17 }
-          - { name: "GELU_APPROX_TANH_BWD", value: 18 }
-          - { name: "GELU_APPROX_TANH_FWD", value: 19 }
-          - { name: "GELU_BWD", value: 20 }
-          - { name: "GELU_FWD", value: 21 }
-          - { name: "GEN_INDEX", value: 22 }
-          - { name: "IDENTITY", value: 23 }
-          - { name: "LOG", value: 24 }
-          - { name: "LOGICAL_AND", value: 25 }
-          - { name: "LOGICAL_NOT", value: 26 }
-          - { name: "LOGICAL_OR", value: 27 }
-          - { name: "MAX", value: 28, sdk_name: "MAX_OP" }
-          - { name: "MIN", value: 29, sdk_name: "MIN_OP" }
-          - { name: "MUL", value: 30 }
-          - { name: "NEG", value: 31 }
-          - { name: "RECIPROCAL", value: 32 }
-          - { name: "RELU_BWD", value: 33 }
-          - { name: "RELU_FWD", value: 34 }
-          - { name: "RSQRT", value: 35 }
-          - { name: "SIGMOID_BWD", value: 36 }
-          - { name: "SIGMOID_FWD", value: 37 }
-          - { name: "SIN", value: 38 }
-          - { name: "SOFTPLUS_BWD", value: 39 }
-          - { name: "SOFTPLUS_FWD", value: 40 }
-          - { name: "SQRT", value: 41 }
-          - { name: "SUB", value: 42 }
-          - { name: "SWISH_BWD", value: 43 }
-          - { name: "SWISH_FWD", value: 44 }
-          - { name: "TAN", value: 45 }
-          - { name: "TANH_BWD", value: 46 }
-          - { name: "TANH_FWD", value: 47 }
+          - { name: "ABS", value: 1, description: "Absolute value: |x|" }
+          - { name: "ADD", value: 2, description: "Addition: x + y" }
+          - { name: "ADD_SQUARE", value: 3, description: "Add and square: (x + y)^2" }
+          - { name: "BINARY_SELECT", value: 4, description: "Ternary select based on condition" }
+          - { name: "CEIL", value: 5, description: "Ceiling function" }
+          - { name: "CMP_EQ", value: 6, description: "Compare equal: x == y" }
+          - { name: "CMP_GE", value: 7, description: "Compare greater or equal: x >= y" }
+          - { name: "CMP_GT", value: 8, description: "Compare greater than: x > y" }
+          - { name: "CMP_LE", value: 9, description: "Compare less or equal: x <= y" }
+          - { name: "CMP_LT", value: 10, description: "Compare less than: x < y" }
+          - { name: "CMP_NEQ", value: 11, description: "Compare not equal: x != y" }
+          - { name: "DIV", value: 12, description: "Division: x / y" }
+          - { name: "ELU_BWD", value: 13, description: "ELU activation backward pass" }
+          - { name: "ELU_FWD", value: 14, description: "ELU activation forward pass" }
+          - { name: "ERF", value: 15, description: "Error function" }
+          - { name: "EXP", value: 16, description: "Exponential: e^x" }
+          - { name: "FLOOR", value: 17, description: "Floor function" }
+          - { name: "GELU_APPROX_TANH_BWD", value: 18, description: "GELU (tanh approximation) backward" }
+          - { name: "GELU_APPROX_TANH_FWD", value: 19, description: "GELU (tanh approximation) forward" }
+          - { name: "GELU_BWD", value: 20, description: "GELU activation backward" }
+          - { name: "GELU_FWD", value: 21, description: "GELU activation forward" }
+          - { name: "GEN_INDEX", value: 22, description: "Generate index tensor" }
+          - { name: "IDENTITY", value: 23, description: "Identity: y = x" }
+          - { name: "LOG", value: 24, description: "Natural logarithm" }
+          - { name: "LOGICAL_AND", value: 25, description: "Logical AND" }
+          - { name: "LOGICAL_NOT", value: 26, description: "Logical NOT" }
+          - { name: "LOGICAL_OR", value: 27, description: "Logical OR" }
+          - { name: "MAX", value: 28, sdk_name: "MAX_OP", description: "Element-wise maximum" }
+          - { name: "MIN", value: 29, sdk_name: "MIN_OP", description: "Element-wise minimum" }
+          - { name: "MUL", value: 30, description: "Multiplication: x * y" }
+          - { name: "NEG", value: 31, description: "Negation: -x" }
+          - { name: "RECIPROCAL", value: 32, description: "Reciprocal: 1/x" }
+          - { name: "RELU_BWD", value: 33, description: "ReLU backward pass" }
+          - { name: "RELU_FWD", value: 34, description: "ReLU forward pass" }
+          - { name: "RSQRT", value: 35, description: "Reciprocal square root: 1/sqrt(x)" }
+          - { name: "SIGMOID_BWD", value: 36, description: "Sigmoid backward pass" }
+          - { name: "SIGMOID_FWD", value: 37, description: "Sigmoid forward pass" }
+          - { name: "SIN", value: 38, description: "Sine function" }
+          - { name: "SOFTPLUS_BWD", value: 39, description: "Softplus backward pass" }
+          - { name: "SOFTPLUS_FWD", value: 40, description: "Softplus forward pass" }
+          - { name: "SQRT", value: 41, description: "Square root" }
+          - { name: "SUB", value: 42, description: "Subtraction: x - y" }
+          - { name: "SWISH_BWD", value: 43, description: "Swish activation backward" }
+          - { name: "SWISH_FWD", value: 44, description: "Swish activation forward" }
+          - { name: "TAN", value: 45, description: "Tangent function" }
+          - { name: "TANH_BWD", value: 46, description: "Tanh backward pass" }
+          - { name: "TANH_FWD", value: 47, description: "Tanh forward pass" }
 
     - name: "relu_lower_clip"
       fbs_field: "relu_lower_clip"

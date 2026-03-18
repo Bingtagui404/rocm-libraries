@@ -116,7 +116,8 @@ If the enum type is **new** (no existing backend header), populate the `enum_def
         #   sentinel: true       — marks UNSET/NOT_SET values excluded from backend C-API enum
         #   sdk_name: "ALT"      — override SDK enum name if different (e.g., "MAX_OP" for "MAX")
         #   frontend_name: "X"   — override frontend enum name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
-        #   frontend_value: N    — override frontend enum numeric value when it differs from backend value
+        #   description: "text"  — Doxygen comment for the enum constant (rendered as ///< text)
+        #   frontend_value: N    — frontend enum numeric value when different from backend (omit if same)
 ```
 
 **Rules for populating values:**
@@ -126,10 +127,15 @@ If the enum type is **new** (no existing backend header), populate the `enum_def
 - Mark FBS sentinel values (UNSET, NOT_SET) with `sentinel: true` — these are excluded from the backend C-API enum but included in the frontend enum as `NOT_SET = 0`
 - Use `sdk_name` when the SDK enum name differs from the backend name (e.g., FBS `MAX_OP` but backend `MAX`)
 - Use `frontend_name` when the frontend enum member name differs from the backend suffix (e.g., backend `TOP_LEFT_EXT` but frontend `TOP_LEFT`)
-- Use `frontend_value` when the frontend enum has different numeric values than the backend C-API (e.g., ConvolutionMode has `CROSS_CORRELATION=1, CONVOLUTION=2` in the frontend but `CONVOLUTION=0, CROSS_CORRELATION=1` in the backend). Check the existing frontend enum class in `Types.hpp` to determine if overrides are needed.
+- Add `description` to each value for Doxygen comments in generated code. Read the existing frontend `Types.hpp` enum class comments for the correct descriptions.
+- `frontend_value` is optional (null/omitted = use backend value). Only set when the frontend enum has different numeric values than the backend C-API (e.g., ConvolutionMode has `CROSS_CORRELATION=1, CONVOLUTION=2` in the frontend but `CONVOLUTION=0, CROSS_CORRELATION=1` in the backend). Check the existing frontend enum class in `Types.hpp` to determine if overrides are needed.
 - Set `shared: false` on the data field so the generator produces the mode enum plumbing
 
-If the enum type **already exists** in the backend, do NOT include `enum_def` (or set `shared: true` on the data field). The generator will reference the existing enum infrastructure.
+**`shared` and `enum_def` coexistence:** The `enum_def` block can be present on both `shared: true` and `shared: false` fields:
+- When `shared: false`: the generator produces all mode enum plumbing from `enum_def` (C-API header, backend/frontend plumbing fragments).
+- When `shared: true`: the `enum_def` serves as documentation and reference only — the generator skips plumbing generation because another operation already defined this enum. The benefit is that `enum_def` documents the enum values inline in the config and enables the agent to verify the enum infrastructure without searching the codebase.
+
+If the enum type **already exists** in the backend, set `shared: true` on the data field. You may optionally include `enum_def` for documentation purposes — the generator will skip plumbing generation regardless.
 
 ### 4. Handle Mode Enum Fields
 

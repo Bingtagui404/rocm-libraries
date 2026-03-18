@@ -10,24 +10,47 @@ from typing import Optional
 
 @dataclass
 class EnumValue:
-    """A single value in a mode enum."""
+    """A single value in a mode enum.
 
-    name: str  # Backend C-API suffix (e.g., "CROSS_CORRELATION", "TOP_LEFT_EXT")
-    value: int  # Numeric value for the backend C-API enum
-    sentinel: bool = False  # True for UNSET/NOT_SET (excluded from backend C-API enum)
-    sdk_name: str = (
-        ""  # Override SDK enum name if different from name (e.g., "MAX_OP" for "MAX")
-    )
-    frontend_name: str = (
-        ""  # Override frontend enum name if different from name (e.g., "TOP_LEFT" for "TOP_LEFT_EXT")
-    )
-    frontend_value: int = (
-        -1  # Override frontend enum numeric value (-1 = use backend value)
-    )
+    Represents one enum constant across three layers: backend C-API, SDK, and frontend.
+    The ``name`` and ``value`` fields define the backend C-API constant. Override fields
+    (``sdk_name``, ``frontend_name``, ``frontend_value``) handle cases where the three
+    layers use different names or numeric values for the same logical constant.
+
+    Attributes:
+        name: Backend C-API suffix appended to ``EnumDef.backend_prefix``
+            (e.g., ``"CROSS_CORRELATION"`` → ``HIPDNN_CONVOLUTION_MODE_CROSS_CORRELATION``).
+        value: Numeric value in the backend C-API enum typedef.
+        sentinel: If True, this value (typically UNSET/NOT_SET) is excluded from the
+            backend C-API enum but appears as ``NOT_SET = 0`` in the frontend enum class.
+        description: Doxygen-style description for the enum constant
+            (e.g., ``"Cross-correlation mode"``). Rendered as ``///< description`` in
+            generated code.
+        sdk_name: SDK (FlatBuffer) enum constant name when it differs from ``name``
+            (e.g., ``"MAX_OP"`` when backend uses ``"MAX"``).
+        frontend_name: Frontend enum class member name when it differs from ``name``
+            (e.g., ``"TOP_LEFT"`` when backend uses ``"TOP_LEFT_EXT"``).
+        frontend_value: Frontend enum numeric value when it differs from the backend
+            ``value``. ``None`` means the frontend uses the same numeric value as the
+            backend (the common case).
+    """
+
+    name: str
+    value: int
+    sentinel: bool = False
+    description: str = ""
+    sdk_name: str = ""
+    frontend_name: str = ""
+    frontend_value: Optional[int] = None
 
     @property
     def effective_sdk_name(self) -> str:
-        """SDK enum constant name (defaults to frontend_name, then name)."""
+        """SDK enum constant name.
+
+        Fallback chain: sdk_name → frontend_name → name.
+        The frontend_name fallback covers cases like DiagonalAlignment where the SDK
+        uses ``TOP_LEFT`` (matching the frontend) but the backend uses ``TOP_LEFT_EXT``.
+        """
         return self.sdk_name or self.frontend_name or self.name
 
     @property
@@ -38,12 +61,22 @@ class EnumValue:
     @property
     def effective_frontend_value(self) -> int:
         """Frontend enum numeric value (defaults to backend value)."""
-        return self.frontend_value if self.frontend_value >= 0 else self.value
+        return self.frontend_value if self.frontend_value is not None else self.value
 
 
 @dataclass
 class EnumDef:
-    """Full enum definition for code generation."""
+    """Full enum definition for code generation.
+
+    When present on a ``DataField`` with ``type="mode"`` and ``shared=False``,
+    the generator produces all mode enum plumbing: backend C-API header,
+    type tag fragment, SDK converters, attribute utils, string utils, and
+    frontend converters.
+
+    When ``shared=True``, the ``enum_def`` serves as documentation only — the
+    generator skips plumbing generation because the enum infrastructure already
+    exists (defined by another operation's config).
+    """
 
     backend_header: str = ""  # Output header filename (e.g., "HipdnnPointwiseMode.h")
     backend_prefix: str = ""  # C-API constant prefix (e.g., "HIPDNN_POINTWISE_")
@@ -51,8 +84,8 @@ class EnumDef:
 
     @property
     def non_sentinel_values(self) -> list[EnumValue]:
-        """Values excluding sentinel entries (for backend C-API enum)."""
-        return [v for v in self.values if not v.sentinel]
+        """Values excluding sentinels, sorted by backend numeric value."""
+        return sorted([v for v in self.values if not v.sentinel], key=lambda v: v.value)
 
 
 @dataclass
