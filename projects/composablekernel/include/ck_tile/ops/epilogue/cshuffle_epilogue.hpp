@@ -314,18 +314,19 @@ struct CShuffleEpilogue
             constexpr index_t BaseStrideElems = NPerIterationShuffle * MLdsLayer;
             static_assert((BaseStrideElems * DataTypeSize) % BytesPerBank == 0,
                           "LDS row stride must be 4B-aligned for bank-word padding logic");
-            // calculate how many elements to pad to avoid bank conflict
-#if defined(__gfx950__)
+            // Calculate padding to avoid LDS bank conflicts for 16x16 XDL stores.
+            // For 16x16 XDL, the MFMA output distribution causes rows 0,4,8,12 to be
+            // written simultaneously. Without padding, these rows map to the same banks.
+            // Adding 1 word (2 FP16 or 4 FP8 elements) of padding spreads them across
+            // different banks. 32x32 XDL doesn't need padding (already conflict-free).
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
             constexpr index_t BaseWords  = ToWords(BaseStrideElems);
-            constexpr index_t PadWords   = ((BaseWords % 2) == 0) ? 1 : 0;
+            constexpr bool needs_padding = (MPerXdl == 16);
+            constexpr index_t PadWords   = (needs_padding && (BaseWords % 2) == 0) ? 1 : 0;
             constexpr auto PaddingAmount = PadWords * ElemsPer4B;
-#else
-            constexpr auto PaddingAmount = 0;
-#endif
 
             constexpr auto lds_block_desc_0 = make_naive_tensor_descriptor(
                 make_tuple(number<MPerIterationShuffle / MLdsLayer>{},
