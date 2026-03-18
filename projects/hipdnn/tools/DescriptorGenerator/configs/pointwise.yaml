@@ -15,6 +15,43 @@ operation:
     node_class: "PointwiseNode"
     attributes_class: "PointwiseAttributes"
 
+    inputs:
+      - name: "input_0"
+        enum_name: "IN_0"
+        enum_value: 0
+        required: true
+        getter_name: "get_input_0"
+        setter_name: "set_input_0"
+      - name: "input_1"
+        enum_name: "IN_1"
+        enum_value: 1
+        required: false
+        getter_name: "get_input_1"
+        setter_name: "set_input_1"
+      - name: "input_2"
+        enum_name: "IN_2"
+        enum_value: 2
+        required: false
+        getter_name: "get_input_2"
+        setter_name: "set_input_2"
+    outputs:
+      - name: "output_0"
+        enum_name: "OUT_0"
+        enum_value: 0
+        required: true
+        getter_name: "get_output_0"
+        setter_name: "set_output_0"
+    graph_method_name: "pointwise"
+    graph_method_params:
+      - name: "in0"
+        tensor_name: "input_0"
+    graph_return_type: "single"
+    graph_return_outputs:
+      - "output_0"
+    node_type_enum: "NodeType::POINTWISE"
+    node_attributes_union_type: "PointwiseAttributes"
+    compatibility_typedef: "Pointwise_attributes"
+
   tensor_fields:
     - name: "in_0"
       fbs_field: "in_0_tensor_uid"
@@ -52,7 +89,9 @@ operation:
       attr_name: "HIPDNN_ATTR_POINTWISE_MODE"
       type: "mode"
       cpp_enum: "hipdnn_data_sdk::data_objects::PointwiseMode"
+      frontend_type: "PointwiseMode"
       required: true
+      default_value: "PointwiseMode::NOT_SET"
       frontend_getter: "get_mode()"
       backend_setter: "setPointwiseMode"
       backend_getter: "getPointwiseMode"

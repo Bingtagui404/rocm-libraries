@@ -42,8 +42,11 @@ namespace
 {% if df.is_vector %}
     attrs.{{ df.frontend_setter_name }}({{ '{' }}{{ op.test_data.field_values.get(df.name, [1, 1]) | join(', ') }}{{ '}' }});
 {% elif df.is_mode or df.is_enum %}
-    // TODO: Set {{ df.name }} — use the appropriate frontend enum type
-    // attrs.{{ df.frontend_setter_name }}(<FrontendEnumType>::{{ df.test_enum_value }});
+{% if df.effective_frontend_type and df.test_enum_value %}
+    attrs.{{ df.frontend_setter_name }}({{ df.effective_frontend_type }}::{{ df.test_enum_value }});
+{% else %}
+    // TODO: Set {{ df.name }} — provide frontend_type and test_enum_value in YAML config
+{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -100,8 +103,11 @@ TEST(Test{{ op.frontend.node_class }}, PreValidateNodeMissing{{ tensor.name | re
 {% if df.is_vector %}
     attrs.{{ df.frontend_setter_name }}({{ '{' }}{{ op.test_data.field_values.get(df.name, [1, 1]) | join(', ') }}{{ '}' }});
 {% elif df.is_mode or df.is_enum %}
-    // TODO: Set {{ df.name }} — use the appropriate frontend enum type
-    // attrs.{{ df.frontend_setter_name }}(<FrontendEnumType>::{{ df.test_enum_value }});
+{% if df.effective_frontend_type and df.test_enum_value %}
+    attrs.{{ df.frontend_setter_name }}({{ df.effective_frontend_type }}::{{ df.test_enum_value }});
+{% else %}
+    // TODO: Set {{ df.name }} — provide frontend_type and test_enum_value in YAML config
+{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -195,8 +201,11 @@ TEST(Test{{ op.frontend.node_class }}, PackNode)
 {% if df.is_vector %}
     attrs.{{ df.frontend_setter_name }}({{ '{' }}{{ op.test_data.field_values.get(df.name, [1, 1]) | join(', ') }}{{ '}' }});
 {% elif df.is_mode or df.is_enum %}
-    // TODO: Set {{ df.name }} — use the appropriate frontend enum type
-    // attrs.{{ df.frontend_setter_name }}(<FrontendEnumType>::{{ df.test_enum_value }});
+{% if df.effective_frontend_type and df.test_enum_value %}
+    attrs.{{ df.frontend_setter_name }}({{ df.effective_frontend_type }}::{{ df.test_enum_value }});
+{% else %}
+    // TODO: Set {{ df.name }} — provide frontend_type and test_enum_value in YAML config
+{% endif %}
 {% endif %}
 {% endfor %}
 
@@ -258,8 +267,11 @@ TEST(Test{{ op.frontend.node_class }}, GatherHipdnnTensor)
 {% if df.is_vector %}
     attrs.{{ df.frontend_setter_name }}({{ '{' }}{{ op.test_data.field_values.get(df.name, [1, 1]) | join(', ') }}{{ '}' }});
 {% elif df.is_mode or df.is_enum %}
-    // TODO: Set {{ df.name }} — use the appropriate frontend enum type
-    // attrs.{{ df.frontend_setter_name }}(<FrontendEnumType>::{{ df.test_enum_value }});
+{% if df.effective_frontend_type and df.test_enum_value %}
+    attrs.{{ df.frontend_setter_name }}({{ df.effective_frontend_type }}::{{ df.test_enum_value }});
+{% else %}
+    // TODO: Set {{ df.name }} — provide frontend_type and test_enum_value in YAML config
+{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}

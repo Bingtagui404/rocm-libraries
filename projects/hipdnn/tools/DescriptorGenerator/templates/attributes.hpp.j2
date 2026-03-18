@@ -14,7 +14,9 @@
 #include "Attributes.hpp"
 #include "TensorAttributes.hpp"
 #include <hipdnn_data_sdk/data_objects/{{ op.fbs_generated_header }}>
+{% if op.has_mode_fields or op.has_enum_fields %}
 #include <hipdnn_frontend/Types.hpp>
+{% endif %}
 #include <memory>
 {% set ns = namespace(has_optional=false) %}
 {% for df in op.data_fields %}
@@ -24,7 +26,9 @@
 {% endif %}
 {% endfor %}
 #include <unordered_map>
+{% if op.has_vector_fields %}
 #include <vector>
+{% endif %}
 
 namespace hipdnn_frontend::graph
 {
@@ -67,7 +71,7 @@ public:
 {% elif df.is_enum %}
     {{ df.cpp_enum }} {{ df.name }} = {{ df.cpp_enum }}(0); ///< {{ df.name | replace('_', ' ') | title }}
 {% elif df.is_mode %}
-    {{ df.frontend_type if df.frontend_type is defined and df.frontend_type else df.cpp_enum | replace('hipdnn_data_sdk::data_objects::', '') }} {{ df.name }}{% if df.default_value %} = {{ df.default_value }}{% endif %}; ///< {{ df.name | replace('_', ' ') | title }}
+    {{ df.effective_frontend_type }} {{ df.name }}{% if df.default_value %} = {{ df.default_value }}{% endif %}; ///< {{ df.name | replace('_', ' ') | title }}
 {% elif df.type == "scalar_float" %}
 {% if df.is_optional_scalar %}
     std::optional<float> {{ df.name }} = std::nullopt; ///< {{ df.name | replace('_', ' ') | title }}
@@ -165,7 +169,7 @@ public:
         return {{ df.name }};
     }
 {% elif df.is_mode %}
-{% set mode_type = df.frontend_type if df.frontend_type is defined and df.frontend_type else df.cpp_enum | replace('hipdnn_data_sdk::data_objects::', '') %}
+{% set mode_type = df.effective_frontend_type %}
 
     /**
      * @brief Set {{ df.name | replace('_', ' ') }}
@@ -267,8 +271,17 @@ public:
     {
         return {{ op.fbs_namespace }}::Create{{ op.fbs_table }}Direct(
             builder
-{%- for tf in op.tensor_fields %},
-            {{ tf.frontend_getter | replace('()', '') }}()->get_uid()
+{%- for tf in op.tensor_fields %}
+{%- set ft = op.tensor_field_frontend_map.get(tf.name) %}
+{%- if ft %},
+{%- if tf.required %}
+            {{ ft.effective_getter_name }}()->get_uid()
+{%- else %}
+            {{ ft.effective_getter_name }}() ? flatbuffers::Optional<int64_t>({{ ft.effective_getter_name }}()->get_uid()) : flatbuffers::nullopt
+{%- endif %}
+{%- else %},
+            0
+{%- endif %}
 {%- endfor %}
 {%- for df in op.data_fields %}
 {% if df.is_vector %},
@@ -292,13 +305,16 @@ public:
         {{ op.frontend.attributes_class }} attr;
 
 {% for tf in op.tensor_fields %}
+{% set ft = op.tensor_field_frontend_map.get(tf.name) %}
+{% if ft %}
 {% if tf.required %}
-        attr.{{ tf.frontend_setter }}(tensorMap.at(fb->{{ tf.fbs_field }}()));
+        attr.{{ ft.effective_setter_name }}(tensorMap.at(fb->{{ tf.fbs_field }}()));
 {% else %}
         if(fb->{{ tf.fbs_field }}() != 0)
         {
-            attr.{{ tf.frontend_setter }}(tensorMap.at(fb->{{ tf.fbs_field }}()));
+            attr.{{ ft.effective_setter_name }}(tensorMap.at(fb->{{ tf.fbs_field }}()));
         }
+{% endif %}
 {% endif %}
 {% endfor %}
 

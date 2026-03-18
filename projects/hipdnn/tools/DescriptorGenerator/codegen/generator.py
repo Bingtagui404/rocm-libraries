@@ -286,6 +286,7 @@ class DescriptorGenerator:
             "fragments/graph_includes.j2": "graph_includes.txt",
             "fragments/deserialize_case.j2": "deserialize_case.txt",
             "fragments/frontend_cmake_entries.j2": "frontend_cmake_entries.txt",
+            "fragments/node_type_enum.j2": "node_type_enum.txt",
         }
 
         fragments_dir = output_dir / "fragments"

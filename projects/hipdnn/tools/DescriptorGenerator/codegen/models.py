@@ -92,6 +92,7 @@ class DataField:
     frontend_getter: str = ""
     frontend_converter: str = ""
     cpp_enum: str = ""
+    frontend_type: str = ""
     default_value: str = ""
     test_value: Optional[list] = None
     test_label: str = ""
@@ -168,6 +169,19 @@ class DataField:
     @property
     def enum_short_type(self) -> str:
         """Short enum type name (e.g., 'ConvMode' from full namespace)."""
+        if self.cpp_enum:
+            return self.cpp_enum.rsplit("::", 1)[-1]
+        return ""
+
+    @property
+    def effective_frontend_type(self) -> str:
+        """Frontend C++ type for mode/enum fields.
+
+        Returns frontend_type if set, falls back to stripping the SDK namespace
+        from cpp_enum (e.g., 'hipdnn_data_sdk::data_objects::ConvMode' -> 'ConvMode').
+        """
+        if self.frontend_type:
+            return self.frontend_type
         if self.cpp_enum:
             return self.cpp_enum.rsplit("::", 1)[-1]
         return ""
@@ -596,6 +610,50 @@ class OperationConfig:
     @property
     def has_tensor_array_fields(self) -> bool:
         return len(self.tensor_array_fields) > 0
+
+    @property
+    def tensor_field_frontend_map(self) -> dict:
+        """Maps tensor_field name -> matching FrontendTensorConfig from frontend inputs/outputs.
+
+        This enables templates to look up the correct frontend getter/setter for any
+        backend tensor_field, handling cases where names diverge (e.g., tensor_field 'in_0'
+        maps to frontend tensor 'input_0').
+        """
+        if not self.frontend.inputs and not self.frontend.outputs:
+            return {}
+        result = {}
+        all_frontend = self.frontend.inputs + self.frontend.outputs
+        for tf in self.tensor_fields:
+            # Try exact name match first
+            for ft in all_frontend:
+                if tf.name == ft.name:
+                    result[tf.name] = ft
+                    break
+            else:
+                # Try matching backend getter base to frontend tensor name
+                if tf.frontend_getter:
+                    tf_base = tf.frontend_getter.replace("()", "").replace("get_", "")
+                    for ft in all_frontend:
+                        ft_base = ft.effective_getter_name.replace("get_", "")
+                        if tf_base == ft_base:
+                            result[tf.name] = ft
+                            break
+                        # Handle abbreviated names: in_0 -> input_0, out_0 -> output_0
+                        if (
+                            tf_base.startswith("in_")
+                            and ft_base.startswith("input_")
+                            and tf_base[3:] == ft_base[6:]
+                        ):
+                            result[tf.name] = ft
+                            break
+                        if (
+                            tf_base.startswith("out_")
+                            and ft_base.startswith("output_")
+                            and tf_base[4:] == ft_base[7:]
+                        ):
+                            result[tf.name] = ft
+                            break
+        return result
 
     # --- Frontend filename computed properties ---
 

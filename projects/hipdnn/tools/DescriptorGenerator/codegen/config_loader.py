@@ -78,6 +78,7 @@ def load_config(path: Path) -> OperationConfig:
                 frontend_getter=df.get("frontend_getter", ""),
                 frontend_converter=df.get("frontend_converter", ""),
                 cpp_enum=df.get("cpp_enum", ""),
+                frontend_type=df.get("frontend_type", ""),
                 default_value=df.get("default_value", ""),
                 test_value=df.get("test_value"),
                 test_label=df.get("test_label", ""),
