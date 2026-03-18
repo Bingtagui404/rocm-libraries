@@ -69,20 +69,17 @@ Read the FBS schema file. Map fields to YAML config following these rules:
 | `field: bool` | `data_fields` | `bool` |
 | `field: [long]` (array of UIDs) | `tensor_array_fields` | (tensor arrays) |
 
-Ask the user for information the schema alone cannot provide:
-- **Operation name** (PascalCase, e.g., `ConvolutionFwd`)
-- **Descriptor type enum name** (e.g., `HIPDNN_BACKEND_OPERATION_CONVOLUTION_FORWARD_DESCRIPTOR`)
-- **Operation attribute prefix** (e.g., `HIPDNN_ATTR_OPERATION_CONVOLUTION_FORWARD`)
-- **Whether any attributes are shared** with other existing operations
-- **Whether this operation has a compute data type**
-- **Test tensor UIDs** (suggest non-conflicting range: existing ranges documented in the reference doc)
+Derive all config fields from the schema and existing codebase — do NOT ask the user for these. Use existing configs and backend code to determine:
 
-For frontend mode or full mode, also ask:
-- **Graph method name** (e.g., `conv_fprop`)
-- **NodeType enum value** (e.g., `CONVOLUTION_FPROP`)
-- **FlatBuffer NodeAttributes union type** (e.g., `ConvolutionFwdAttributes`)
+- **Operation name**: Derive from the FBS table name (e.g., `ConvolutionFwdAttributes` → `ConvolutionFwd`)
+- **Descriptor type enum**: Search `$HIPDNN_SRC/backend/include/HipdnnBackendDescriptorType.h` for existing enum entries
+- **Operation attribute prefix**: Search `$HIPDNN_SRC/backend/include/HipdnnBackendAttributeName.h` for existing `HIPDNN_ATTR_OPERATION_*` entries
+- **Shared attributes**: Compare attribute names against existing operations in the codebase
+- **Compute data type**: Check if the FBS schema has compute precision fields; check existing operations for patterns
+- **Test tensor UIDs**: Read existing configs in `$CODEGEN/configs/` to find used UID ranges, pick the next available
+- **Frontend fields** (graph method name, NodeType, union type): Derive from existing frontend code or operation name conventions
 
-For any question the user skips, use sensible defaults derived from the operation name.
+If a field truly cannot be determined, use sensible defaults derived from the operation name. Only ask the user as a last resort for genuinely ambiguous decisions.
 
 Write the config to `$CODEGEN/configs/<operation>.yaml`.
 
@@ -210,7 +207,7 @@ For `backend` mode when a frontend node already exists, or for `full` mode:
 
 ### 11. Ask About Operation-Specific Logic
 
-For `frontend` or `full` mode, ask the user about:
+For `frontend` or `full` mode, these are the ONLY questions to ask the user:
 
 **infer_properties_node()**:
 - "How should output dimensions be inferred?"
@@ -226,9 +223,36 @@ For `frontend` or `full` mode, ask the user about:
   - e.g., "stride and dilation must be > 0"
   - Default: leave with just the standard null/dim checks
 
-If the user chooses stubs, ensure the TODO comments are descriptive enough for later implementation.
+Do NOT ask the user about any other fields or decisions — derive everything else from the schema, existing code, and conventions.
 
-### 12. Build and Test
+### 12. Implement Integration Test
+
+The generated `Integration<Op>DescriptorLowering.cpp` is a stub — you MUST implement the full E2E round-trip tests before the work is considered complete.
+
+Read the existing integration test at `$HIPDNN_SRC/tests/frontend/IntegrationConvFpropDescriptorLowering.cpp` as the reference pattern. Each integration test should:
+
+1. Build a frontend graph using the frontend API (e.g., `graph->conv_fprop(x, w, attrs)`)
+2. Call `graph->validate()` and `graph->build_operation_graph_via_descriptors(_handle)` to lower to backend
+3. Retrieve the serialized graph via `hipdnnBackendGetSerializedGraph_ext()`
+4. Deserialize the FlatBuffer into a `GraphT`
+5. Verify all tensor attributes (UIDs, dims, strides, data type, name)
+6. Verify the node's operation attributes (tensor UID references, data fields, mode fields, etc.)
+
+Implement at minimum these two test cases:
+
+**`<Op>GraphRoundTrip`** — Full round-trip with explicit UIDs:
+- Create tensors with explicit UIDs and specific dims/strides
+- Set all operation parameters with non-default values
+- Lower to backend, deserialize, and verify every field matches
+
+**`AutoAssignedUidsPreservedInRoundTrip`** — Round-trip with auto-assigned UIDs:
+- Create tensors without setting UIDs
+- Lower to backend, deserialize
+- Verify all tensor UIDs are unique and the node references them correctly
+
+If the frontend node class or graph method does not exist yet (e.g., backend-only mode), skip this step but note it as pending.
+
+### 13. Build and Test
 
 Build to verify everything compiles. Use the ROCm Clang toolchain:
 ```bash
@@ -244,11 +268,11 @@ If build succeeds, run unit tests:
 ninja unit-check 2>&1 | tail -50
 ```
 
-### 13. Report Results
+### 14. Report Results
 
 Summarize what was generated and placed:
 - List all files created/modified
-- Note any stubs that need manual implementation (infer_properties, validation, integration test)
+- Note any stubs that still need implementation (custom infer_properties, custom validation)
 - Note any fragment insertions that need manual verification (enum value ranges, CMake)
 - If build/tests passed, confirm
 - If anything failed, show the error
@@ -263,8 +287,9 @@ Summarize what was generated and placed:
 
 ## Notes
 
-- The integration test (`Integration<Op>DescriptorLowering.cpp`) is always a STUB. Remind the user it needs manual implementation.
+- The generated integration test is a stub — Step 12 requires you to implement it by following the `IntegrationConvFpropDescriptorLowering.cpp` reference pattern.
 - For `lift-only` mode, existing descriptor files are modified in-place per `descriptor_lifting_additions.txt`.
 - `mode` type is REQUIRED for all enum fields in new operations. Never use the legacy `enum` type.
 - Read `$CODEGEN/CLAUDE.md` for the full detailed post-generation workflow if you need additional context on any step.
 - Always use `convolution_fwd.yaml` as the reference config when creating new configs.
+- Do NOT ask the user questions about config fields, enum names, UIDs, or other derivable information. The only user-facing questions should be about `infer_properties` strategy and custom validation rules.
