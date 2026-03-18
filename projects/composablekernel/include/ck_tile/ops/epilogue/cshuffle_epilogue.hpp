@@ -323,7 +323,7 @@ struct CShuffleEpilogue
                 }
                 return l;
             }();
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
             // gfx950: 64-bank LDS needs 3-bit XOR, which requires VectorLen=4
             constexpr bool needs_vec_reduction_to_4 =
                 (MPerXdl == 16) &&
@@ -353,7 +353,7 @@ struct CShuffleEpilogue
             // different bank regions while preserving the load-friendly interleaved layout.
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
             constexpr bool needs_16x16_padding = (MPerXdl == 16);
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
@@ -411,7 +411,7 @@ struct CShuffleEpilogue
 
             // Check if we have enough column bits for the XOR transform
             // gfx950 (64 banks) needs 3-bit XOR, others need 2-bit XOR
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
             constexpr index_t xor_bits = 3;  // 8-way spread for 64-bank LDS
 #else
             constexpr index_t xor_bits = 2;  // 4-way spread for 32-bank LDS
@@ -421,7 +421,7 @@ struct CShuffleEpilogue
 
             if constexpr(MPerXdl == 16 && has_enough_col_bits)
             {
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
                 // 16x16 XDL on gfx950: use 3-bit XOR for 64-bank LDS
                 // Row bits 1,2,3 give 8-way spread across 64 banks
                 using RowBits = sequence<1, 2, 3>;
@@ -477,7 +477,7 @@ struct CShuffleEpilogue
             static_assert((BaseStrideElems * DataTypeSize) % BytesPerBank == 0,
                           "LDS row stride must be 4B-aligned for bank-word padding logic");
 
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
             constexpr index_t ElemsPer4B = BytesPerBank / ck_tile::gcd(BytesPerBank, DataTypeSize);
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
@@ -540,7 +540,7 @@ struct CShuffleEpilogue
             }
             else
             {
-#if defined(__gfx950__)
+#if defined(CK_GFX950_SUPPORT)
                 constexpr auto is_950 = true;
 #else
                 constexpr auto is_950 = false;
