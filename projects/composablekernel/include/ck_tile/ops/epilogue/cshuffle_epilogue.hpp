@@ -344,13 +344,8 @@ struct CShuffleEpilogue
             constexpr auto ToWords       = [](index_t elems) constexpr {
                 return (elems * DataTypeSize) / BytesPerBank;
             };
-            constexpr index_t BaseWords = ToWords(BaseStrideElems);
-            // For 64-bank LDS (gfx950), use 4 words (16 bytes) padding for 16x16 XDL.
-            // This creates stride that spreads rows 0,4,8,12 to banks 0,16,32,48.
-            // With 8 words (32 bytes), stride=288 causes rows 0,8 to collide at bank 0.
-            // With 4 words (16 bytes), stride=272 gives perfect distribution.
-            constexpr index_t PadWords =
-                needs_16x16_padding ? 4 : (((BaseWords % 2) == 0) ? 1 : 0);
+            constexpr index_t BaseWords  = ToWords(BaseStrideElems);
+            constexpr index_t PadWords   = needs_16x16_padding ? 8 : (((BaseWords % 2) == 0) ? 1 : 0);
             constexpr auto PaddingAmount = PadWords * ElemsPer4B;
 #else
             constexpr auto PaddingAmount = needs_16x16_padding ? (8 * ElemsPer4B) : 0;
