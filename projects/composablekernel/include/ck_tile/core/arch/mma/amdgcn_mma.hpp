@@ -18,13 +18,13 @@ namespace ck_tile::core::arch::mma {
  *  Meaning of amdgcn_mma layout parameters (general)
  * ---------------------------------------------------
  *
- * The fragment sizes and layout constants in the amdgcn_mma struct describe the mapping between
- * intrinsic input / output matrix elements and vector registers (lane x vector_item space). Note
- * that we end up having a mapping for A, B and C separately, although those for A and B are usually
- * similar if not identical. All mappings can be described as an unmerge operation on one of the
- * matrix dims (either K for AB or M for C), followed by remerging of the resulting subdims and raw
- * other dim into the Lane and Vector_item dimensions. When considering an unmerge operation on a
- * dimension K, we can label the resulting sub-dimensions as K0, K1, and K2, where K0 is the size
+ * The fragment (MmaTile) sizes and layout constants in the amdgcn_mma struct describe the mapping
+ * between intrinsic input / output matrix elements and vector registers (lane x vector_item space).
+ * Note that we end up having a mapping for A, B and C separately, although those for A and B are
+ * usually similar if not identical. All mappings can be described as an unmerge operation on one of
+ * the matrix dims (either K for AB or M for C), followed by remerging of the resulting subdims and
+ * raw other dim into the Lane and Vector_item dimensions. When considering an unmerge operation on
+ * a dimension K, we can label the resulting sub-dimensions as K0, K1, and K2, where K0 is the size
  * of the fastest changing dimension. K0 is also referred to as "The size of the first unmerge", and
  * K1 would be "The size of the second unmerge". There are never more than 2 unmerge operations, and
  * unmerge operations may be trivial (unmerge size of 1). Example double unmerge of size {3, 2} of a
@@ -96,7 +96,7 @@ namespace ck_tile::core::arch::mma {
  *
  * -- A / B Repeat --
  * Variable indicating that all matrix values are represented multiple times in the vector
- * reigsters, typically repeating in the lane dimension. This is always equal to the repeat value
+ * registers, typically repeating in the lane dimension. This is always equal to the repeat value
  * used in Tile Distribution encodings. There are two reasons to have non-trivial (non-1) value
  * here: MFMA block-hiding to create oblong "virtual" intrinsics, and RDNA3 input repetition.
  *
@@ -143,7 +143,7 @@ struct amdgcn_mma_base
     using BDataType = BDataType_;
     using CDataType = CDataType_;
 
-    // Fragment sizes, check description above.
+    // Fragment (MmaTile) sizes, check description above.
     static constexpr index_t kM = FragM; // M = M2 * M1 * M0
     static constexpr index_t kN = FragN;
     static constexpr index_t kK = FragK; // K = K2 * K1 * K0
@@ -224,9 +224,9 @@ concept MmaOpI = requires(MmaOp op) {
  *  @tparam ADataType Datatype of input A
  *  @tparam BDataType Datatype of input B
  *  @tparam CDataType Datatype of accumulator
- *  @tparam FragM M-dimension of mma intrinsic
- *  @tparam FragN N-dimension of mma intrinsic
- *  @tparam FragK K-dimension of mma intrinsic
+ *  @tparam FragM M-dimension of mma intrinsic (MmaTile)
+ *  @tparam FragN N-dimension of mma intrinsic (MmaTile)
+ *  @tparam FragK K-dimension of mma intrinsic (MmaTile)
  *  @tparam CtrlFlags Control flags for mma operation
  *  @tparam CompilerTarget The current compiler target
  *  @tparam OpFamily_ The type of operation (dense, sparse, scale, etc.)
@@ -251,7 +251,13 @@ struct amdgcn_mma : amdgcn_mma_base<fp32_t, fp32_t, fp32_t, 1u, 1u, 1u, 1u, 1, 1
     CK_TILE_DEVICE static CVecType const&
     exec(AVecType const& regsA, BVecType const& regsB, CVecType const& regsC)
     {
-        printf("[WARNING] Running amdgcn_mma dummy exec function!\n");
+        // Prints once across all thread blocks and threads.
+        static __device__ int printed = 0;
+        if(threadIdx.x == 0 && atomicCAS(&printed, 0, 1) == 0)
+        {
+            printf("[WARNING] Running amdgcn_mma dummy exec function!\n");
+        }
+
         ignore(regsA, regsB);
         return regsC; // No-op, just return C
     }

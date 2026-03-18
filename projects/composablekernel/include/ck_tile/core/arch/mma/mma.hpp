@@ -27,34 +27,33 @@ enum struct MmaAccumPolicy
 /**
  * @class Mma
  * @brief Driver for the wave-tile Mma operation. Given a backend MmaOp implementation
- * (e.g., mfma or wmma), this class performs fragment-wise decomposition to matrix-multiply input
- * chunks of (A: ChunkM x ChunkK) x (B: ChunkK x ChunkN) and accumulates results into output chunk
- * (C: ChunkM x ChunkN).
- * @tparam ADataType Data type of input chunk A
- * @tparam BDataType Data type of input chunk B
- * @tparam CDataType Data type of input/output chunk C (accumulator)
- * @tparam ChunkM Mma chunk M dimension
- * @tparam ChunkN Mma chunk K dimension
- * @tparam ChunkK Mma chunk M dimension
- * @tparam AccumPolicy The fragment order of the accumulation registers (row major or col major
- * fragment order)
+ * (e.g., mfma or wmma), this class performs fragment-wise (MmaTile) decomposition to
+ * matrix-multiply input WaveTiles of (A: WaveTileM x WaveTileK) x (B: WaveTileK x WaveTileN) and
+ * accumulates results into output WaveTile (C: WaveTileM x WaveTileN).
+ * @tparam ADataType      Data type of input WaveTile A
+ * @tparam BDataType      Data type of input WaveTile B
+ * @tparam CDataType      Data type of input/output WaveTile C (accumulator)
+ * @tparam WaveTileM      Mma WaveTile M dimension
+ * @tparam WaveTileN      Mma WaveTile K dimension
+ * @tparam WaveTileK      Mma WaveTile M dimension
+ * @tparam AccumPolicy    The fragment order of the accum. registers (row or col major frag order)
  * @tparam CompilerTarget The compiler target
- * @tparam MmaOp The backend wrapper class that will perform the mma op (e.g., mfma or wmma)
- * @tparam MmaTransforms The set of transforms to be applied to input/output chunks
+ * @tparam MmaOp          Backend wrapper class that will perform the mma op (e.g., mfma or wmma)
+ * @tparam MmaTransforms  The set of transforms to be applied to input/output WaveTiles
  * @par This is an example of an Mma decomposition driver class that can be used in a wave-tile
- * context. Given a chunk size, we can decompose the chunk into smaller mma op fragments
+ * context. Given a WaveTile size, we can decompose the WaveTile into smaller mma op fragments
  * that are natively supported by the hardware (e.g., mfma or wmma). The class also supports
  * applying transforms to the input/output frags as needed (e.g., layout conversions, data type
  * conversions, etc.). We may also specify the accumulation order (row-major or col-major) for the
- * output chunk. This is a powerful example of how to build a flexible and reusable mma driver
+ * output WaveTile. This is a powerful example of how to build a flexible and reusable mma driver
  * that can adapt to different hardware capabilities and requirements.
  */
 template <typename ADataType,
           typename BDataType,
           typename CDataType,
-          uint32_t ChunkM,
-          uint32_t ChunkN,
-          uint32_t ChunkK,
+          uint32_t WaveTileM,
+          uint32_t WaveTileN,
+          uint32_t WaveTileK,
           MmaOpFamily OpFamily,
           MmaAccumPolicy AccumPolicy = MmaAccumPolicy::ROW_MAJOR,
           typename CompilerTarget =
@@ -65,9 +64,9 @@ template <typename ADataType,
                                                      // MmaDefaultSelector<ADataType,
                                           BDataType,
                                           CDataType,
-                                          ChunkM,
-                                          ChunkN,
-                                          ChunkK,
+                                          WaveTileM,
+                                          WaveTileN,
+                                          WaveTileK,
                                           CompilerTarget,
                                           OpFamily>::SelectedOp,
           typename MmaTransforms = // TODO: c++20 MmaTransformsI MmaTransforms =
@@ -82,9 +81,9 @@ struct WaveWiseMma
     constexpr static uint32_t FragK = MmaOp::kK;
 
     // Fragment counts for decomposition
-    constexpr static uint32_t FragsM = ChunkM / FragM;
-    constexpr static uint32_t FragsN = ChunkN / FragN;
-    constexpr static uint32_t FragsK = ChunkK / FragK;
+    constexpr static uint32_t FragsM = WaveTileM / FragM;
+    constexpr static uint32_t FragsN = WaveTileN / FragN;
+    constexpr static uint32_t FragsK = WaveTileK / FragK;
     constexpr static uint32_t FragsC = FragsM * FragsN;
 
     // Vector types for packed registers in each fragment
@@ -92,7 +91,7 @@ struct WaveWiseMma
     using BVecType = typename MmaOp::BVecType;
     using CVecType = typename MmaOp::CVecType;
 
-    // Buffer types for chunks
+    // Buffer types for WaveTiles
     using ABufferType = AVecType[FragsM][FragsK];
     using BBufferType = BVecType[FragsN][FragsK];
     using CBufferType = CVecType[FragsM][FragsN];
@@ -104,19 +103,19 @@ struct WaveWiseMma
     using DTransform = typename MmaTransforms::DTransform;
 
     // Sanity checks
-    static_assert(ChunkM >= FragM, "ChunkM must be larger than FragM");
-    static_assert(ChunkN >= FragN, "ChunkN must be larger than FragN");
-    static_assert(ChunkK >= FragK, "ChunkK must be larger than FragK");
-    static_assert(ChunkM % FragM == 0u, "ChunkM must be a multiple of FragM");
-    static_assert(ChunkN % FragN == 0u, "ChunkN must be a multiple of FragN");
-    static_assert(ChunkK % FragK == 0u, "ChunkK must be a multiple of FragK");
+    static_assert(WaveTileM >= FragM, "WaveTileM must be larger than FragM");
+    static_assert(WaveTileN >= FragN, "WaveTileN must be larger than FragN");
+    static_assert(WaveTileK >= FragK, "WaveTileK must be larger than FragK");
+    static_assert(WaveTileM % FragM == 0u, "WaveTileM must be a multiple of FragM");
+    static_assert(WaveTileN % FragN == 0u, "WaveTileN must be a multiple of FragN");
+    static_assert(WaveTileK % FragK == 0u, "WaveTileK must be a multiple of FragK");
 
     private:
     template <typename DstT, typename SrcT>
     CK_TILE_DEVICE static auto formatBuffer(SrcT const& inputBuffer)
     {
         // TODO: Implement formatting logic as needed.
-        // This is intended to convert input chunks to the native vector types
+        // This is intended to convert input WaveTiles to the native vector types
         // required by the FragWiseMma operation for iteration
         static_assert(sizeof(DstT) == sizeof(SrcT), "Size mismatch in formatBuffer");
         return reinterpret_cast<DstT const&>(inputBuffer);
@@ -126,16 +125,16 @@ struct WaveWiseMma
     CK_TILE_DEVICE static auto formatBuffer(SrcT& inputBuffer)
     {
         // TODO: Implement formatting logic as needed.
-        // This is intended to convert input chunks to the native vector types
+        // This is intended to convert input WaveTiles to the native vector types
         // required by the FragWiseMma operation for iteration
         static_assert(sizeof(DstT) == sizeof(SrcT), "Size mismatch in formatBuffer");
         return reinterpret_cast<DstT&>(inputBuffer);
     }
 
     /*! @brief Execute Mma in row-major accumulation order.
-     * @tparam VecTA The input chunk A vector type
-     * @tparam VecTB The input chunk B vector type
-     * @tparam VecTC The input/output chunk C vector type
+     * @tparam VecTA The input WaveTile A vector type
+     * @tparam VecTB The input WaveTile B vector type
+     * @tparam VecTC The input/output WaveTile C vector type
      */
     template <typename VecTA, typename VecTB, typename VecTC>
     CK_TILE_DEVICE static decltype(auto) exec_col_major(VecTA&& a, VecTB&& b, VecTC&& accum)
@@ -163,21 +162,21 @@ struct WaveWiseMma
             }
         }
 
-        // Convert native vector results back to the output chunk format
+        // Convert native vector results back to the output WaveTile format
         // and then return after we apply the final output transform.
         return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_frag));
     }
 
     /*! @brief Execute Mma in row-major accumulation order.
-     * @tparam VecTA The input chunk A vector type
-     * @tparam VecTB The input chunk B vector type
-     * @tparam VecTC The input/output chunk C vector type
+     * @tparam VecTA The input WaveTile A vector type
+     * @tparam VecTB The input WaveTile B vector type
+     * @tparam VecTC The input/output WaveTile C vector type
      */
     template <typename VecTA, typename VecTB, typename VecTC>
     CK_TILE_DEVICE static decltype(auto) exec_row_major(VecTA&& a, VecTB&& b, VecTC&& accum)
     {
         // We implement an example wave-tile pipeline here.
-        // First, we apply the necessary transforms to the input chunks,
+        // First, we apply the necessary transforms to the input WaveTiles,
         // then we convert the result into buffers of native vector formats
         // that we can easily index. Native vector formats are necessary inputs
         // to the given MmaOp exec function.
@@ -187,7 +186,7 @@ struct WaveWiseMma
 
         // "Row-major" accumulation over the N-dimension fragments first.
         // Pseudo code here, but we would basically iterate over the fragments in row-major order.
-        // We also have to ensure that the incoming vector chunks are converted to native vector
+        // We also have to ensure that the incoming vector WaveTiles are converted to native vector
         // types before passing to the FragWiseMma exec function.
         for(uint32_t bm = 0u; bm < FragsM; ++bm)
         {
@@ -201,16 +200,16 @@ struct WaveWiseMma
             }
         }
 
-        // Convert native vector results back to the output chunk format
+        // Convert native vector results back to the output WaveTile format
         // and then return after we apply the final output transform.
         return DTransform::exec(formatBuffer<std::decay_t<VecTC>>(c_frag));
     }
 
     public:
     /*! @brief Forward to Mma operation with specified accumulation order.
-     * @tparam VecTA The input chunk A vector type
-     * @tparam VecTB The input chunk B vector type
-     * @tparam VecTC The input/output chunk C vector type
+     * @tparam VecTA The input WaveTile A vector type
+     * @tparam VecTB The input WaveTile B vector type
+     * @tparam VecTC The input/output WaveTile C vector type
      */
     template <typename VecTA, typename VecTB, typename VecTC>
     CK_TILE_DEVICE static decltype(auto) exec(VecTA&& a, VecTB&& b, VecTC&& accum)
