@@ -125,4 +125,4 @@ auto create_args(int argc, char* argv[])
 
 #include "run_mx_gemm.inc"
 
-int main(int argc, char* argv[]) { return run_mx_gemm_example(argc, argv); }
+int main(int argc, char* argv[]) { return run_mx_gemm_example<MX_GemmConfig16>(argc, argv); }
