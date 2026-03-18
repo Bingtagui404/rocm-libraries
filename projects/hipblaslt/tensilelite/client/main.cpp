@@ -1066,7 +1066,10 @@ int main(int argc, const char* argv[])
                 }
                 // Discard any pending async reset from the previous problem —
                 // it prepared buffers for a different problem's data.
-                dataInit->cancelAsyncReset();
+                {
+                    ScopedTimer timer("cancel_async_reset");
+                    dataInit->cancelAsyncReset();
+                }
                 std::shared_ptr<ProblemInputs> inputs;
                 {
                     ScopedTimer timer("gpu_input_preparation");
@@ -1108,6 +1111,7 @@ int main(int argc, const char* argv[])
                             {
                                 if(resetInput)
                                 {
+                                    ScopedTimer timer("gpu_input_reset");
                                     inputs = dataInit->prepareGPUInputs(problem);
                                     inputArr[0] = inputs;
                                 }

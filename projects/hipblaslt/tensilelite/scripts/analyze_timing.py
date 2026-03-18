@@ -98,6 +98,7 @@ TIMING_HIERARCHY = {
             },
             "gpu_input_preparation": {},
             "gpu_input_reset": {},
+            "cancel_async_reset": {},
             "async_reset_submit": {
                 "async_reset_prepare": {
                     "async_reset_resetoutput": {},
@@ -159,6 +160,7 @@ CPP_PHASE_GROUPS = {
         "pre_problem",
         "gpu_input_preparation",
         "gpu_input_reset",
+        "cancel_async_reset",
         "async_reset_submit",
         "sync_copy_stream",
         "wait_copy_done",
