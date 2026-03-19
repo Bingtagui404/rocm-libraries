@@ -11,13 +11,13 @@ Generate all boilerplate code needed to add a new operation to hipDNN from a Fla
 
 ## Philosophy
 
-The code generator produces boilerplate -- the scaffolding to push a new operation through hipDNN's full stack (backend descriptor, packer, unpacker, frontend attributes/node, tests, enum plumbing, CMake entries). The generated output is a starting point, not a finished product. The agent executing this skill is responsible for landing the integration correctly.
+**You MUST run the generator.** The code generator exists to produce correct, pattern-matched boilerplate. Do not skip it and write code by hand — even if you think you understand the patterns well enough. The generator's output is the starting point for every file and fragment. If Bash access is unavailable or denied, stop and ask the user to grant it rather than proceeding without the generator.
 
-Before copying any generated file or inserting any fragment, check if the target already exists in hipDNN. If it does, compare the generated version with the existing code. Use whichever is more correct, or merge them if each covers different parts. If a fragment's insertion point has changed (e.g., a switch statement was refactored), adapt the fragment to the current code structure rather than forcing the generated version in.
+After running the generator, the agent owns the integration. Generated output is scaffolding, not a finished product. Before placing any generated file or inserting any fragment, check if the target already exists in hipDNN. If it does, compare the generated version with the existing code. Use whichever is more correct, or merge them if each covers different parts. If a fragment's insertion point has changed, adapt the fragment to the current code structure.
 
-Generated code is not always correct. The generator captures common patterns from existing operations, but not every operation fits the mold. Enum value numbering may differ between the backend C-API, SDK, and frontend -- use `frontend_value` and `sdk_name` overrides in `enum_def` to handle mismatches. Test patterns may need adjustment for operations with unusual field types or optional tensor combinations. Fragment insertion points are guidelines; always read the target file to find the right location.
+Generated code is not always perfect. Enum value numbering may differ between the backend C-API, SDK, and frontend — use `frontend_value` and `sdk_name` overrides in `enum_def` to handle mismatches. Test patterns may need adjustment for unusual field types. Fragment insertion points are guidelines; always read the target file. But these are adjustments to generator output, not reasons to bypass the generator entirely.
 
-The agent is accountable for the result. The goal is a clean, building, tested integration. If generated code needs tweaks to compile, make them. If a fragment conflicts with existing code, resolve it. This skill provides structure, but judgment and adaptation are required at every step.
+The goal is a clean, building, tested integration. If generated code needs tweaks to compile, make them. If a fragment conflicts with existing code, resolve it. Judgment and adaptation are applied to generated output, not as a substitute for it.
 
 ## Arguments
 
@@ -169,7 +169,11 @@ If missing, create the plumbing by hand following existing patterns (ConvMode, P
 
 For each mode field with a `frontend_inverse_converter` in the YAML config, check if the function already exists in `$HIPDNN_SRC/frontend/include/hipdnn_frontend/Types.hpp`. If `enum_def` is present, the inverse converter is included in `mode_frontend_plumbing_<field>.txt` — just insert it. Otherwise, generate it by reading the existing forward converter and inverting the mapping.
 
-### 5. Run the Generator
+### 5. Run the Generator (MANDATORY)
+
+**This step is non-negotiable.** You must run the generator to produce the output files and fragments. Do not write boilerplate code by hand — even if you have read the templates and understand the patterns. The generator ensures consistency, handles edge cases in the templates, and produces tested output.
+
+If Bash access is denied, ask the user to approve it. Do not proceed to Step 6 without generator output.
 
 ```bash
 cd $CODEGEN
@@ -187,6 +191,8 @@ List all generated files:
 ```bash
 find $OUTPUT_DIR -type f | sort
 ```
+
+Read each generated file before placing it — understand what the generator produced so you can compare it with existing code in the next step.
 
 ### 6. Place Generated Files
 
